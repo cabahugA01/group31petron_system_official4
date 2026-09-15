@@ -145,7 +145,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'fuel_adjustments',               'label' => 'Adjustments',                    'href' => 'manager_fuel_adjustments.php',                    'ico' => 'fas fa-sliders-h',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Apply corrections for tank levels, stock, or price changes.'],
                     ['id' => 'fuel_pump_master',               'label' => 'Calibration Review',             'href' => 'manager_fuel_pump_master.php',                    'ico' => 'fas fa-tools',            'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage calibration values for accurate pump readings.'],
                     ['id' => 'admin_fuel_oversight',          'label' => 'Fuel Transactions Oversight',    'href' => 'admin_fuel_transactions_oversight.php',         'ico' => 'fas fa-clipboard-list',  'permissions' => ['view_all_reports'], 'desc' => 'Monitor and audit validated fuel transactions for compliance.'],
-                    ['id' => 'admin_fuel_del_oversight',       'label' => 'Fuel Deliveries Oversight',      'href' => 'admin_fuel_deliveries_oversight.php',             'ico' => 'fas fa-truck-moving',     'permissions' => ['view_all_reports'], 'desc' => 'Monitor and audit tanker fuel delivery receipts.'],
                 ],
             ],
             // 5. Inventory Management — Operational, Manager Stock-In/Review & Oversight

@@ -456,7 +456,23 @@ try {
                 } catch (Exception $e) {}
 
                 $is_admin_user = in_array($role, ['admin', 'superadmin', 'developer']);
-                $reading_status = $is_admin_user ? 'Verified' : 'READINGS_SUBMITTED';
+                // Meter readings are Step 1. Both admin and staff readings start as READINGS_SUBMITTED so they do not leak into the Fuel Sales Report before Fuel Sales Closing is completed.
+                // If closing was already previously verified for this shift/date, keep/set as Verified for admin.
+                $reading_status = 'READINGS_SUBMITTED';
+                if ($is_admin_user) {
+                    try {
+                        $chk_cls_status = $pdo->prepare("
+                            SELECT status FROM fuel_sales_closing 
+                            WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+                            LIMIT 1
+                        ");
+                        $chk_cls_status->execute([$station_id, $reading_date, $shift_name_safe, $shift_period_safe]);
+                        $cls_stat = strtoupper(trim($chk_cls_status->fetchColumn() ?: ''));
+                        if (in_array($cls_stat, ['VERIFIED', 'APPROVED', 'VALIDATED'])) {
+                            $reading_status = 'Verified';
+                        }
+                    } catch (Exception $e) {}
+                }
 
                 if ($existing_tx_id) {
                     $pdo->prepare("
@@ -508,7 +524,8 @@ try {
                 }
 
                 // ── Upsert stub in fuel_sales_closing ──────────────────────────────────
-                $closing_stub_status = $is_admin_user ? 'Verified' : 'READINGS_SUBMITTED';
+                // Readings submission is NOT a completed closing — status must remain READINGS_SUBMITTED until closing form is actually saved
+                $closing_stub_status = 'READINGS_SUBMITTED';
                 try {
                     $chk_cls = $pdo->prepare("
                         SELECT id, status FROM fuel_sales_closing

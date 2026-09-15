@@ -108,7 +108,10 @@ $TANK_CONFIG_17 = get_tank_config($station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE station_id = ?");
+    if (function_exists('ensure_fuel_inventory_synced')) {
+        ensure_fuel_inventory_synced($pdo, (int)$station_id);
+    }
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no, '') AS ugt_no FROM fuel_inventory WHERE station_id = ? ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -289,7 +292,14 @@ foreach ($TANK_CONFIG_17 as $tc) {
     if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
     
     $fill_pct = $capacity > 0 ? round(($ending / $capacity) * 100, 2) : 0;
-    if ($ending <= 0) {
+
+    // Check if tank is deactivated in fuel_inventory
+    $inv_status_lower = strtolower(trim($inv['status'] ?? 'active'));
+    $is_deactivated = in_array($inv_status_lower, ['inactive', 'deactivated', 'disabled'], true);
+
+    if ($is_deactivated) {
+        $status = 'Deactivated'; $sc = '#dc3545';
+    } elseif ($ending <= 0) {
         $status = 'Out of Stock'; $sc = '#dc3545';
     } elseif ($ending <= $critical_lvl) {
         $status = 'Critical';     $sc = '#dc3545';
@@ -344,15 +354,85 @@ foreach ($TANK_CONFIG_17 as $tc) {
         'reorder_level'  => $low_lvl,
         'critical_level' => $critical_lvl,
         'timestamp'      => $inv['last_updated'] ?? null,
+        'inv_id'         => $inv['id'] ?? null
     ];
 }
 
+// ── Append any additional fuel products from fuel_inventory not covered by TANK_CONFIG_17 ──
+$seen_inv_ids = array_filter(array_column($rows, 'inv_id'));
+foreach ($fi_raw as $row) {
+    $r_id = (int)$row['id'];
+    if (in_array($r_id, $seen_inv_ids, true)) continue;
+    // skip archived/deleted
+    $raw_st = strtolower(trim($row['status'] ?? 'active'));
+    if (in_array($raw_st, ['archived', 'deleted'], true)) continue;
+
+    $cap   = (float)($row['capacity'] ?? 14000);
+    $cur_s = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+    $crit  = (float)($row['critical_level'] ?? ($cap * 0.15));
+    $reord = (float)($row['reorder_level'] ?? ($cap * 0.30));
+    $ep_price = (float)($row['price_per_liter'] ?? 0);
+
+    $ep_deactivated = in_array($raw_st, ['inactive', 'deactivated', 'disabled'], true);
+
+    $st = 'Normal'; $sc_e = '#28a745';
+    if ($ep_deactivated) {
+        $st = 'Deactivated'; $sc_e = '#dc3545';
+    } elseif ($cur_s <= 0) {
+        $st = 'Out of Stock'; $sc_e = '#dc3545';
+    } elseif ($cur_s <= $crit) {
+        $st = 'Critical'; $sc_e = '#dc3545';
+    } elseif ($cur_s <= $reord) {
+        $st = 'Low'; $sc_e = '#fd7e14';
+    }
+
+    $ep_fill  = $cap > 0 ? round(($cur_s / $cap) * 100, 2) : 0;
+    $ep_rem   = max(0, $cap - $cur_s);
+    $numOnly  = (int)preg_replace('/[^0-9]/', '', $row['ugt_no'] ?? '') ?: (count($rows) + 1);
+    $ep_ugt   = !empty($row['ugt_no']) ? $row['ugt_no'] : ('UGT #' . $numOnly);
+    $ep_val   = round($cur_s * $ep_price, 2);
+
+    $rows[] = [
+        'fuel_id'        => $r_id,
+        'ugt_no'         => $ep_ugt,
+        'fuel_type'      => $row['fuel_type'],
+        'label'          => $ep_ugt,
+        'tank'           => $ep_ugt,
+        'tank_name'      => $ep_ugt,
+        'tank_label'     => $ep_ugt,
+        'tanker_num'     => $numOnly,
+        'capacity'       => $cap,
+        'beginning'      => $cur_s,
+        'purchases'      => 0,
+        'total_available'=> $cur_s,
+        'sales'          => 0,
+        'calibration'    => 0,
+        'ending_system'  => $cur_s,
+        'actual_dip'     => $cur_s,
+        'variance'       => 0,
+        'current_level'  => $cur_s,
+        'available_space'=> $ep_rem,
+        'status'         => $st,
+        'status_color'   => $sc_e,
+        'fill_pct'       => $ep_fill,
+        'cost'           => 0,
+        'price'          => $ep_price,
+        'value'          => $ep_val,
+        'reorder_level'  => $reord,
+        'critical_level' => $crit,
+        'timestamp'      => $row['last_updated'] ?? null,
+        'inv_id'         => $r_id
+    ];
+    $seen_inv_ids[] = $r_id;
+}
+
 $total_tanks = count($rows);
-$total_fuel_available = array_sum(array_column($rows, 'current_level'));
+$total_fuel_available = array_sum(array_filter(array_map(fn($r) => $r['status'] === 'Deactivated' ? 0 : (float)$r['current_level'], $rows)));
 $total_tank_capacity = array_sum(array_column($rows, 'capacity'));
 $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Low'));
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
-$total_fuel_value = array_sum(array_column($rows, 'value'));
+$total_fuel_value = array_sum(array_filter(array_map(fn($r) => $r['status'] === 'Deactivated' ? 0 : (float)$r['value'], $rows)));
+
 
 // ── Active Tab ────────────────────────────────────────────────────────
 $active_tab = trim($_GET['tab'] ?? 'overview');
@@ -373,7 +453,7 @@ try {
             0 AS outflow,
             fd.delivery_liters AS net_change,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Staff') AS user_name,
-            COALESCE(NULLIF(fd.supplier,''), 'Petron Corporation') AS remarks
+            CONCAT_WS(' — ', NULLIF(fd.supplier,''), NULLIF(fd.notes,'')) AS remarks
         FROM fuel_deliveries fd
         LEFT JOIN users u ON fd.received_by = u.id
         WHERE fd.station_id = ?
@@ -394,7 +474,7 @@ try {
             ft.liters_sold AS outflow,
             -1 * ft.liters_sold AS net_change,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Pump Attendant') AS user_name,
-            CONCAT('Pump ', COALESCE(ft.pump_number, '1'), ' Shift Sales') AS remarks
+            COALESCE(NULLIF(ft.notes,''), CONCAT('Pump #', COALESCE(ft.pump_id, '1'), ' Sales (', COALESCE(ft.shift_name, 'Shift'), ')')) AS remarks
         FROM fuel_transactions ft
         LEFT JOIN users u ON ft.staff_id = u.id
         WHERE ft.station_id = ?
@@ -410,16 +490,31 @@ try {
         SELECT
             fa.adjustment_date AS date,
             fa.fuel_type,
-            COALESCE(NULLIF(fa.reference_no,''), CONCAT('FADJ-', LPAD(fa.id, 5, '0'))) AS ref_no,
-            'Calibration / Dip' AS movement_type,
-            CASE WHEN fa.variance > 0 THEN fa.variance ELSE 0 END AS inflow,
-            CASE WHEN fa.variance < 0 THEN ABS(fa.variance) ELSE 0 END AS outflow,
-            fa.variance AS net_change,
+            CONCAT('ADJ-', LPAD(fa.id, 5, '0')) AS ref_no,
+            CASE 
+                WHEN LOWER(COALESCE(fa.adjustment_type,'')) = 'transaction_adjustment' THEN 'Transaction Correction'
+                ELSE 'Calibration / Dip'
+            END AS movement_type,
+            CASE 
+                WHEN COALESCE(fa.variance, 0) > 0 THEN fa.variance
+                WHEN (fa.new_value - fa.previous_value) > 0 THEN (fa.new_value - fa.previous_value)
+                ELSE 0 
+            END AS inflow,
+            CASE 
+                WHEN COALESCE(fa.variance, 0) < 0 THEN ABS(fa.variance)
+                WHEN (fa.new_value - fa.previous_value) < 0 THEN ABS(fa.new_value - fa.previous_value)
+                ELSE 0 
+            END AS outflow,
+            CASE 
+                WHEN COALESCE(fa.variance, 0) != 0 THEN fa.variance
+                ELSE (fa.new_value - fa.previous_value)
+            END AS net_change,
             COALESCE(NULLIF(CONCAT(TRIM(COALESCE(u.first_name,'')), ' ', TRIM(COALESCE(u.last_name,''))), ' '), u.username, 'Manager') AS user_name,
-            COALESCE(NULLIF(fa.reason,''), NULLIF(fa.notes,''), 'Routine Calibration') AS remarks
+            COALESCE(NULLIF(fa.reason,''), 'Adjustment') AS remarks
         FROM fuel_adjustments fa
         LEFT JOIN users u ON fa.user_id = u.id
         WHERE fa.station_id = ?
+          AND LOWER(COALESCE(fa.adjustment_type,'')) != 'stock_in'
         ORDER BY fa.adjustment_date DESC LIMIT 100
     ");
     $stmt->execute([$station_id]);
@@ -523,6 +618,123 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
 }
 .badge, .status-badge, .status-pill, .inv-stock-badge, .pstatus-badge {
     white-space: nowrap !important;
+}
+</style>
+<style>
+/* ══════════════════════════════════════════════════════
+   ALL FUEL TABLES — Readable Font for Elderly Users & No Horizontal Scroll
+   ══════════════════════════════════════════════════════ */
+.aif-wrap { overflow-x: hidden !important; }
+
+/* Shared base for all 3 fuel tables */
+#adminFuelAdjTable,
+#adminFuelMovementTable,
+#adminFuelInvTable {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+}
+
+/* Clear, comfortable font size and line-height for elderly readability */
+#adminFuelAdjTable thead th,
+#adminFuelMovementTable thead th,
+#adminFuelInvTable thead th {
+    font-size: 13px !important;
+    padding: 11px 8px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.35 !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    text-transform: uppercase !important;
+    letter-spacing: .3px !important;
+    background: #002F6C !important;
+}
+
+#adminFuelAdjTable tbody td,
+#adminFuelMovementTable tbody td,
+#adminFuelInvTable tbody td {
+    font-size: 14px !important;
+    padding: 10px 8px !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+    vertical-align: middle !important;
+    line-height: 1.45 !important;
+    color: #1e293b !important;
+}
+
+#adminFuelAdjTable code,
+#adminFuelMovementTable code,
+#adminFuelInvTable code {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+}
+
+/* ── FUEL ADJUSTMENT HISTORY column widths (11 cols = 100%) ── */
+#adminFuelAdjTable th:nth-child(1),
+#adminFuelAdjTable td:nth-child(1) { width: 8%; }     /* Adj No */
+#adminFuelAdjTable th:nth-child(2),
+#adminFuelAdjTable td:nth-child(2) { width: 6%; }     /* UGT No */
+#adminFuelAdjTable th:nth-child(3),
+#adminFuelAdjTable td:nth-child(3) { width: 9%; }     /* Fuel Type */
+#adminFuelAdjTable th:nth-child(4),
+#adminFuelAdjTable td:nth-child(4) { width: 11%; }    /* Adj Type */
+#adminFuelAdjTable th:nth-child(5),
+#adminFuelAdjTable td:nth-child(5) { width: 8%; text-align:right; }  /* System Vol */
+#adminFuelAdjTable th:nth-child(6),
+#adminFuelAdjTable td:nth-child(6) { width: 8%; text-align:right; }  /* Actual Dip */
+#adminFuelAdjTable th:nth-child(7),
+#adminFuelAdjTable td:nth-child(7) { width: 7%; text-align:right; }  /* Variance */
+#adminFuelAdjTable th:nth-child(8),
+#adminFuelAdjTable td:nth-child(8) { width: 17%; }    /* Reason */
+#adminFuelAdjTable th:nth-child(9),
+#adminFuelAdjTable td:nth-child(9) { width: 12%; }    /* Requested By */
+#adminFuelAdjTable th:nth-child(10),
+#adminFuelAdjTable td:nth-child(10) { width: 7%; }    /* Status */
+#adminFuelAdjTable th:nth-child(11),
+#adminFuelAdjTable td:nth-child(11) { width: 7%; text-align:center; } /* Action */
+
+/* Status badge — clear, readable wrap */
+#adminFuelAdjTable td:nth-child(10) span {
+    font-size: 12.5px !important;
+    padding: 3px 6px !important;
+    display: inline-block !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.3 !important;
+    font-weight: 700 !important;
+}
+
+/* ── FUEL STOCK MOVEMENT column widths (9 cols = 100%) ── */
+#adminFuelMovementTable th:nth-child(1),
+#adminFuelMovementTable td:nth-child(1) { width: 10%; }   /* Ref No */
+#adminFuelMovementTable th:nth-child(2),
+#adminFuelMovementTable td:nth-child(2) { width: 12%; }   /* Date & Time */
+#adminFuelMovementTable th:nth-child(3),
+#adminFuelMovementTable td:nth-child(3) { width: 10%; }   /* Fuel Type */
+#adminFuelMovementTable th:nth-child(4),
+#adminFuelMovementTable td:nth-child(4) { width: 12%; }   /* Movement Type */
+#adminFuelMovementTable th:nth-child(5),
+#adminFuelMovementTable td:nth-child(5) { width: 9%; text-align:right; }  /* Inflow */
+#adminFuelMovementTable th:nth-child(6),
+#adminFuelMovementTable td:nth-child(6) { width: 9%; text-align:right; }  /* Outflow */
+#adminFuelMovementTable th:nth-child(7),
+#adminFuelMovementTable td:nth-child(7) { width: 9%; text-align:right; }  /* Net Change */
+#adminFuelMovementTable th:nth-child(8),
+#adminFuelMovementTable td:nth-child(8) { width: 11%; }   /* Handled By */
+#adminFuelMovementTable th:nth-child(9),
+#adminFuelMovementTable td:nth-child(9) { width: 18%; }   /* Remarks / Notes */
+
+#adminFuelMovementTable td:nth-child(4) span {
+    font-size: 12.5px !important;
+    padding: 3px 6px !important;
+    display: inline-block !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
 }
 </style>
 <?php  require_once __DIR__ . '/../partials/flash_toast.php';
@@ -629,25 +841,20 @@ body, html { overflow-x:hidden !important; }
     background: #002F6C !important;
 }
 #adminFuelInvTable thead th, .aif-tbl thead th {
-    padding: 10px 8px !important;
+    padding: 11px 8px !important;
     text-align: left;
-    font-size: 12.5px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     color: #fff !important;
     text-transform: uppercase;
     letter-spacing: .3px;
     border: none !important;
-    white-space: nowrap !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.35 !important;
 }
 #adminFuelInvTable thead th:last-child {
     text-align: center !important;
-    min-width: 135px !important;
-    width: 135px !important;
-    position: sticky !important;
-    right: 0 !important;
-    background: #002F6C !important;
-    z-index: 5 !important;
-    box-shadow: -2px 0 5px rgba(0,0,0,0.12) !important;
 }
 #adminFuelInvTable tbody tr, .aif-tbl tbody tr {
     border-bottom: 1px solid #e9ecef !important;
@@ -658,9 +865,10 @@ body, html { overflow-x:hidden !important; }
 }
 #adminFuelInvTable tbody td, .aif-tbl tbody td {
     padding: 10px 8px !important;
-    color: #212529;
+    color: #1e293b;
     vertical-align: middle;
-    font-size: 13.5px !important;
+    font-size: 14px !important;
+    line-height: 1.45 !important;
 }
 #adminFuelInvTable tbody td.bold, .aif-tbl tbody td.bold {
     font-weight: 700;
@@ -668,13 +876,6 @@ body, html { overflow-x:hidden !important; }
 }
 #adminFuelInvTable tbody td:last-child {
     text-align: center !important;
-    min-width: 135px !important;
-    width: 135px !important;
-    position: sticky !important;
-    right: 0 !important;
-    background: #ffffff !important;
-    z-index: 4 !important;
-    box-shadow: -2px 0 5px rgba(0,0,0,0.06) !important;
 }
 #adminFuelInvTable tbody tr:hover td:last-child {
     background: #f8fafc !important;
@@ -886,26 +1087,28 @@ body, html { overflow-x:hidden !important; }
                 <option value="">All Statuses</option>
                 <option value="normal">Normal</option>
                 <option value="low">Low</option>
+                <option value="critical">Critical</option>
                 <option value="out of stock">Out of Stock</option>
+                <option value="deactivated">Deactivated</option>
             </select>
             <button type="button" class="flt-btn flt-btn-search" onclick="filterFuelTable()"><i class="fas fa-search"></i> Filter</button>
             <button type="button" class="flt-btn flt-btn-reset" onclick="resetFuelFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
         </div>
     </div>
 
-    <div class="table-wrap aif-wrap" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <div class="table-wrap aif-wrap" style="width:100%;box-sizing:border-box;">
         <table class="table aif-tbl" id="adminFuelInvTable">
             <colgroup>
-                <col style="width: 8%; min-width: 75px;">
-                <col style="width: 12%; min-width: 95px;">
-                <col style="width: 13%; min-width: 110px;">
-                <col style="width: 9%; min-width: 80px;">
-                <col style="width: 11%; min-width: 95px;">
-                <col style="width: 10%; min-width: 90px;">
-                <col style="width: 10%; min-width: 85px;">
-                <col style="width: 9%; min-width: 85px;">
-                <col style="width: 10%; min-width: 110px;">
-                <col style="width: 13%; min-width: 135px;">
+                <col style="width: 7%;">   <!-- UGT No -->
+                <col style="width: 11%;">  <!-- Fuel Type -->
+                <col style="width: 10%;">  <!-- Current Volume -->
+                <col style="width: 8%;">   <!-- Capacity -->
+                <col style="width: 10%;">  <!-- Available Space -->
+                <col style="width: 8%;">   <!-- Reorder Level -->
+                <col style="width: 8%;">   <!-- Critical Level -->
+                <col style="width: 12%;">  <!-- Status -->
+                <col style="width: 13%;">  <!-- Last Updated -->
+                <col style="width: 13%;">  <!-- Actions -->
             </colgroup>
             <thead>
                 <tr>
@@ -918,7 +1121,7 @@ body, html { overflow-x:hidden !important; }
                     <th style="text-align:right;white-space:nowrap;">Critical Level</th>
                     <th style="text-align:center;white-space:nowrap;">Status</th>
                     <th style="white-space:nowrap;">Last Updated</th>
-                    <th style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">Actions</th>
+                    <th style="text-align:center;white-space:nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody id="fuelTableBody">
@@ -926,7 +1129,6 @@ body, html { overflow-x:hidden !important; }
                 <tr><td colspan="10" style="text-align:center; padding:32px; color:#6c757d;">No fuel inventory data available.</td></tr>
             <?php else: ?>
                 <?php foreach ($rows as $r):
-                    $ts_str  = ($r['timestamp'] && strtotime($r['timestamp']) > 0) ? date('M d, Y h:i A', strtotime($r['timestamp'])) : '&mdash;';
                     $ugt_no = 'UGT-' . str_pad($r['tanker_num'], 2, '0', STR_PAD_LEFT);
                     $rem_cap = max(0, $r['capacity'] - $r['current_level']);
                     $r_json = htmlspecialchars(json_encode(array_merge($r, ['ugt_no' => $ugt_no, 'available_space' => $rem_cap])), ENT_QUOTES);
@@ -936,21 +1138,28 @@ body, html { overflow-x:hidden !important; }
                     data-ugt-no="<?= htmlspecialchars(strtolower($ugt_no)) ?>"
                     data-fuel-type="<?= htmlspecialchars(strtolower(get_canonical_fuel_name($r['fuel_type']))) ?>"
                     data-status="<?= htmlspecialchars(strtolower($r['status'])) ?>">
-                    <td><code style="font-weight:700;color:#002F70;font-size:14.5px;"><?= htmlspecialchars($ugt_no) ?></code></td>
+                    <td><code style="font-weight:700;color:#002F70;font-size:14px;"><?= htmlspecialchars($ugt_no) ?></code></td>
                     <td><strong style="color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($r['fuel_type'])) ?></strong></td>
                     <td style="text-align:right;font-weight:800;color:#002F70;"><?= number_format($r['current_level'], 2) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#475569;"><?= number_format($r['capacity'], 0) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#16a34a;"><?= number_format($rem_cap, 2) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#eab308;"><?= number_format($r['reorder_level'], 0) ?> L</td>
                     <td style="text-align:right;font-weight:600;color:#dc3545;"><?= number_format($r['critical_level'], 0) ?> L</td>
-                    <td style="text-align:center;">
-                        <span class="inv-stock-badge" style="background:<?= $r['status_color'] ?>20;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:4px 8px;border-radius:4px;font-size:15.5px;font-weight:700;text-transform:uppercase;">
+                    <td style="text-align:center;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;">
+                        <span class="inv-stock-badge" style="background:<?= $r['status_color'] ?>20;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:3px 7px;border-radius:4px;font-size:11.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;display:inline-block;line-height:1.2;">
                             <?= htmlspecialchars($r['status']) ?>
                         </span>
                     </td>
-                    <td style="font-size:14px;color:#64748b;"><?= $ts_str ?></td>
-                    <td style="text-align:center;white-space:nowrap;min-width:135px;width:135px;">
-                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;min-width:120px;max-width:130px;margin:0 auto;">
+                    <td style="font-size:12px;color:#1e293b;line-height:1.3;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;">
+                        <?php if ($r['timestamp'] && strtotime($r['timestamp']) > 0): ?>
+                            <div style="font-weight:600;white-space:nowrap;"><?= date('M d, Y', strtotime($r['timestamp'])) ?></div>
+                            <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('h:i A', strtotime($r['timestamp'])) ?></div>
+                        <?php else: ?>
+                            &mdash;
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align:center;">
+                        <div style="display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;margin:0 auto;">
                             <button type="button" class="int-btn-outline" 
                                     style="width:100%;font-size:12px;height:26px;padding:0 8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;"
                                     data-fuel="<?= $r_json ?>"
@@ -983,7 +1192,35 @@ body, html { overflow-x:hidden !important; }
             </tbody>
         </table>
     </div>
-    <div id="adminFuelInvPagination" style="padding:10px 20px;"></div>
+    <div id="adminFuelInvPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="adminFuelInvShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–20 of 0 entries</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="adminFuelInvPerPage" onchange="adminFuelInvChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="adminFuelInvPrevBtn" onclick="adminFuelInvGoPage(adminFuelInvState.page - 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="adminFuelInvPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <button id="adminFuelInvNextBtn" onclick="adminFuelInvGoPage(adminFuelInvState.page + 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 <?php endif; ?>
 
@@ -1076,8 +1313,8 @@ body, html { overflow-x:hidden !important; }
       <?php else: ?>
         <?php foreach ($fuel_movement_history as $fm):
             $mtype = $fm['movement_type'];
-            $is_in = stripos($mtype, 'delivery') !== false || stripos($mtype, 'in') !== false;
-            $is_out = stripos($mtype, 'dispensed') !== false || stripos($mtype, 'sales') !== false || stripos($mtype, 'out') !== false;
+            $is_in = (float)$fm['inflow'] > 0 && (float)$fm['outflow'] <= 0;
+            $is_out = (float)$fm['outflow'] > 0 && (float)$fm['inflow'] <= 0;
             $badge_bg = $is_in ? '#dcfce7' : ($is_out ? '#fee2e2' : '#fef3c7');
             $badge_color = $is_in ? '#15803d' : ($is_out ? '#b91c1c' : '#b45309');
             $net = (float)$fm['net_change'];
@@ -1088,21 +1325,49 @@ body, html { overflow-x:hidden !important; }
             data-fuel-type="<?= strtolower(htmlspecialchars(get_canonical_fuel_name($fm['fuel_type']))) ?>"
             data-move-type="<?= strtolower(htmlspecialchars($fm['movement_type'])) ?>">
           <td><code style="font-weight:700;color:#002F70;"><?= htmlspecialchars($fm['ref_no']) ?></code></td>
-          <td style="color:#64748b; font-size:14px; white-space:nowrap;"><?= date('M d, Y h:i A', strtotime($fm['date'])) ?></td>
+          <td style="color:#64748b;"><?= date('M d, Y h:i A', strtotime($fm['date'])) ?></td>
           <td style="font-weight:700;color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($fm['fuel_type'])) ?></td>
-          <td><span style="background:<?= $badge_bg ?>;color:<?= $badge_color ?>;padding:3px 8px;border-radius:12px;font-size:13.5px;font-weight:700;white-space:nowrap;"><?= htmlspecialchars($fm['movement_type']) ?></span></td>
+          <td><span style="background:<?= $badge_bg ?>;color:<?= $badge_color ?>;border-radius:12px;font-weight:700;"><?= htmlspecialchars($fm['movement_type']) ?></span></td>
           <td style="text-align:right; font-weight:700; color:#15803d;"><?= (float)$fm['inflow'] > 0 ? ('+' . number_format((float)$fm['inflow'], 2) . ' L') : '—' ?></td>
           <td style="text-align:right; font-weight:700; color:#dc2626;"><?= (float)$fm['outflow'] > 0 ? ('-' . number_format((float)$fm['outflow'], 2) . ' L') : '—' ?></td>
           <td style="text-align:right; font-weight:800; color:<?= $net_color ?>;"><?= ($net > 0 ? '+' : '') . number_format($net, 2) ?> L</td>
-          <td style="font-size:14px; color:#334155;"><?= htmlspecialchars($fm['user_name']) ?></td>
-          <td style="font-size:14px; color:#64748b; max-width:200px;"><?= htmlspecialchars($fm['remarks'] ?: '—') ?></td>
+          <td style="color:#334155;"><?= htmlspecialchars($fm['user_name']) ?></td>
+          <td style="color:#334155; word-break:break-word; overflow-wrap:anywhere; line-height:1.35;"><?= htmlspecialchars($fm['remarks'] ?: '—') ?></td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>
       </tbody>
     </table>
   </div>
-  <div id="adminFuelMovementPagination" style="padding:8px 16px;"></div>
+  <div id="adminFuelMovPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center;">
+          <span id="adminFuelMovShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–20 of 0 entries</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+              <select id="adminFuelMovPerPage" onchange="adminFuelMovChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+              </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+              <button id="adminFuelMovPrevBtn" onclick="adminFuelMovGoPage(adminFuelMovState.page - 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-left"></i>
+              </button>
+              <span id="adminFuelMovPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+              <button id="adminFuelMovNextBtn" onclick="adminFuelMovGoPage(adminFuelMovState.page + 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-right"></i>
+              </button>
+          </div>
+      </div>
+  </div>
 </div>
 <?php endif; ?>
 
@@ -1150,19 +1415,19 @@ body, html { overflow-x:hidden !important; }
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['adjustment_no']) ?></code></td>
           <td><code style="font-weight:700; color:#002F70;"><?= htmlspecialchars($adj['ugt_no']) ?></code></td>
           <td style="font-weight:700; color:#0f172a;"><?= htmlspecialchars(get_canonical_fuel_name($adj['fuel_type'])) ?></td>
-          <td style="font-size:14px; font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></td>
+          <td style="font-weight:600; color:#475569;"><?= htmlspecialchars($adj['adjustment_type']) ?></td>
           <td style="text-align:right; font-weight:600; color:#475569;"><?= number_format((float)$adj['previous_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:#002F70;"><?= number_format((float)$adj['new_reading'], 2) ?> L</td>
           <td style="text-align:right; font-weight:700; color:<?= $var_color ?>;"><?= ($var >= 0 ? '+' : '') . number_format($var, 2) ?> L</td>
-          <td style="font-size:14px; color:#334155; max-width:180px;"><?= htmlspecialchars($adj['reason']) ?></td>
-          <td style="font-size:14px; color:#334155;"><?= htmlspecialchars($adj['adjusted_by']) ?></td>
+          <td style="color:#1e293b; word-break:break-word; overflow-wrap:anywhere; line-height:1.4;"><?= htmlspecialchars($adj['reason']) ?></td>
+          <td style="color:#1e293b; word-break:break-word;"><?= htmlspecialchars($adj['adjusted_by']) ?></td>
           <td><?= $st_badge ?></td>
-          <td style="text-align:center; white-space:nowrap;">
+          <td style="text-align:center;">
             <?php if ($is_pending): ?>
-              <button type="button" onclick="approveFuelAdjustment(<?= $adj['id'] ?>)" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:14px; font-weight:700; cursor:pointer; margin-right:4px;"><i class="fas fa-check"></i> Approve</button>
-              <button type="button" onclick="rejectFuelAdjustment(<?= $adj['id'] ?>)" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-size:14px; font-weight:700; cursor:pointer;"><i class="fas fa-times"></i> Reject</button>
+              <button type="button" onclick="approveFuelAdjustment(<?= $adj['id'] ?>)" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:5px 12px; font-size:13px; font-weight:700; cursor:pointer; margin-right:4px;"><i class="fas fa-check"></i> Approve</button>
+              <button type="button" onclick="rejectFuelAdjustment(<?= $adj['id'] ?>)" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:5px 12px; font-size:13px; font-weight:700; cursor:pointer;"><i class="fas fa-times"></i> Reject</button>
             <?php else: ?>
-              <span style="color:#94a3b8; font-size:14px; font-weight:600;">Processed</span>
+              <span style="color:#64748b; font-size:13px; font-weight:700;">Processed</span>
             <?php endif; ?>
           </td>
         </tr>
@@ -1172,7 +1437,35 @@ body, html { overflow-x:hidden !important; }
     </table>
 
   </div>
-  <div id="adminFuelAdjPagination" style="padding:8px 16px;"></div>
+  <div id="adminFuelAdjPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center;">
+          <span id="adminFuelAdjShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–20 of 0 entries</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+              <select id="adminFuelAdjPerPage" onchange="adminFuelAdjChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+              </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+              <button id="adminFuelAdjPrevBtn" onclick="adminFuelAdjGoPage(adminFuelAdjState.page - 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-left"></i>
+              </button>
+              <span id="adminFuelAdjPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+              <button id="adminFuelAdjNextBtn" onclick="adminFuelAdjGoPage(adminFuelAdjState.page + 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-right"></i>
+              </button>
+          </div>
+      </div>
+  </div>
 </div>
 <?php endif; ?>
 
@@ -1238,13 +1531,41 @@ body, html { overflow-x:hidden !important; }
       </tbody>
     </table>
   </div>
-  <div id="adminFuelAlertPagination" style="padding:8px 16px;"></div>
+  <div id="adminFuelAlertPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center;">
+          <span id="adminFuelAlertShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 1–20 of 0 entries</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+              <select id="adminFuelAlertPerPage" onchange="adminFuelAlertChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+              </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+              <button id="adminFuelAlertPrevBtn" onclick="adminFuelAlertGoPage(adminFuelAlertState.page - 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-left"></i>
+              </button>
+              <span id="adminFuelAlertPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+              <button id="adminFuelAlertNextBtn" onclick="adminFuelAlertGoPage(adminFuelAlertState.page + 1)"
+                      style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                      onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                  <i class="fas fa-chevron-right"></i>
+              </button>
+          </div>
+      </div>
+  </div>
 </div>
 <?php endif; ?>
 
 <!-- ══ VIEW FUEL DETAILS MODAL (SUB-TABBED) ══ -->
 <div class="modal-overlay" id="tankModal" style="z-index:10000;">
-    <div style="background:#fff; border-radius:14px; width:96%; max-width:850px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 40px rgba(0,0,0,.18); overflow:hidden; position:relative;">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:960px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 40px rgba(0,0,0,.18); overflow:hidden; position:relative;">
         <!-- Header -->
         <div style="padding:16px 22px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; flex-shrink:0;">
             <div style="font-size:15px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:8px;">
@@ -1255,10 +1576,9 @@ body, html { overflow-x:hidden !important; }
         <div style="display:flex; border-bottom:2px solid #e2e8f0; background:#f8fafc; flex-shrink:0; padding:0 16px; overflow-x: hidden; white-space:nowrap; gap:4px;">
             <button type="button" class="modal-tab-btn active" id="vfmTab1" onclick="vfmSwitchTab(1)"><i class="fas fa-info-circle"></i> UGT Information</button>
             <button type="button" class="modal-tab-btn" id="vfmTab2" onclick="vfmSwitchTab(2)"><i class="fas fa-truck-loading"></i> Fuel Delivery History</button>
-            <button type="button" class="modal-tab-btn" id="vfmTab3" onclick="vfmSwitchTab(3)"><i class="fas fa-history"></i> Fuel Adjustment History</button>
         </div>
         <!-- Body -->
-        <div style="overflow-y:auto; flex:1; padding:22px;" id="vfmBody">
+        <div style="overflow-y:auto; overflow-x:hidden; flex:1; padding:18px 20px;" id="vfmBody">
             <!-- SUB-TAB 1: UGT Information -->
             <div id="vfmPane1">
                 <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Tank &amp; Fuel Specifications</div>
@@ -1277,11 +1597,6 @@ body, html { overflow-x:hidden !important; }
             <div id="vfmPane2" style="display:none;">
                 <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-truck-loading"></i> Recent Fuel Deliveries</div>
                 <div id="vfmDeliveriesTable"><div style="text-align:center; padding:24px; color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading deliveries...</div></div>
-            </div>
-            <!-- SUB-TAB 3: Fuel Adjustment History -->
-            <div id="vfmPane3" style="display:none;">
-                <div style="font-size:14px; font-weight:700; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e9ecef;"><i class="fas fa-history"></i> Recent Fuel Adjustments</div>
-                <div id="vfmAdjustmentsTable"><div style="text-align:center; padding:24px; color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading adjustments...</div></div>
             </div>
         </div>
         <!-- Footer -->
@@ -1646,7 +1961,7 @@ function closeTankModal() {
 }
 
 function vfmSwitchTab(tabNum) {
-    for (var i = 1; i <= 3; i++) {
+    for (var i = 1; i <= 2; i++) {
         var pane = document.getElementById('vfmPane' + i);
         var btn = document.getElementById('vfmTab' + i);
         if (pane) pane.style.display = (i === tabNum) ? 'block' : 'none';
@@ -1753,15 +2068,15 @@ function viewTankDetails(r) {
         if (!data.deliveries || data.deliveries.length === 0) {
             if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No delivery records for this fuel type.</div>';
         } else {
-            var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Delivery No.</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Liters</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Cost/Liter</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Supplier</th></tr></thead><tbody>';
+            var dHtml = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed;"><thead><tr style="background:#f8fafc;"><th style="width:20%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Delivery No.</th><th style="width:18%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Date</th><th style="width:18%;padding:8px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Liters</th><th style="width:16%;padding:8px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Cost/Liter</th><th style="width:28%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Supplier</th></tr></thead><tbody>';
             data.deliveries.forEach(function(d) {
                 var dNo = d.invoice_no || ('DEL-' + String(d.id || 0).padStart(5, '0'));
                 var dDate = d.delivery_date ? new Date(d.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-                dHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;"><code style="font-weight:700;color:#002F70;">' + esc(dNo) + '</code></td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;color:#64748b;">' + dDate + '</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#16a34a;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;">₱' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
-                dHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;">' + esc(d.supplier || 'Petron Corporation') + '</td></tr>';
+                dHtml += '<tr><td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;word-break:break-word;"><code style="font-weight:700;color:#002F70;">' + esc(dNo) + '</code></td>';
+                dHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;color:#64748b;white-space:nowrap;">' + dDate + '</td>';
+                dHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#16a34a;white-space:nowrap;">' + Number(d.delivery_liters || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
+                dHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#002F70;white-space:nowrap;">₱' + Number(d.cost_per_liter || 65.5).toFixed(2) + '</td>';
+                dHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;word-break:break-word;">' + esc(d.supplier || 'Petron Corporation') + '</td></tr>';
             });
             dHtml += '</tbody></table>';
             if (document.getElementById('vfmDeliveriesTable')) document.getElementById('vfmDeliveriesTable').innerHTML = dHtml;
@@ -1771,19 +2086,19 @@ function viewTankDetails(r) {
         if (!data.adjustments || data.adjustments.length === 0) {
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = '<div style="text-align:center;padding:12px;color:#94a3b8;">No adjustment history for this fuel type.</div>';
         } else {
-            var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:14.5px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Date</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Previous</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">New</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e2e8f0;">Variance</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Reason</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;">Adjusted By</th></tr></thead><tbody>';
+            var aHtml = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed;"><thead><tr style="background:#f8fafc;"><th style="width:18%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Date</th><th style="width:15%;padding:8px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Previous</th><th style="width:15%;padding:8px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">New</th><th style="width:15%;padding:8px 6px;text-align:right;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Variance</th><th style="width:22%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Reason</th><th style="width:15%;padding:8px 6px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;">Adjusted By</th></tr></thead><tbody>';
             data.adjustments.forEach(function(a) {
                 var aDate = a.adjustment_date ? new Date(a.adjustment_date).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
                 var prev = Number(a.previous_value || 0);
                 var newVal = Number(a.new_value || 0);
                 var v = newVal - prev;
                 var vColor = v > 0 ? '#16a34a' : (v < 0 ? '#dc3545' : '#64748b');
-                aHtml += '<tr><td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;color:#475569;">' + aDate + '</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#64748b;">' + prev.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;">' + newVal.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:' + vColor + ';">' + (v >= 0 ? '+' : '') + v.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:14px;">' + esc(a.reason || a.notes || 'Routine Calibration') + '</td>';
-                aHtml += '<td style="padding:7px 8px;border-bottom:1px solid #f1f5f9;font-size:14px;">' + esc(a.adjusted_by || 'Manager') + '</td></tr>';
+                aHtml += '<tr><td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;color:#475569;white-space:nowrap;">' + aDate + '</td>';
+                aHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#64748b;white-space:nowrap;">' + prev.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
+                aHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;">' + newVal.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
+                aHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:' + vColor + ';white-space:nowrap;">' + (v >= 0 ? '+' : '') + v.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' L</td>';
+                aHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;font-size:12px;word-break:break-word;">' + esc(a.reason || a.notes || 'Routine Calibration') + '</td>';
+                aHtml += '<td style="padding:7px 6px;border-bottom:1px solid #f1f5f9;font-size:12px;word-break:break-word;">' + esc(a.adjusted_by || 'Manager') + '</td></tr>';
             });
             aHtml += '</tbody></table>';
             if (document.getElementById('vfmAdjustmentsTable')) document.getElementById('vfmAdjustmentsTable').innerHTML = aHtml;
@@ -1819,7 +2134,7 @@ function closeTankModal() {
 }
 
 function vfmSwitchTab(tabNum) {
-    for (var i = 1; i <= 3; i++) {
+    for (var i = 1; i <= 2; i++) {
         var pane = document.getElementById('vfmPane' + i);
         var btn = document.getElementById('vfmTab' + i);
         if (pane) pane.style.display = (i === tabNum) ? 'block' : 'none';
@@ -1917,9 +2232,8 @@ function filterFuelTable() {
             row.style.display = 'none';
         }
     });
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminFuelInvTable', null, 'adminFuelInvPagination', 20);
-    }
+    adminFuelInvState.page = 1;
+    adminFuelInvRender();
 }
 
 function filterDeliveriesTable() {
@@ -1936,9 +2250,6 @@ function filterDeliveriesTable() {
             r.style.display = 'none';
         }
     });
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminFuelDelTable', null, 'adminFuelDelPagination', 20);
-    }
 }
 
 function filterAdjTable() {
@@ -1955,9 +2266,8 @@ function filterAdjTable() {
             r.style.display = 'none';
         }
     });
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminFuelAdjTable', null, 'adminFuelAdjPagination', 20);
-    }
+    adminFuelAdjState.page = 1;
+    adminFuelAdjRender();
 }
 
 // Modal dismissal on click outside
@@ -2150,11 +2460,15 @@ function filterFuelMovementTable() {
         var matchM = !mv || mType.indexOf(mv) !== -1;
 
         if (matchS && matchF && matchM) {
+            row.classList.remove('search-hidden');
             row.style.display = '';
         } else {
+            row.classList.add('search-hidden');
             row.style.display = 'none';
         }
     });
+    adminFuelMovState.page = 1;
+    adminFuelMovRender();
 }
 
 function resetFuelMovementFilters() {
@@ -2164,14 +2478,133 @@ function resetFuelMovementFilters() {
     filterFuelMovementTable();
 }
 
+/* ══ FUEL INVENTORY — Rows-per-page pagination engines ══ */
+
+/* ── Tab 1: Fuel Inventory Overview ── */
+var adminFuelInvState = { page: 1, perPage: 20 };
+function adminFuelInvRender() {
+    var allRows = document.querySelectorAll('#adminFuelInvTable tbody tr.fuel-row');
+    var visible = Array.from(allRows).filter(function(r) { return !r.classList.contains('search-hidden'); });
+    var total = visible.length;
+    var pp = adminFuelInvState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / pp));
+    if (adminFuelInvState.page > totalPages) adminFuelInvState.page = totalPages;
+    var start = (adminFuelInvState.page - 1) * pp;
+    var end = start + pp;
+    visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+    var showEnd = Math.min(end, total);
+    var showText = document.getElementById('adminFuelInvShowingText');
+    if (showText) showText.textContent = total === 0 ? 'No entries found' : 'Showing ' + (start + 1) + '\u2013' + showEnd + ' of ' + total + ' entries';
+    var lbl = document.getElementById('adminFuelInvPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + adminFuelInvState.page + ' of ' + totalPages;
+    var prev = document.getElementById('adminFuelInvPrevBtn');
+    var next = document.getElementById('adminFuelInvNextBtn');
+    var inactiveStyle = 'cursor:not-allowed; color:#cbd5e1;';
+    var activeStyle = 'cursor:pointer; color:#475569;';
+    if (prev) { prev.disabled = adminFuelInvState.page <= 1; prev.style.cssText += adminFuelInvState.page <= 1 ? inactiveStyle : activeStyle; }
+    if (next) { next.disabled = adminFuelInvState.page >= totalPages; next.style.cssText += adminFuelInvState.page >= totalPages ? inactiveStyle : activeStyle; }
+}
+function adminFuelInvGoPage(p) { adminFuelInvState.page = p; adminFuelInvRender(); }
+function adminFuelInvChangePerPage() {
+    var sel = document.getElementById('adminFuelInvPerPage');
+    if (sel) { adminFuelInvState.perPage = parseInt(sel.value, 10); adminFuelInvState.page = 1; adminFuelInvRender(); }
+}
+
+/* ── Tab 2: Stock Movement ── */
+var adminFuelMovState = { page: 1, perPage: 20 };
+function adminFuelMovRender() {
+    var allRows = document.querySelectorAll('#adminFuelMovementTbody tr.fmov-row');
+    var visible = Array.from(allRows).filter(function(r) { return !r.classList.contains('search-hidden'); });
+    var total = visible.length;
+    var pp = adminFuelMovState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / pp));
+    if (adminFuelMovState.page > totalPages) adminFuelMovState.page = totalPages;
+    var start = (adminFuelMovState.page - 1) * pp;
+    var end = start + pp;
+    visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+    var showEnd = Math.min(end, total);
+    var showText = document.getElementById('adminFuelMovShowingText');
+    if (showText) showText.textContent = total === 0 ? 'No entries found' : 'Showing ' + (start + 1) + '\u2013' + showEnd + ' of ' + total + ' entries';
+    var lbl = document.getElementById('adminFuelMovPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + adminFuelMovState.page + ' of ' + totalPages;
+    var prev = document.getElementById('adminFuelMovPrevBtn');
+    var next = document.getElementById('adminFuelMovNextBtn');
+    var inactiveStyle = 'cursor:not-allowed; color:#cbd5e1;';
+    var activeStyle = 'cursor:pointer; color:#475569;';
+    if (prev) { prev.disabled = adminFuelMovState.page <= 1; prev.style.cssText += adminFuelMovState.page <= 1 ? inactiveStyle : activeStyle; }
+    if (next) { next.disabled = adminFuelMovState.page >= totalPages; next.style.cssText += adminFuelMovState.page >= totalPages ? inactiveStyle : activeStyle; }
+}
+function adminFuelMovGoPage(p) { adminFuelMovState.page = p; adminFuelMovRender(); }
+function adminFuelMovChangePerPage() {
+    var sel = document.getElementById('adminFuelMovPerPage');
+    if (sel) { adminFuelMovState.perPage = parseInt(sel.value, 10); adminFuelMovState.page = 1; adminFuelMovRender(); }
+}
+
+/* ── Tab 3: Fuel Adjustment History ── */
+var adminFuelAdjState = { page: 1, perPage: 20 };
+function adminFuelAdjRender() {
+    var allRows = document.querySelectorAll('#adminFuelAdjBody tr.adj-row');
+    var visible = Array.from(allRows).filter(function(r) { return !r.classList.contains('search-hidden'); });
+    var total = visible.length;
+    var pp = adminFuelAdjState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / pp));
+    if (adminFuelAdjState.page > totalPages) adminFuelAdjState.page = totalPages;
+    var start = (adminFuelAdjState.page - 1) * pp;
+    var end = start + pp;
+    visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+    var showEnd = Math.min(end, total);
+    var showText = document.getElementById('adminFuelAdjShowingText');
+    if (showText) showText.textContent = total === 0 ? 'No entries found' : 'Showing ' + (start + 1) + '\u2013' + showEnd + ' of ' + total + ' entries';
+    var lbl = document.getElementById('adminFuelAdjPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + adminFuelAdjState.page + ' of ' + totalPages;
+    var prev = document.getElementById('adminFuelAdjPrevBtn');
+    var next = document.getElementById('adminFuelAdjNextBtn');
+    var inactiveStyle = 'cursor:not-allowed; color:#cbd5e1;';
+    var activeStyle = 'cursor:pointer; color:#475569;';
+    if (prev) { prev.disabled = adminFuelAdjState.page <= 1; prev.style.cssText += adminFuelAdjState.page <= 1 ? inactiveStyle : activeStyle; }
+    if (next) { next.disabled = adminFuelAdjState.page >= totalPages; next.style.cssText += adminFuelAdjState.page >= totalPages ? inactiveStyle : activeStyle; }
+}
+function adminFuelAdjGoPage(p) { adminFuelAdjState.page = p; adminFuelAdjRender(); }
+function adminFuelAdjChangePerPage() {
+    var sel = document.getElementById('adminFuelAdjPerPage');
+    if (sel) { adminFuelAdjState.perPage = parseInt(sel.value, 10); adminFuelAdjState.page = 1; adminFuelAdjRender(); }
+}
+
+/* ── Tab 4: Stock Alerts ── */
+var adminFuelAlertState = { page: 1, perPage: 20 };
+function adminFuelAlertRender() {
+    var allRows = document.querySelectorAll('#adminFuelAlertTable tbody tr:not([class*="no-paginate"])');
+    var visible = Array.from(allRows).filter(function(r) { return !r.classList.contains('search-hidden') && !r.querySelector('td[colspan]'); });
+    var total = visible.length;
+    var pp = adminFuelAlertState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / pp));
+    if (adminFuelAlertState.page > totalPages) adminFuelAlertState.page = totalPages;
+    var start = (adminFuelAlertState.page - 1) * pp;
+    var end = start + pp;
+    visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+    var showEnd = Math.min(end, total);
+    var showText = document.getElementById('adminFuelAlertShowingText');
+    if (showText) showText.textContent = total === 0 ? 'No entries found' : 'Showing ' + (start + 1) + '\u2013' + showEnd + ' of ' + total + ' entries';
+    var lbl = document.getElementById('adminFuelAlertPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + adminFuelAlertState.page + ' of ' + totalPages;
+    var prev = document.getElementById('adminFuelAlertPrevBtn');
+    var next = document.getElementById('adminFuelAlertNextBtn');
+    var inactiveStyle = 'cursor:not-allowed; color:#cbd5e1;';
+    var activeStyle = 'cursor:pointer; color:#475569;';
+    if (prev) { prev.disabled = adminFuelAlertState.page <= 1; prev.style.cssText += adminFuelAlertState.page <= 1 ? inactiveStyle : activeStyle; }
+    if (next) { next.disabled = adminFuelAlertState.page >= totalPages; next.style.cssText += adminFuelAlertState.page >= totalPages ? inactiveStyle : activeStyle; }
+}
+function adminFuelAlertGoPage(p) { adminFuelAlertState.page = p; adminFuelAlertRender(); }
+function adminFuelAlertChangePerPage() {
+    var sel = document.getElementById('adminFuelAlertPerPage');
+    if (sel) { adminFuelAlertState.perPage = parseInt(sel.value, 10); adminFuelAlertState.page = 1; adminFuelAlertRender(); }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminFuelInvTable', null, 'adminFuelInvPagination', 20);
-        setupTablePagination('adminFuelMovementTable', null, 'adminFuelMovementPagination', 20);
-        setupTablePagination('adminFuelDelTable', null, 'adminFuelDelPagination', 20);
-        setupTablePagination('adminFuelAdjTable', null, 'adminFuelAdjPagination', 20);
-        setupTablePagination('adminFuelAlertTable', null, 'adminFuelAlertPagination', 20);
-    }
+    adminFuelInvRender();
+    adminFuelMovRender();
+    adminFuelAdjRender();
+    adminFuelAlertRender();
 });
 </script>
 </div> <!-- /.main-content -->

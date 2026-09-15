@@ -25,6 +25,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, stock, status) VALUES (?, ?, 'Fuel', ?, ?, ?, 'active')");
             $stmt->execute([$station_id, $name, $unit_cost, $unit_price, $stock_level]);
+
+            // Sync to fuel_types
+            $chk_ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+            $chk_ft->execute([$name]);
+            $ft_id = $chk_ft->fetchColumn();
+            if (!$ft_id) {
+                $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$name, $unit_price]);
+                $ft_id = (int)$pdo->lastInsertId();
+            }
+
+            // Sync to fuel_inventory for this station
+            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+            $chk_fi->execute([$station_id, $name]);
+            if (!$chk_fi->fetchColumn()) {
+                $max_ugt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
+                $max_ugt->execute([$station_id]);
+                $ugt_count = (int)$max_ugt->fetchColumn() + 1;
+                $ugt_no = 'UGT-' . str_pad($ugt_count, 2, '0', STR_PAD_LEFT);
+                $pdo->prepare("
+                    INSERT INTO fuel_inventory 
+                    (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level, current_level, current_stock, status, last_updated)
+                    VALUES (?, ?, ?, ?, ?, 14000, 2100, 2800, ?, ?, 'Normal', NOW())
+                ")->execute([$station_id, $ft_id, $name, $ugt_no, $unit_price, $stock_level, $stock_level]);
+            }
+
+            if (function_exists('ensure_fuel_inventory_synced')) {
+                ensure_fuel_inventory_synced($pdo, (int)$station_id);
+            }
+
             $stmt = $pdo->prepare("INSERT INTO audit_log (station_id, user_id, action, details, created_at) VALUES (?, ?, 'Product Added', ?, NOW())");
             $stmt->execute([$station_id, $me['id'], "Fuel product '$name' added"]);
             $_SESSION['success'] = "Fuel product '$name' added successfully.";
@@ -276,6 +305,43 @@ try {
             'display_status' => $status,
             'source'         => 'fuel_inventory',
         ];
+    }
+
+    // Append any additional fuel products from fuel_inventory not covered by TANK_CONFIG_17
+    $seen_inv_ids = array_filter(array_column($fuel_products, 'id'));
+    if (!empty($fi_lookup)) {
+        foreach ($fi_lookup as $row) {
+            $r_id = (int)($row['id'] ?? 0);
+            if ($r_id > 0 && !in_array($r_id, $seen_inv_ids, true)) {
+                $cap = (float)($row['capacity'] ?? 14000);
+                $cur_stock = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+                $crit = (float)($row['critical_level'] ?? ($cap * 0.10));
+                $reord = (float)($row['reorder_level'] ?? ($cap * 0.20));
+
+                $st = 'Normal';
+                if ($cur_stock <= 0) $st = 'Out of Stock';
+                elseif ($cur_stock <= $crit) $st = 'Critical';
+                elseif ($cur_stock <= $reord) $st = 'Low';
+
+                $price = (float)($row['price_per_liter'] ?? 0);
+                $is_active = strtolower($row['status'] ?? 'active') !== 'deactivated';
+
+                $fuel_products[] = [
+                    'id'             => $r_id,
+                    'pump_id'        => (int)preg_replace('/[^0-9]/', '', $row['ugt_no'] ?? '') ?: (count($fuel_products) + 1),
+                    'tank_label'     => !empty($row['ugt_no']) ? $row['ugt_no'] : ('UGT #' . $r_id),
+                    'raw_fuel_type'  => $row['fuel_type'],
+                    'product_name'   => $row['fuel_type'],
+                    'unit_cost'      => $price,
+                    'unit_price'     => $price,
+                    'quantity'       => $cur_stock,
+                    'status'         => $is_active ? 'active' : 'inactive',
+                    'display_status' => $st,
+                    'source'         => 'fuel_inventory',
+                ];
+                $seen_inv_ids[] = $r_id;
+            }
+        }
     }
 } catch (Exception $e) {
     $msg = 'Error loading fuel products: ' . $e->getMessage();

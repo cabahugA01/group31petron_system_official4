@@ -49,7 +49,7 @@ try {
 
     // ── Seed default approved data if table is empty ─────────────────────────
     $count = (int)$pdo->query("SELECT COUNT(*) FROM vehicle_types")->fetchColumn();
-    if ($count === 0) {
+    if ($count === 0 && false) {
         $seed = [
             ['Sedans / Hatchbacks', 'Toyota Vios',           1],
             ['Sedans / Hatchbacks', 'Honda City',            2],
@@ -110,12 +110,15 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // ── GET: return approved and pending vehicle types ───────────────────────────
 if ($method === 'GET') {
-    $rows = $pdo->query("
+    $stationId = (int)user_station_id();
+    $stmt = $pdo->prepare("
         SELECT id, category, vehicle_name, sort_order, status
         FROM   vehicle_types
-        WHERE  is_active = 1 AND status IN ('approved', 'pending')
+        WHERE  is_active = 1 AND status IN ('approved', 'pending') AND station_id = ?
         ORDER  BY sort_order ASC, category ASC, vehicle_name ASC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $stmt->execute([$stationId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $grouped = [];
     foreach ($rows as $r) {
@@ -177,9 +180,11 @@ if ($method === 'POST') {
         exit;
     }
 
-    // Check for duplicate (case-insensitive)
-    $dup = $pdo->prepare("SELECT id, status FROM vehicle_types WHERE LOWER(vehicle_name) = LOWER(?)");
-    $dup->execute([$vehicle_name]);
+    $stationId = (int)user_station_id();
+
+    // Check for duplicate (case-insensitive) for this station
+    $dup = $pdo->prepare("SELECT id, status FROM vehicle_types WHERE LOWER(vehicle_name) = LOWER(?) AND station_id = ?");
+    $dup->execute([$vehicle_name, $stationId]);
     $existing = $dup->fetch(PDO::FETCH_ASSOC);
     if ($existing) {
         $msg = $existing['status'] === 'pending'
@@ -190,14 +195,16 @@ if ($method === 'POST') {
         exit;
     }
 
-    // Get next sort_order
-    $maxSort = (int)$pdo->query("SELECT COALESCE(MAX(sort_order),0) FROM vehicle_types")->fetchColumn();
+    // Get next sort_order for this station
+    $maxSortStmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order),0) FROM vehicle_types WHERE station_id = ?");
+    $maxSortStmt->execute([$stationId]);
+    $maxSort = (int)$maxSortStmt->fetchColumn();
 
     $stmt = $pdo->prepare("
-        INSERT INTO vehicle_types (category, vehicle_name, sort_order, status, submitted_by)
-        VALUES (?, ?, ?, 'pending', ?)
+        INSERT INTO vehicle_types (station_id, category, vehicle_name, sort_order, status, submitted_by)
+        VALUES (?, ?, ?, ?, 'pending', ?)
     ");
-    $stmt->execute([$category, $vehicle_name, $maxSort + 1, $me['id']]);
+    $stmt->execute([$stationId, $category, $vehicle_name, $maxSort + 1, $me['id']]);
     $newId = (int)$pdo->lastInsertId();
 
     echo json_encode([

@@ -27,6 +27,166 @@ if ($station_id <= 0 && $role === 'admin') {
     render_no_station_page('admin_dashboard.php'); 
 }
 
+// ── Handle Admin Direct Stock Adjustment (No Approval Required) ───────────
+if (isset($_GET['action']) && $_GET['action'] === 'admin_direct_adjust') {
+    header('Content-Type: application/json');
+
+    $raw  = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: $_POST;
+
+    $prod_id   = (int)($data['product_id'] ?? 0);
+    $adj_type  = trim($data['adjustment_type'] ?? '');
+    $adj_act   = trim($data['adjustment_action'] ?? 'Decrease');
+    $qty       = (float)($data['quantity'] ?? 0);
+    $reason    = trim($data['reason'] ?? $adj_type);
+    $remarks   = trim($data['remarks'] ?? '');
+
+    if ($prod_id <= 0 || empty($adj_type) || $qty <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Invalid adjustment parameters.']);
+        exit;
+    }
+
+    // Force direction for fixed types
+    if (in_array($adj_type, ['Damaged Product', 'Expired Product', 'Missing Item'], true)) {
+        $adj_act = 'Decrease';
+    } elseif ($adj_type === 'Returned Item') {
+        $adj_act = 'Increase';
+    }
+
+    try {
+        // Fetch product info
+        $stmt = $pdo->prepare("
+            SELECT
+                COALESCE(ip.id, p.id, si.product_id) AS id,
+                COALESCE(ip.product_name, p.name, 'Unknown') AS product_name,
+                COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(COALESCE(ip.id, p.id), 4, '0'))) AS sku,
+                COALESCE(ip.category, pc.name, 'Merchandise') AS category,
+                COALESCE(si.stock_level, ip.stock, p.current_stock, 0) AS current_stock
+            FROM station_inventory si
+            LEFT JOIN inventory_products ip ON ip.id = si.product_id
+            LEFT JOIN products p ON p.id = si.product_id
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            WHERE si.product_id = ? AND si.station_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$prod_id, $station_id]);
+        $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$prod) {
+            echo json_encode(['success' => false, 'message' => 'Product not found in station inventory.']);
+            exit;
+        }
+
+        $current_stock = (float)$prod['current_stock'];
+
+        // Calculate adjusted stock
+        if ($adj_type === 'Physical Count') {
+            $quantity_change = (int)($qty - $current_stock);
+            $adj_act         = $quantity_change >= 0 ? 'Increase' : 'Decrease';
+            $new_stock       = max(0, (int)$qty);
+        } else {
+            $strict_types = ['Damaged Product', 'Expired Product', 'Missing Item'];
+            if ($adj_act === 'Decrease' && in_array($adj_type, $strict_types, true) && $qty > $current_stock) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "Deduction quantity ({$qty}) cannot exceed current stock ({$current_stock}) for {$adj_type}."
+                ]);
+                exit;
+            }
+            $quantity_change = ($adj_act === 'Decrease') ? -(int)$qty : +(int)$qty;
+            $new_stock       = max(0, (int)($current_stock + $quantity_change));
+        }
+
+        $full_reason = $reason . ($remarks !== '' ? ' — ' . $remarks : '');
+
+        $pdo->beginTransaction();
+
+        // 1. Record in merchandise_adjustments as auto-approved
+        $ins = $pdo->prepare("
+            INSERT INTO merchandise_adjustments
+            (station_id, product_id, product_name, sku, category, current_stock, adjusted_stock, quantity_change, adjustment_type, reason, status, requested_by, approved_by, requested_at, approved_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Approved', ?, ?, NOW(), NOW(), NOW(), NOW())
+        ");
+        $ins->execute([
+            $station_id,
+            $prod_id,
+            $prod['product_name'],
+            $prod['sku'],
+            $prod['category'],
+            (int)$current_stock,
+            (int)$new_stock,
+            (int)$quantity_change,
+            $adj_type,
+            $full_reason,
+            $me['id'],
+            $me['id']
+        ]);
+        $adj_id = $pdo->lastInsertId();
+
+        // 2. Update station_inventory
+        $upd = $pdo->prepare("UPDATE station_inventory SET stock_level = ?, last_updated = NOW() WHERE product_id = ? AND station_id = ?");
+        $upd->execute([$new_stock, $prod_id, $station_id]);
+
+        // 3. Update inventory_products
+        try {
+            $pdo->prepare("UPDATE inventory_products SET stock = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$new_stock, $prod_id]);
+        } catch (Exception $e2) {}
+
+        // 4. Update products table
+        try {
+            $pdo->prepare("UPDATE products SET current_stock = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$new_stock, $prod_id]);
+        } catch (Exception $e3) {}
+
+        // 5. Log to inventory_logs
+        $pdo->prepare("
+            INSERT INTO inventory_logs (station_id, product_id, action, quantity_change, notes, user_id, created_at)
+            VALUES (?, ?, 'adjustment', ?, ?, ?, NOW())
+        ")->execute([
+            $station_id,
+            $prod_id,
+            $quantity_change,
+            "Admin Direct Adjustment — {$adj_type}: Stock updated from {$current_stock} to {$new_stock}. {$full_reason}",
+            $me['id']
+        ]);
+
+        // 6. Log to inventory_movements if table exists
+        try {
+            $pdo->prepare("
+                INSERT INTO inventory_movements (station_id, product_id, reference_no, movement_type, quantity_change, resulting_stock, remarks, created_by, created_at)
+                VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, NOW())
+            ")->execute([
+                $station_id,
+                $prod_id,
+                'ADJ-' . str_pad($adj_id, 4, '0', STR_PAD_LEFT),
+                $quantity_change,
+                $new_stock,
+                "Admin Direct: {$adj_type} — {$full_reason}",
+                $me['id']
+            ]);
+        } catch (Exception $e4) {}
+
+        log_activity($pdo, $me['id'], 'Admin Direct Adjustment', "Adjusted #{$adj_id} for {$prod['product_name']} ({$adj_type}: {$quantity_change}). New stock: {$new_stock}");
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success'     => true,
+            'message'     => "Stock for '{$prod['product_name']}' adjusted successfully. New stock: {$new_stock}.",
+            'new_stock'   => $new_stock,
+            'adj_id'      => $adj_id,
+            'qty_change'  => $quantity_change
+        ]);
+        exit;
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
 // ── Handle Product Information Update (POST) ────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_product') {
     $prod_id  = (int)($_POST['product_id'] ?? 0);
@@ -96,6 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 if (!function_exists('getStatusBadgeClass')) {
     function getStatusBadgeClass($status) {
         $s = strtolower(trim($status ?? ''));
+        if ($s === 'expired') return 'bg-red';
         if ($s === 'available' || $s === 'normal' || $s === 'active' || $s === 'ok') return 'bg-green';
         if (in_array($s, ['low', 'low stock', 'critical', 'critical stock', 'out', 'out of stock'], true)) return 'bg-red';
         return 'bg-green';
@@ -105,6 +266,7 @@ if (!function_exists('getStatusBadgeClass')) {
 if (!function_exists('getStatusLabel')) {
     function getStatusLabel($status) {
         $s = strtolower(trim($status ?? ''));
+        if ($s === 'expired') return 'EXPIRED';
         if (in_array($s, ['available', 'normal', 'active', 'ok'], true)) return 'AVAILABLE';
         if (in_array($s, ['low', 'low stock', 'critical', 'critical stock'], true)) return 'LOW STOCK';
         if (in_array($s, ['out', 'out of stock'], true)) return 'OUT OF STOCK';
@@ -479,7 +641,10 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
 }
 
 // â”€â”€ GET Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$search_query   = trim($_GET['search_query'] ?? '');
+$search_query       = trim($_GET['search_query'] ?? $_GET['search'] ?? '');
+$target_product_id  = (int)($_GET['product_id'] ?? $_GET['pid'] ?? 0);
+$auto_open_param    = !empty($_GET['auto_open']) || $target_product_id > 0;
+$auto_open_item     = null;
 $category_filter = trim($_GET['category'] ?? 'all');
 $brand_filter    = trim($_GET['brand'] ?? 'all');
 $supplier_filter = trim($_GET['supplier'] ?? 'all');
@@ -531,7 +696,8 @@ try {
                si.physical_count,
                si.variance,
                COALESCE(si.last_updated, NOW()) AS last_updated,
-               COALESCE(ip.brand, 'Petron Corporation') AS supplier
+               COALESCE(ip.brand, 'Petron Corporation') AS supplier,
+               COALESCE(si.expiration_date, ip.expiration_date, p.expiration_date) AS expiration_date
         FROM station_inventory si
         LEFT JOIN inventory_products ip ON ip.id = si.product_id
         LEFT JOIN products p ON p.id = si.product_id
@@ -638,6 +804,7 @@ $kpi_total_stock    = 0;
 $kpi_low_stock      = 0;
 $kpi_critical_stock = 0;
 $kpi_out_of_stock   = 0;
+$kpi_expired_stock  = 0;
 $kpi_total_value    = 0;
 
 $stock_movements_today = 0;
@@ -665,9 +832,53 @@ foreach ($all_items as &$item) {
     $variance  = (float)$item['variance'];
     $has_variance = ($item['variance'] !== null && (float)$item['variance'] != 0);
     $item_status = strtolower(trim($item['status'] ?? 'active'));
+
+    // Expiration computation (prefer real expiration_date from DB)
+    $exp_raw = null;
+    if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
+        $exp_raw = $item['expiration_date'];
+        $exp_date = date('M d, Y', strtotime($exp_raw));
+    } else {
+        try {
+            $dt = new DateTime(!empty($item['last_updated']) ? $item['last_updated'] : '2026-07-20');
+            $cat_str = strtolower((string)($item['category_name'] ?? $item['category'] ?? ''));
+            $name_str = strtolower((string)($item['name'] ?? ''));
+            if (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
+                $dt->modify('+1 year');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } elseif (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
+                $dt->modify('+5 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } else {
+                $dt->modify('+3 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            }
+        } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
+    }
+    $exp_status = '';
+    if ($exp_raw) {
+        try {
+            $exp_dt   = new DateTime($exp_raw);
+            $today_dt = new DateTime('today');
+            $diff_days = (int)$today_dt->diff($exp_dt)->days * ($exp_dt >= $today_dt ? 1 : -1);
+            if ($diff_days < 0) {
+                $exp_status = 'expired';
+            } elseif ($diff_days <= 30) {
+                $exp_status = 'expiring_soon';
+            }
+        } catch (Exception $e) {}
+    }
+    $item['expiration_date'] = $exp_date;
+    $item['exp_raw'] = $exp_raw;
+    $item['exp_status'] = $exp_status;
     
-    // Status computation — driven entirely by DB thresholds
-    if ($stock <= 0) {
+    // Status computation — driven entirely by DB thresholds & expiration
+    if ($exp_status === 'expired') {
+        $computed_status = 'expired';
+    } elseif ($stock <= 0) {
         $computed_status = 'out';
     } elseif ($stock <= $critical) {
         $computed_status = 'critical';
@@ -686,36 +897,41 @@ foreach ($all_items as &$item) {
     // Global KPIs (unfiltered)
     $kpi_total_products++;
     $kpi_total_stock += $stock;
-    if ($computed_status === 'low') $kpi_low_stock++;
+    if ($computed_status === 'expired') $kpi_expired_stock++;
+    elseif ($computed_status === 'low') $kpi_low_stock++;
     elseif ($computed_status === 'critical') $kpi_critical_stock++;
     elseif ($computed_status === 'out') $kpi_out_of_stock++;
     $kpi_total_value += ($stock * $price);
 
     // Apply Filters
-    // 1. Search Query
-    if ($search_query !== '') {
-        $s_lower = trim(strtolower($search_query));
-        $status_match = false;
-        if (in_array($s_lower, ['low', 'low stock'], true)) {
-            $status_match = ($computed_status === 'low');
-        } elseif (in_array($s_lower, ['critical', 'critical stock'], true)) {
-            $status_match = ($computed_status === 'critical');
-        } elseif (in_array($s_lower, ['out', 'out of stock'], true)) {
-            $status_match = ($computed_status === 'out');
-        } elseif (in_array($s_lower, ['variance', 'variance detected'], true)) {
-            $status_match = $has_variance;
-        } elseif ($s_lower === 'available') {
-            $status_match = ($computed_status === 'available' && !$has_variance);
+    $is_target_prod = ($target_product_id > 0 && (int)$item['id'] === $target_product_id);
+    if (!$is_target_prod) {
+        // 1. Search Query
+        if ($search_query !== '') {
+            $s_lower = trim(strtolower($search_query));
+            $status_match = false;
+            if ($s_lower === 'expired') {
+                $status_match = ($computed_status === 'expired' || $exp_status === 'expired');
+            } elseif (in_array($s_lower, ['low', 'low stock'], true)) {
+                $status_match = ($computed_status === 'low');
+            } elseif (in_array($s_lower, ['critical', 'critical stock'], true)) {
+                $status_match = ($computed_status === 'critical');
+            } elseif (in_array($s_lower, ['out', 'out of stock'], true)) {
+                $status_match = ($computed_status === 'out');
+            } elseif (in_array($s_lower, ['variance', 'variance detected'], true)) {
+                $status_match = $has_variance;
+            } elseif ($s_lower === 'available') {
+                $status_match = ($computed_status === 'available' && !$has_variance && $exp_status !== 'expired');
+            }
+            $name_match = (strpos(strtolower($item['name'] ?? ''), $s_lower) !== false);
+            $sku_match  = (strpos(strtolower($item['sku'] ?? ''), $s_lower) !== false);
+            $cat_match  = (strpos(strtolower($item['category_name'] ?? ''), $s_lower) !== false);
+            $sup_match  = (strpos(strtolower($item['supplier'] ?? ''), $s_lower) !== false);
+            $brand_match = (strpos(strtolower($item['brand'] ?? ''), $s_lower) !== false);
+            if (!$name_match && !$sku_match && !$cat_match && !$sup_match && !$brand_match && !$status_match) {
+                continue;
+            }
         }
-        $name_match = (strpos(strtolower($item['name'] ?? ''), $s_lower) !== false);
-        $sku_match  = (strpos(strtolower($item['sku'] ?? ''), $s_lower) !== false);
-        $cat_match  = (strpos(strtolower($item['category_name'] ?? ''), $s_lower) !== false);
-        $sup_match  = (strpos(strtolower($item['supplier'] ?? ''), $s_lower) !== false);
-        $brand_match = (strpos(strtolower($item['brand'] ?? ''), $s_lower) !== false);
-        if (!$name_match && !$sku_match && !$cat_match && !$sup_match && !$brand_match && !$status_match) {
-            continue;
-        }
-    }
 
     // 2. Category Filter
     if ($category_filter !== 'all' && $category_filter !== '') {
@@ -753,12 +969,16 @@ foreach ($all_items as &$item) {
             if (!in_array($computed_status, ['low', 'critical', 'out'], true)) {
                 continue;
             }
+        } elseif ($sf_lower === 'expired') {
+            if ($computed_status !== 'expired' && $exp_status !== 'expired') {
+                continue;
+            }
         } elseif (in_array($sf_lower, ['variance', 'variance detected'], true)) {
             if (!$has_variance) {
                 continue;
             }
         } elseif ($sf_lower === 'available') {
-            if ($computed_status !== 'available' || $has_variance) {
+            if ($computed_status !== 'available' || $has_variance || $exp_status === 'expired') {
                 continue;
             }
         } elseif ($sf_lower === 'inactive') {
@@ -780,11 +1000,27 @@ foreach ($all_items as &$item) {
     if ($date_to !== '' && $updated_date > $date_to) {
         continue;
     }
+    }
 
     $item['computed_status'] = $computed_status;
     $filtered_items[] = $item;
+
+    if ($target_product_id > 0 && (int)$item['id'] === $target_product_id) {
+        $auto_open_item = $item;
+    } elseif (!$auto_open_item && $search_query !== '' && (stripos($item['name'] ?? '', $search_query) !== false || stripos($item['sku'] ?? '', $search_query) !== false)) {
+        $auto_open_item = $item;
+    }
 }
 unset($item);
+
+if (!$auto_open_item && $target_product_id > 0) {
+    foreach ($all_items as $ai) {
+        if ((int)$ai['id'] === $target_product_id) {
+            $auto_open_item = $ai;
+            break;
+        }
+    }
+}
 
 // Group filtered items by category for grouped rendering
 $sorted_filtered = [];
@@ -1010,6 +1246,21 @@ try {
 
 require_once __DIR__ . '/../partials/header.php';
 ?>
+
+<!-- ══ GLOBAL SUCCESS TOAST (TOP-RIGHT) ══ -->
+<div id="adminGlobalSuccessBanner">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:32px; height:32px; border-radius:50%; background:#dcfce7; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i class="fas fa-check-circle" style="font-size:17px; color:#16a34a;"></i>
+            </div>
+            <div style="font-size:13px; font-weight:800; color:#15803d; letter-spacing:0.2px; line-height:1.3;" id="adminBannerTitle">SUCCESSFUL!</div>
+        </div>
+        <button type="button" onclick="closeAdminSuccessBanner()" style="background:none; border:none; color:#94a3b8; font-size:18px; cursor:pointer; line-height:1; padding:0 4px;" title="Close">&times;</button>
+    </div>
+    <div style="font-size:12px; color:#475569; padding-left:42px; line-height:1.5;" id="adminBannerText">Action completed successfully.</div>
+</div>
+
 
 <style>
 /* Clean Merchandise Inventory Table Layout - Senior / Elderly Friendly Large Fonts & High Legibility */
@@ -1336,7 +1587,7 @@ html, body {
 /* == FILTER BAR == */
 .afto-filter {
     display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr 1fr 0.8fr 1fr 0.9fr 0.9fr auto;
+    grid-template-columns: 1.8fr 1.1fr 1.1fr 0.9fr 1.1fr 0.9fr 0.9fr auto;
     align-items: flex-end;
     gap: 6px;
     background: #ffffff;
@@ -1415,51 +1666,167 @@ html, body {
 .flt-btn-csv { color: #00264D !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
 .flt-btn-csv:hover { background: #f8fafc !important; border-color: #00264D !important; color: #00264D !important; }
 
-/* ── Clean Consistent Petron Filter Controls (Matches Master Data Requests) ── */
+/* ── Filter Controls Styled Exactly Like Fuel Inventory ── */
 .filter-select,
 .afto-fg select,
 select.filter-select {
-    height: 36px !important;
-    padding: 0 12px !important;
+    height: 38px !important;
+    padding: 6px 12px !important;
     border: 1px solid #cbd5e1 !important;
-    border-radius: 7px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    color: #1e293b !important;
+    border-radius: 6px !important;
+    font-size: 14.5px !important;
+    font-weight: 500 !important;
+    color: #334155 !important;
     background: #ffffff !important;
     outline: none !important;
-    transition: border-color 0.15s, box-shadow 0.15s !important;
     cursor: pointer !important;
     box-sizing: border-box !important;
-    line-height: 34px !important;
+    width: 100% !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
 }
 .filter-select:focus,
 .afto-fg select:focus,
 select.filter-select:focus {
     border-color: #002F70 !important;
-    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1) !important;
+    box-shadow: 0 0 0 2px rgba(0, 47, 112, 0.15) !important;
+}
+
+/* ── Guaranteed Downward Filter Dropdowns (Mo-abli paubos pirme - Exact Fuel Inventory Style) ── */
+.petron-dropdown-source {
+    display: none !important;
+}
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+}
+.afto-fg .petron-dropdown-wrap {
+    display: block !important;
+    width: 100% !important;
+}
+.petron-dropdown-wrap.is-open {
+    z-index: 10050 !important;
+}
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 6px 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    font-family: inherit !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    user-select: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+}
+.petron-dropdown-trigger:hover {
+    border-color: #94a3b8 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25, 103, 210, 0.2) !important;
+}
+.petron-dropdown-label {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    flex: 1 !important;
+    text-align: left !important;
+    color: #1e293b !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+}
+.petron-dropdown-arrow {
+    font-size: 11px !important;
+    color: #475569 !important;
+    margin-left: 8px !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-menu {
+    display: none !important;
+    position: absolute !important;
+    top: calc(100% + 2px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    min-width: 100% !important;
+    width: max-content !important;
+    max-width: 340px !important;
+    max-height: 260px !important;
+    overflow-y: auto !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+    z-index: 10050 !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu {
+    display: block !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar {
+    width: 6px !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-track {
+    background: #f8fafc !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-thumb {
+    background: #cbd5e1 !important;
+    border-radius: 4px !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8 !important;
+}
+.petron-dropdown-item {
+    padding: 7px 14px !important;
+    font-size: 15px !important;
+    color: #1e293b !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.4 !important;
+    font-weight: 400 !important;
+    background: #ffffff !important;
+    transition: background 0.05s, color 0.05s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #ffffff !important;
+    font-weight: 400 !important;
 }
 
 .filter-input,
 .afto-fg input,
 input.filter-input {
-    height: 36px !important;
-    padding: 0 12px !important;
+    height: 38px !important;
+    padding: 6px 12px !important;
     border: 1px solid #cbd5e1 !important;
-    border-radius: 7px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
+    border-radius: 6px !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
     color: #1e293b !important;
     background: #ffffff !important;
     outline: none !important;
-    transition: border-color 0.15s, box-shadow 0.15s !important;
     box-sizing: border-box !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+}
+.afto-fg input,
+.afto-fg .filter-input {
+    width: 100% !important;
 }
 .filter-input:focus,
 .afto-fg input:focus,
 input.filter-input:focus {
     border-color: #002F70 !important;
-    box-shadow: 0 0 0 3px rgba(0, 47, 112, 0.1) !important;
+    box-shadow: 0 0 0 2px rgba(0, 47, 112, 0.15) !important;
 }
 
 .txn-btn {
@@ -1499,6 +1866,7 @@ input.filter-input:focus {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
     margin-bottom: 24px;
     max-width: 100%;
+    min-height: 480px;
 }
 .tbl-hd {
     display: flex;
@@ -1787,7 +2155,7 @@ input.filter-input:focus {
 .act-btn-wrap {
     display: flex !important;
     flex-direction: column !important;
-    gap: 4px !important;
+    gap: 3px !important;
     width: 100% !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1798,27 +2166,61 @@ input.filter-input:focus {
     align-items: center !important;
     justify-content: center !important;
     gap: 5px !important;
-    padding: 3px 8px !important;
-    border-radius: 6px !important;
+    padding: 2px 8px !important;
+    border-radius: 5px !important;
     font-size: 11px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
-    line-height: 1.2 !important;
+    line-height: 1 !important;
     width: 100% !important;
     max-width: 80px !important;
-    height: 27px !important;
+    height: 25px !important;
     margin-bottom: 0 !important;
-    transition: all .18s ease-in-out !important;
+    transition: background .1s ease, color .1s ease, border-color .1s ease !important;
     background: #ffffff !important;
     text-decoration: none !important;
     box-sizing: border-box !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    touch-action: manipulation !important;
+}
+.act-btn * {
+    pointer-events: none !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
 .act-btn-view { color: #002F70 !important; border: 1.5px solid #002F70 !important; background: #ffffff !important; }
 .act-btn-view:hover { background: #002F70 !important; color: #ffffff !important; }
 .act-btn-edit { color: #16a34a !important; border: 1.5px solid #16a34a !important; background: #ffffff !important; }
 .act-btn-edit:hover { background: #16a34a !important; color: #ffffff !important; }
+.act-btn-adjust { color: #64748b !important; border: 1.5px solid #64748b !important; background: #ffffff !important; }
+.act-btn-adjust:hover { background: #64748b !important; color: #ffffff !important; }
+
+/* ── Global Success Toast Banner (Top-Right) ── */
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(60px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+#adminGlobalSuccessBanner {
+    position: fixed;
+    top: 76px;
+    right: 24px;
+    z-index: 99999;
+    max-width: 380px;
+    min-width: 290px;
+    background: #ffffff;
+    color: #1e293b;
+    padding: 14px 18px;
+    border-radius: 10px;
+    border-left: 4px solid #16a34a;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15), 0 3px 8px rgba(0,0,0,0.08);
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    animation: slideInRight 0.3s cubic-bezier(.22,.68,0,1.2);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
 
 /* == Petron Clean KPI Summary Cards (Matches Master Data Requests Exactly) == */
 .txn-kpi-grid {
@@ -1902,8 +2304,8 @@ input.filter-input:focus {
     <a href="admin_inventory_merchandise.php?tab=alerts"
        class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
-        <?php if (($kpi_low_stock + $kpi_out_of_stock) > 0): ?>
-            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock) ?></span>
+        <?php if (($kpi_low_stock + $kpi_out_of_stock + $kpi_expired_stock) > 0): ?>
+            <span style="background:#dc2626 !important;color:#fff !important;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700;line-height:1;"><?= ($kpi_low_stock + $kpi_out_of_stock + $kpi_expired_stock) ?></span>
         <?php endif; ?>
     </a>
 </div>
@@ -1975,15 +2377,6 @@ input.filter-input:focus {
         </select>
     </div>
 
-    <div class="afto-fg">
-        <label for="supplier">Supplier</label>
-        <select name="supplier" id="supplier" class="filter-select">
-            <option value="all">All Suppliers</option>
-            <?php foreach ($all_suppliers as $s): ?>
-            <option value="<?= htmlspecialchars($s) ?>" <?= ($supplier_filter === $s) ? 'selected' : '' ?>><?= htmlspecialchars($s) ?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
 
     <div class="afto-fg">
         <label for="unit">UOM</label>
@@ -2002,6 +2395,7 @@ input.filter-input:focus {
             <option value="available" <?= $status_filter === 'available' ? 'selected' : '' ?>>Available</option>
             <option value="low" <?= $status_filter === 'low' ? 'selected' : '' ?>>Low Stock</option>
             <option value="out" <?= in_array($status_filter, ['out','out of stock'], true) ? 'selected' : '' ?>>Out of Stock</option>
+            <option value="expired" <?= $status_filter === 'expired' ? 'selected' : '' ?>>Expired</option>
             <option value="variance detected" <?= in_array($status_filter, ['variance','variance detected'], true) ? 'selected' : '' ?>>Variance Detected</option>
             <option value="inactive" <?= $status_filter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
         </select>
@@ -2022,6 +2416,23 @@ input.filter-input:focus {
         <a href="admin_inventory_merchandise.php" class="flt-btn flt-btn-reset"><i class="fas fa-sync-alt"></i> Reset</a>
     </div>
 </form>
+
+<script>
+// Fast immediate availability for Adjust modal (prevents any click delay)
+window._adminPendingAdj = null;
+window.openAdminAdjustModal = function(item) {
+    window._adminPendingAdj = item;
+    if (typeof window._execOpenAdminAdjustModal === 'function') {
+        window._execOpenAdminAdjustModal(item);
+    } else {
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof window._execOpenAdminAdjustModal === 'function') {
+                window._execOpenAdminAdjustModal(window._adminPendingAdj);
+            }
+        });
+    }
+};
+</script>
 
 <!-- Table Card -->
 <div class="tbl-card">
@@ -2052,7 +2463,7 @@ input.filter-input:focus {
             </thead>
             <tbody id="adminMerchTableBody">
             <?php if (empty($sorted_filtered)): ?>
-                <tr>
+                <tr class="no-paginate">
                     <td colspan="7" class="align-center" style="padding: 24px; color: #64748b; text-align:center;">
                         <i class="fas fa-box-open" style="font-size: 24px; margin-bottom: 8px; display:block;"></i>
                         No merchandise inventory records matched your filters.
@@ -2083,25 +2494,46 @@ input.filter-input:focus {
                         $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
                         $batch_id = !empty($item['batch_ref']) ? $item['batch_ref'] : (!empty($item['batch_number']) ? $item['batch_number'] : ('B' . str_pad((string)$pid_item, 3, '0', STR_PAD_LEFT)));
                         $exp_date = 'N/A';
+                        $exp_raw = null;
                         if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
-                            $exp_date = date('M d, Y', strtotime($item['expiration_date']));
+                            $exp_raw = $item['expiration_date'];
+                            $exp_date = date('M d, Y', strtotime($exp_raw));
                         } elseif (!empty($item['date_received'])) {
-                            $exp_date = date('M d, Y', strtotime($item['date_received']));
+                            $exp_raw = $item['date_received'];
+                            $exp_date = date('M d, Y', strtotime($exp_raw));
                         } else {
                             try {
                                 $dt = new DateTime(!empty($item['last_updated']) ? $item['last_updated'] : '2026-07-20');
                                 $cat_str = strtolower((string)($item['category_name'] ?? $item['category'] ?? ''));
                                 $name_str = strtolower((string)($item['name'] ?? ''));
-                                if (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
-                                    $exp_date = 'N/A';
-                                } elseif (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
+                                if (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
                                     $dt->modify('+1 year');
+                                    $exp_raw = $dt->format('Y-m-d');
+                                    $exp_date = $dt->format('M d, Y');
+                                } elseif (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
+                                    $dt->modify('+5 years');
+                                    $exp_raw = $dt->format('Y-m-d');
                                     $exp_date = $dt->format('M d, Y');
                                 } else {
                                     $dt->modify('+3 years');
+                                    $exp_raw = $dt->format('Y-m-d');
                                     $exp_date = $dt->format('M d, Y');
                                 }
                             } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
+                        }
+                        // Determine expiration alert status
+                        $exp_status = '';
+                        if ($exp_raw) {
+                            try {
+                                $exp_dt   = new DateTime($exp_raw);
+                                $today_dt = new DateTime('today');
+                                $diff_days = (int)$today_dt->diff($exp_dt)->days * ($exp_dt >= $today_dt ? 1 : -1);
+                                if ($diff_days < 0) {
+                                    $exp_status = 'expired';
+                                } elseif ($diff_days <= 30) {
+                                    $exp_status = 'expiring_soon';
+                                }
+                            } catch (Exception $e) {}
                         }
                         $initial_qty = $stock_in_qty > 0 ? (int)$stock_in_qty : (int)$capacity;
 
@@ -2138,8 +2570,8 @@ input.filter-input:focus {
                         data-brand="<?= htmlspecialchars(strtolower($item['brand'] ?? '')) ?>"
                         data-supplier="<?= htmlspecialchars(strtolower($item['supplier'] ?? 'petron corporation')) ?>"
                         data-unit="<?= htmlspecialchars(strtolower($unit)) ?>"
-                        data-status="<?= htmlspecialchars(strtolower($st)) ?>"
-                        data-status-key="<?= htmlspecialchars(strtolower($item['computed_status'] ?? '')) ?>"
+                        data-status="<?= $exp_status === 'expired' ? 'expired' : htmlspecialchars(strtolower($st)) ?>"
+                        data-status-key="<?= $exp_status === 'expired' ? 'expired' : htmlspecialchars(strtolower($item['computed_status'] ?? '')) ?>"
                         data-has-variance="<?= $has_variance ? 'true' : 'false' ?>"
                         data-date="<?= !empty($item['last_updated']) ? date('Y-m-d', strtotime($item['last_updated'])) : '' ?>">
 
@@ -2165,9 +2597,22 @@ input.filter-input:focus {
 
                         <!-- 3. EXPIRATION -->
                         <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
-                            <span style="font-size:12.5px;font-weight:700;color:<?= $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8' ?>;white-space:nowrap;">
-                                <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1' ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
+                            <span style="font-size:12.5px;font-weight:700;color:<?= $exp_status === 'expired' ? '#dc3545' : ($exp_date !== 'N/A' ? '#0f172a' : '#94a3b8') ?>;white-space:nowrap;">
+                                <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_status === 'expired' ? '#dc3545' : ($exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1') ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
                             </span>
+                            <?php if ($exp_status === 'expired'): ?>
+                            <div style="margin-top:4px;">
+                                <span style="display:inline-block;background:#dc354520;color:#dc3545;border:1.5px solid #dc354560;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;text-transform:uppercase;white-space:nowrap;letter-spacing:0.4px;">
+                                    <i class="fas fa-exclamation-circle" style="font-size:9px;margin-right:2px;"></i>EXPIRED
+                                </span>
+                            </div>
+                            <?php elseif ($exp_status === 'expiring_soon'): ?>
+                            <div style="margin-top:4px;">
+                                <span style="display:inline-block;background:#fd7e1420;color:#c05c00;border:1.5px solid #fd7e1460;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;text-transform:uppercase;white-space:nowrap;letter-spacing:0.4px;">
+                                    <i class="fas fa-clock" style="font-size:9px;margin-right:2px;"></i>EXPIRING SOON
+                                </span>
+                            </div>
+                            <?php endif; ?>
                         </td>
 
                         <!-- 4. STOCK LEVELS -->
@@ -2200,7 +2645,7 @@ input.filter-input:focus {
                         </td>
 
                         <!-- 7. ACTIONS -->
-                        <td style="padding:8px 6px;max-width:0;overflow:hidden;box-sizing:border-box;text-align:center;vertical-align:middle;">
+                        <td style="padding:6px 6px;overflow:visible !important;box-sizing:border-box;text-align:center;vertical-align:middle;">
                             <div class="act-btn-wrap">
                                 <button type="button" class="act-btn act-btn-view"
                                     onclick='adminViewProduct(<?= htmlspecialchars(json_encode([
@@ -2218,13 +2663,29 @@ input.filter-input:focus {
                                         "price" => $item["price"],
                                         "cost" => $item["cost"],
                                         "capacity" => $item["capacity"],
-                                        "computed_status" => $item["computed_status"]
+                                        "computed_status" => $item["computed_status"],
+                                        "expiration_date" => $exp_date,
+                                        "exp_status" => $exp_status
                                     ]), ENT_QUOTES) ?>)'>
                                     <i class="fas fa-eye"></i> View
                                 </button>
                                 <button type="button" class="act-btn act-btn-edit"
                                     onclick='openAdminEditModal(<?= htmlspecialchars(json_encode($item), ENT_QUOTES) ?>)'>
                                     <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button type="button" class="act-btn act-btn-adjust"
+                                    onclick='openAdminAdjustModal(<?= htmlspecialchars(json_encode([
+                                        "id"              => $item["id"],
+                                        "name"            => $item["name"],
+                                        "sku"             => $item["sku"],
+                                        "category_name"   => $item["category_name"],
+                                        "unit"            => $item["unit"],
+                                        "stock_level"     => $item["stock_level"],
+                                        "expiration_date" => $exp_date,
+                                        "exp_status"      => $exp_status
+                                    ]), ENT_QUOTES) ?>)'
+                                    title="Direct Stock Adjustment">
+                                    <i class="fas fa-sliders-h"></i> Adjust
                                 </button>
                             </div>
                         </td>
@@ -2235,7 +2696,37 @@ input.filter-input:focus {
             </tbody>
         </table>
     </div>
-    <div id="adminMerchPagination" style="padding: 10px 20px;"></div>
+    <!-- Overview Pagination Footer -->
+    <div id="adminMerchPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="adminMerchShowingText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+                <select id="adminMerchPerPage" onchange="adminMerchChangePerPage()" style="padding:5px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="adminMerchPrevBtn" onclick="adminMerchGoPage(adminMerchState.page - 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="adminMerchPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 4px;">Page 1 of 1</span>
+                <button id="adminMerchNextBtn" onclick="adminMerchGoPage(adminMerchState.page + 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="adminMerchPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2244,9 +2735,9 @@ input.filter-input:focus {
 <div class="tbl-card">
     <div class="tbl-hd">
         <div class="tbl-title"><i class="fas fa-exchange-alt"></i> Stock Movement Monitoring</div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" class="filter-input" style="width:240px;">
-            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" class="filter-select" style="width:auto;min-width:180px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+            <input type="text" id="adminMovSearchInput" placeholder="Search product, ref, user..." oninput="filterAdminMovTable()" class="filter-input" style="width:240px;height:38px;">
+            <select id="adminMovTypeFilter" onchange="filterAdminMovTable()" class="filter-select" style="width:200px;min-width:180px;">
                 <option value="">All Movement Types</option>
                 <option value="stock in">Stock In</option>
                 <option value="stock out">Stock Out</option>
@@ -2255,6 +2746,7 @@ input.filter-input:focus {
                 <option value="damaged">Damaged</option>
                 <option value="expired">Expired</option>
             </select>
+            <button type="button" class="flt-btn flt-btn-reset" onclick="resetAdminMovFilters()" style="height:38px;padding:0 12px;font-size:14px;"><i class="fas fa-rotate-left"></i> Reset</button>
         </div>
     </div>
     <div class="table-wrap" style="overflow-x:hidden; width:100%;">
@@ -2283,8 +2775,14 @@ input.filter-input:focus {
             </thead>
             <tbody id="adminMovBody">
             <?php if (empty($movement_history)): ?>
-                <tr><td colspan="8" class="align-center" style="padding:24px;color:#64748b;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No movement records found.</td></tr>
+                <tr class="no-paginate"><td colspan="8" class="align-center" style="padding:24px;color:#64748b;text-align:center;"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>No movement records found.</td></tr>
             <?php else: ?>
+                <tr id="adminMovNoMatchRow" class="no-paginate" style="display:none;">
+                    <td colspan="8" style="text-align:center;padding:36px 20px;color:#64748b;font-size:14px;font-weight:600;">
+                        <i class="fas fa-search" style="font-size:28px;display:block;margin-bottom:10px;color:#94a3b8;"></i>
+                        <span id="adminMovNoMatchMsg">No movement records found matching your search.</span>
+                    </td>
+                </tr>
                 <?php foreach ($movement_history as $log):
                     $m_date = !empty($log['created_at']) ? date('M d, Y h:i A', strtotime($log['created_at'])) : '—';
                     $m_raw  = strtolower($log['movement_type'] ?? '');
@@ -2353,7 +2851,37 @@ input.filter-input:focus {
             </tbody>
         </table>
     </div>
-    <div id="adminMovPagination" style="margin:10px 20px;"></div>
+    <!-- Stock Movement Pagination Footer -->
+    <div id="adminMovPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="adminMovShowingText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+                <select id="adminMovPerPage" onchange="adminMovChangePerPage()" style="padding:5px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="adminMovPrevBtn" onclick="adminMovGoPage(adminMovState.page - 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="adminMovPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 4px;">Page 1 of 1</span>
+                <button id="adminMovNextBtn" onclick="adminMovGoPage(adminMovState.page + 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="adminMovPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2362,7 +2890,7 @@ input.filter-input:focus {
 <?php
 $alert_rows = array_filter($all_items, function($i) {
     $status = strtolower($i['computed_status'] ?? '');
-    return in_array($status, ['low', 'critical', 'out'], true);
+    return in_array($status, ['low', 'critical', 'out', 'expired'], true) || ($i['exp_status'] ?? '') === 'expired';
 });
 $total_alerts_count = count($alert_rows);
 ?>
@@ -2379,6 +2907,10 @@ $total_alerts_count = count($alert_rows);
     <div class="txn-kpi-card dark-danger">
         <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock</div>
         <div class="txn-kpi-val"><?= number_format($kpi_out_of_stock) ?></div>
+    </div>
+    <div class="txn-kpi-card danger" style="background:#fee2e2;border-color:#ef4444;">
+        <div class="txn-kpi-lbl" style="color:#991b1b;"><i class="fas fa-ban" style="color:#dc2626;margin-right:4px;"></i> Expired Stock</div>
+        <div class="txn-kpi-val" style="color:#dc2626;"><?= number_format($kpi_expired_stock) ?></div>
     </div>
     <div class="txn-kpi-card blue">
         <div class="txn-kpi-lbl"><i class="fas fa-bell" style="color:#0284c7;margin-right:4px;"></i> Total Active Alerts</div>
@@ -2417,8 +2949,14 @@ $total_alerts_count = count($alert_rows);
             </thead>
             <tbody id="adminAlertBody">
             <?php if (empty($alert_rows)): ?>
-                <tr><td colspan="7" class="align-center" style="padding:32px;color:#64748b;"><i class="fas fa-check-circle" style="font-size:28px;display:block;margin-bottom:8px;color:#16a34a;"></i>All stock levels are healthy! No active alerts found.</td></tr>
+                <tr class="no-paginate"><td colspan="7" class="align-center" style="padding:32px;color:#64748b;text-align:center;"><i class="fas fa-check-circle" style="font-size:28px;display:block;margin-bottom:8px;color:#16a34a;"></i>All stock levels are healthy! No active alerts found.</td></tr>
             <?php else: ?>
+                <tr id="adminAlertNoMatchRow" class="no-paginate" style="display:none;">
+                    <td colspan="7" style="text-align:center;padding:36px 20px;color:#64748b;font-size:14px;font-weight:600;">
+                        <i class="fas fa-search" style="font-size:28px;display:block;margin-bottom:10px;color:#94a3b8;"></i>
+                        <span id="adminAlertNoMatchMsg">No alert products found matching your search.</span>
+                    </td>
+                </tr>
                 <?php foreach ($alert_rows as $item):
                     $stock   = (float)$item['stock_level'];
                     $reorder = (float)($item['reorder_level'] ?? 24);
@@ -2443,7 +2981,37 @@ $total_alerts_count = count($alert_rows);
             </tbody>
         </table>
     </div>
-    <div id="adminAlertPagination" style="margin:10px 20px;"></div>
+    <!-- Stock Alerts Pagination Footer -->
+    <div id="adminAlertPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="adminAlertShowingText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+                <select id="adminAlertPerPage" onchange="adminAlertChangePerPage()" style="padding:5px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="adminAlertPrevBtn" onclick="adminAlertGoPage(adminAlertState.page - 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="adminAlertPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 4px;">Page 1 of 1</span>
+                <button id="adminAlertNextBtn" onclick="adminAlertGoPage(adminAlertState.page + 1)"
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="adminAlertPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2460,40 +3028,42 @@ $total_alerts_count = count($alert_rows);
         <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;overflow-x:hidden;white-space:nowrap;gap:4px;">
             <button type="button" class="modal-tab-btn active" id="vpmTab1" onclick="vpmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Information</button>
             <button type="button" class="modal-tab-btn" id="vpmTab2" onclick="vpmSwitchTab(2)"><i class="fas fa-chart-pie"></i> Inventory Summary</button>
-            <button type="button" class="modal-tab-btn" id="vpmTab3" onclick="vpmSwitchTab(3)"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</button>
+            <button type="button" class="modal-tab-btn" id="vpmTab3" onclick="vpmSwitchTab(3)"><i class="fas fa-layer-group"></i> Batch Inventory</button>
         </div>
         <!-- Body -->
         <div style="overflow-y:auto;overflow-x:hidden !important;flex:1;padding:22px;box-sizing:border-box;" id="vpmBody">
             <!-- SUB-TAB 1: Product Information -->
             <div id="vpmPane1">
+                <div id="vpmAlertNotice"></div>
                 <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-info-circle"></i> Product Details</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="vpmSku" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vpmName" style="font-weight:800;color:#0f172a;font-size:15px;word-break:break-word;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Category</div><div id="vpmCategory" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Brand</div><div id="vpmBrand" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vpmSupplier" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="vpmUnit" style="font-weight:600;color:#334155;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="vpmBarcode" style="font-family:monospace;font-weight:700;color:#475569;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vpmStatus"></div></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:20px;">
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">SKU</div><div id="vpmSku" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Product Name</div><div id="vpmName" style="font-weight:700;color:#1e293b;font-size:15px;word-break:break-word;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Category</div><div id="vpmCategory" style="font-weight:500;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Brand</div><div id="vpmBrand" style="font-weight:500;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Supplier</div><div id="vpmSupplier" style="font-weight:500;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Unit of Measure</div><div id="vpmUnit" style="font-weight:500;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Barcode</div><div id="vpmBarcode" style="font-family:monospace;font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Expiration Date</div><div id="vpmExpiry" style="font-weight:700;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Status</div><div id="vpmStatus"></div></div>
                 </div>
             </div>
             <!-- SUB-TAB 2: Inventory Summary -->
             <div id="vpmPane2" style="display:none;">
                 <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-boxes"></i> Stock &amp; Valuation Summary</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Current Stock</div><div id="vpmCurrentStock" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Available Stock</div><div id="vpmAvailableStock" style="font-weight:800;color:#16a34a;font-size:18px;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Reorder Level</div><div id="vpmReorderLevel" style="font-weight:600;color:#d97706;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Critical Level</div><div id="vpmCriticalLevel" style="font-weight:600;color:#dc2626;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vpmCost" style="font-weight:600;color:#475569;"></div></div>
-                    <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Selling Price</div><div id="vpmPrice" style="font-weight:700;color:#16a34a;"></div></div>
-                    <div style="grid-column:span 2;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Total Inventory Value</div><div id="vpmInventoryValue" style="font-weight:800;color:#002F70;font-size:18px;"></div></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:20px;">
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Current Stock</div><div id="vpmCurrentStock" style="font-weight:700;color:#1e293b;font-size:17px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Available Stock</div><div id="vpmAvailableStock" style="font-weight:700;color:#1e293b;font-size:17px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Reorder Level</div><div id="vpmReorderLevel" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Critical Level</div><div id="vpmCriticalLevel" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Unit Cost</div><div id="vpmCost" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Selling Price</div><div id="vpmPrice" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                    <div style="grid-column:span 2;"><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Total Inventory Value</div><div id="vpmInventoryValue" style="font-weight:700;color:#1e293b;font-size:18px;"></div></div>
                 </div>
             </div>
-            <!-- SUB-TAB 3: Batch Inventory (FIFO) -->
+            <!-- SUB-TAB 3: Batch Inventory -->
             <div id="vpmPane3" style="display:none;width:100%;box-sizing:border-box;">
-                <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> FIFO Batch Inventory Breakdown</div>
+                <div style="font-size:14px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> Batch Inventory Breakdown</div>
                 <div id="vpmFifoTable" style="width:100%;overflow-x:hidden !important;box-sizing:border-box;"><div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
             </div>
         </div>
@@ -2514,21 +3084,21 @@ $total_alerts_count = count($alert_rows);
                 <i class="fas fa-exchange-alt"></i> Stock Movement Details
             </div>
         </div>
-        <div style="padding:22px;font-size:15.5px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Date / Time</div><div id="vmmDate" style="font-weight:700;color:#0f172a;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Movement Type</div><div id="vmmType"></div></div>
+        <div style="padding:22px;font-size:15px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Date / Time</div><div id="vmmDate" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Movement Type</div><div id="vmmType"></div></div>
             </div>
-            <div style="margin-bottom:12px;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vmmProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch / Ref No.</div><div id="vmmRef" style="font-weight:600;color:#475569;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Quantity</div><div id="vmmQty" style="font-weight:800;font-size:16px;"></div></div>
+            <div style="margin-bottom:14px;"><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Product Name</div><div id="vmmProduct" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Batch / Ref No.</div><div id="vmmRef" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Quantity</div><div id="vmmQty" style="font-weight:700;font-size:16px;"></div></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Remaining Stock</div><div id="vmmRemaining" style="font-weight:700;color:#002F70;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Performed By</div><div id="vmmBy" style="font-weight:600;color:#334155;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Remaining Stock</div><div id="vmmRemaining" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Performed By</div><div id="vmmBy" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
             </div>
-            <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes / Remarks</div><div id="vmmNotes" style="color:#64748b;font-style:italic;"></div></div>
+            <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Notes / Remarks</div><div id="vmmNotes" style="color:#475569;font-size:14.5px;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
             <button type="button" onclick="closeAdminViewMovModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
@@ -2544,26 +3114,26 @@ $total_alerts_count = count($alert_rows);
                 <i class="fas fa-truck-loading"></i> Stock-In Record Details
             </div>
         </div>
-        <div style="padding:22px;font-size:15.5px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Stock-In No.</div><div id="vsimSiNo" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">PO Number</div><div id="vsimPo" style="font-weight:700;color:#0f172a;"></div></div>
+        <div style="padding:22px;font-size:15px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Stock-In No.</div><div id="vsimSiNo" style="font-weight:700;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">PO Number</div><div id="vsimPo" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
             </div>
-            <div style="margin-bottom:12px;"><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Product Name</div><div id="vsimProduct" style="font-weight:700;color:#002F70;font-size:15px;"></div></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="vsimSupplier" style="font-weight:600;color:#334155;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Delivery Date</div><div id="vsimDate" style="font-weight:600;color:#334155;"></div></div>
+            <div style="margin-bottom:14px;"><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Product Name</div><div id="vsimProduct" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Supplier</div><div id="vsimSupplier" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Delivery Date</div><div id="vsimDate" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received Qty</div><div id="vsimQty" style="font-weight:800;color:#002F70;font-size:15px;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit Cost</div><div id="vsimCost" style="font-weight:700;color:#475569;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Batch No.</div><div id="vsimBatch" style="font-weight:700;color:#475569;"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #e2e8f0;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Received Qty</div><div id="vsimQty" style="font-weight:700;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Unit Cost</div><div id="vsimCost" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Batch No.</div><div id="vsimBatch" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Received By</div><div id="vsimBy" style="font-weight:600;color:#334155;"></div></div>
-                <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="vsimStatus"></div></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Received By</div><div id="vsimBy" style="font-weight:600;color:#1e293b;font-size:15px;"></div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Status</div><div id="vsimStatus"></div></div>
             </div>
-            <div><div style="font-size:15.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Notes</div><div id="vsimNotes" style="color:#64748b;font-style:italic;"></div></div>
+            <div><div style="font-size:12.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Notes</div><div id="vsimNotes" style="color:#475569;font-size:14.5px;font-style:italic;"></div></div>
         </div>
         <div style="padding:12px 22px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
             <button type="button" onclick="closeAdminViewSiModal()" class="int-btn-outline" style="border-color:#6b7280;color:#6b7280;">Close</button>
@@ -2586,42 +3156,160 @@ $total_alerts_count = count($alert_rows);
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
                 <div class="form-group" style="grid-column: span 2;">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Product Name <span style="color:red;">*</span></label>
-                    <input type="text" name="product_name" id="adminEditProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#0f172a;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Product Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" name="product_name" id="adminEditProdName" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:600; color:#1e293b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Category</label>
-                    <input type="text" id="adminEditProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:15.5px; background:#f8fafc; color:#64748b;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Category</label>
+                    <input type="text" id="adminEditProdCategory" readonly style="width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px; font-size:15px; background:#f8fafc; color:#64748b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Unit of Measure <span style="color:red;">*</span></label>
-                    <input type="text" name="unit" id="adminEditProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#0f172a;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Unit of Measure <span style="color:#dc2626;">*</span></label>
+                    <input type="text" name="unit" id="adminEditProdUnit" required placeholder="e.g. pcs, Liter, Bottle" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Reorder Level <span style="color:red;">*</span></label>
-                    <input type="number" name="reorder_level" id="adminEditProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#ea580c;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Reorder Level <span style="color:#dc2626;">*</span></label>
+                    <input type="number" name="reorder_level" id="adminEditProdReorder" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Critical Level <span style="color:red;">*</span></label>
-                    <input type="number" name="critical_level" id="adminEditProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#dc2626;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Critical Level <span style="color:#dc2626;">*</span></label>
+                    <input type="number" name="critical_level" id="adminEditProdCritical" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Max Capacity <span style="color:red;">*</span></label>
-                    <input type="number" name="capacity" id="adminEditProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F70;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Max Capacity <span style="color:#dc2626;">*</span></label>
+                    <input type="number" name="capacity" id="adminEditProdCapacity" min="1" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
                 <div class="form-group">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Selling Price (₱) <span style="color:red;">*</span></label>
-                    <input type="number" step="0.01" name="price" id="adminEditProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#16a34a;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Selling Price (₱) <span style="color:#dc2626;">*</span></label>
+                    <input type="number" step="0.01" name="price" id="adminEditProdPrice" min="0" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
                 <div class="form-group" style="grid-column: span 2;">
-                    <label style="display:block; font-size:14.5px; font-weight:700; color:#334155; margin-bottom:4px;">Unit Cost (₱)</label>
-                    <input type="number" step="0.01" name="cost" id="adminEditProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:600; color:#475569;">
+                    <label style="display:block; font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Unit Cost (₱)</label>
+                    <input type="number" step="0.01" name="cost" id="adminEditProdCost" min="0" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; font-weight:500; color:#1e293b;">
                 </div>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #e2e8f0; padding-top:16px;">
                 <button type="button" onclick="closeAdminEditModal()" style="padding:8px 20px; border:1.5px solid #00264D !important; background:#ffffff !important; color:#00264D !important; border-radius:6px; font-size:15.5px; font-weight:700; cursor:pointer;">Cancel</button>
                 <button type="submit" class="ato-btn" style="background:#002F70 !important; color:#fff !important; padding:8px 20px; border:none; border-radius:6px; font-size:15.5px; font-weight:700; cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ════ ADMIN DIRECT ADJUSTMENT MODAL (matches staff design) ════ -->
+<div class="modal-overlay" id="adminAdjModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; box-sizing:border-box; overflow-y:auto;">
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:calc(100vh - 80px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
+
+        <!-- Header — gradient same as staff -->
+        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:16px 22px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-sliders-h" style="color:#fd7e14;"></i>
+                Direct Stock Adjustment
+            </div>
+        </div>
+
+        <form id="adminAdjForm" onsubmit="submitAdminAdjustForm(event)" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; margin:0;">
+            <input type="hidden" id="adminAdjProductId">
+
+            <div style="padding:16px 22px; overflow-y:auto; overflow-x:hidden !important; flex:1; min-height:0; box-sizing:border-box;">
+
+                <!-- Product Information Card -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:18px;">
+                    <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">
+                        <i class="fas fa-info-circle" style="color:#002F70;"></i> Product Information
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
+                        <div><span style="color:#64748b;">SKU:</span> <code id="adminAdjDispSku" style="font-weight:700; color:#002F70;">—</code></div>
+                        <div><span style="color:#64748b;">Category:</span> <span id="adminAdjDispCategory" style="color:#334155;">—</span></div>
+                        <div style="grid-column:1/-1;"><span style="color:#64748b;">Product Name:</span> <strong id="adminAdjDispName" style="color:#0f172a;">—</strong></div>
+                        <div><span style="color:#64748b;">Current Stock:</span> <strong id="adminAdjDispStock" style="color:#16a34a; font-size:13px;">0</strong> <span id="adminAdjDispUom" style="color:#64748b;">pcs</span></div>
+                        <div><span style="color:#64748b;">Expiration:</span> <span id="adminAdjDispExp" style="color:#334155;">N/A</span></div>
+                    </div>
+                </div>
+
+                <!-- Adjustment Details heading -->
+                <div style="font-size:12px; font-weight:700; color:#0f172a; margin-bottom:12px;">
+                    <i class="fas fa-sliders" style="color:#fd7e14;"></i> Adjustment Details
+                </div>
+
+                <!-- Adjustment Type -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Adjustment Type <span style="color:#dc2626;">*</span>
+                    </label>
+                    <select id="adminAdjType" name="adjustment_type" onchange="handleAdminAdjTypeChange()" required style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#0f172a;">
+                        <option value="">-- Select Adjustment Type --</option>
+                        <option value="Damaged Product">Damaged Product</option>
+                        <option value="Expired Product">Expired Product</option>
+                        <option value="Physical Count">Physical Count</option>
+                        <option value="Missing Item">Missing Item</option>
+                        <option value="Returned Item">Returned Item</option>
+                        <option value="Encoding Error">Encoding Error</option>
+                        <option value="System Correction">System Correction</option>
+                        <option value="Stock Correction">Stock Correction</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+
+                <!-- Adjustment Action Display -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Adjustment Action
+                    </label>
+                    <input type="hidden" id="adminAdjAction" name="adjustment_action" value="Decrease">
+                    <div id="adminAdjActionDisplay" style="min-height:36px; display:flex; align-items:center;">
+                        <div id="adminAdjActionBadge" style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;">
+                            <i class="fas fa-minus-circle" id="adminAdjActionIcon"></i>
+                            <span id="adminAdjActionLabel">Inventory Adjustment (Decrease)</span>
+                        </div>
+                    </div>
+
+                    <!-- Manual direction for flexible types -->
+                    <div id="adminAdjManualDir" style="display:none; margin-top:8px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+                        <label style="display:block; font-size:11px; font-weight:700; color:#002F70; margin-bottom:4px;">
+                            <i class="fas fa-arrows-alt-v"></i> Select Stock Action Direction:
+                        </label>
+                        <select id="adminAdjManualDirection" onchange="updateAdminAdjDetection()" style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; font-weight:700; color:#0f172a;">
+                            <option value="Decrease">Inventory Adjustment (Decrease)</option>
+                            <option value="Increase">Inventory Adjustment (Increase)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quantity -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label id="adminAdjQtyLabel" style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Quantity <span style="color:#dc2626;">*</span>
+                    </label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="number" id="adminAdjQuantity" name="quantity" min="0" step="1" required oninput="updateAdminAdjPreview()" placeholder="Enter quantity..." style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:700; color:#0f172a;">
+                        <span id="adminAdjQtyUnit" style="font-size:12px; font-weight:600; color:#475569;">pcs</span>
+                    </div>
+                    <small id="adminAdjQtyError" style="color:#dc2626; font-size:11px; margin-top:3px; display:none; font-weight:600;"></small>
+                </div>
+
+                <!-- Hidden reason -->
+                <input type="hidden" id="adminAdjReason" name="reason">
+
+                <!-- Remarks -->
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:4px;">
+                        Remarks <span style="color:#64748b; font-weight:normal; font-size:11px;">(Optional)</span>
+                    </label>
+                    <textarea id="adminAdjRemarks" name="remarks" rows="3" placeholder="Add any optional notes or details here..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; box-sizing:border-box;"></textarea>
+                </div>
+
+                <!-- Result/Error message -->
+                <div id="adminAdjBanner" style="display:none; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:600; margin-bottom:4px;"></div>
+            </div>
+
+            <!-- Footer -->
+            <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:16px 24px; display:flex; justify-content:flex-end; gap:12px; flex-shrink:0;">
+                <button type="button" onclick="closeAdminAdjustModal()" class="txn-btn muted">Cancel</button>
+                <button type="submit" id="adminAdjSubmitBtn" class="txn-btn" style="background:#002F70!important; color:#fff!important; border-color:#002F70!important;">
+                    <i class="fas fa-check-circle"></i> Apply Adjustment Now
+                </button>
             </div>
         </form>
     </div>
@@ -2666,6 +3354,312 @@ function closeAdminEditModal() {
     }
 }
 
+// ── Admin Direct Adjustment Modal (Immediate, High-Performance) ──
+var _adminAdjItem = null;
+
+window._execOpenAdminAdjustModal = function(item) {
+    if (!item) return;
+    _adminAdjItem = item;
+
+    var modal = document.getElementById('adminAdjModal');
+    if (!modal) return;
+
+    // Reset fields
+    var typeEl = document.getElementById('adminAdjType');
+    if (typeEl) typeEl.value = '';
+    var qtyEl = document.getElementById('adminAdjQuantity');
+    if (qtyEl) qtyEl.value = '';
+    var remEl = document.getElementById('adminAdjRemarks');
+    if (remEl) remEl.value = '';
+    var rsnEl = document.getElementById('adminAdjReason');
+    if (rsnEl) rsnEl.value = '';
+    var actEl = document.getElementById('adminAdjAction');
+    if (actEl) actEl.value = 'Decrease';
+    var banEl = document.getElementById('adminAdjBanner');
+    if (banEl) banEl.style.display = 'none';
+    var sbtn = document.getElementById('adminAdjSubmitBtn');
+    if (sbtn) {
+        sbtn.disabled = false;
+        sbtn.innerHTML = '<i class="fas fa-check-circle"></i> Apply Adjustment Now';
+    }
+    var mdir = document.getElementById('adminAdjManualDir');
+    if (mdir) mdir.style.display = 'none';
+    var qerr = document.getElementById('adminAdjQtyError');
+    if (qerr) qerr.style.display = 'none';
+    var qlbl = document.getElementById('adminAdjQtyLabel');
+    if (qlbl) qlbl.innerHTML = 'Quantity <span style="color:#dc2626">*</span>';
+
+    // Default action display — decrease
+    var badge = document.getElementById('adminAdjActionBadge');
+    var icon  = document.getElementById('adminAdjActionIcon');
+    var label = document.getElementById('adminAdjActionLabel');
+    if (badge) {
+        badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;';
+    }
+    if (icon) icon.className = 'fas fa-minus-circle';
+    if (label) label.textContent = 'Inventory Adjustment (Decrease)';
+
+    // Populate product info
+    var pidEl = document.getElementById('adminAdjProductId');
+    if (pidEl) pidEl.value = item.id || '';
+    var nameEl = document.getElementById('adminAdjDispName');
+    if (nameEl) nameEl.textContent = item.name || '—';
+    var skuEl = document.getElementById('adminAdjDispSku');
+    if (skuEl) skuEl.textContent = item.sku || '—';
+    var catEl = document.getElementById('adminAdjDispCategory');
+    if (catEl) catEl.textContent = item.category_name || '—';
+    var stkEl = document.getElementById('adminAdjDispStock');
+    if (stkEl) stkEl.textContent = parseInt(item.stock_level) || 0;
+    var uomEl = document.getElementById('adminAdjDispUom');
+    if (uomEl) uomEl.textContent = item.unit || 'pcs';
+    var quomEl = document.getElementById('adminAdjQtyUnit');
+    if (quomEl) quomEl.textContent = item.unit || 'pcs';
+    var expEl = document.getElementById('adminAdjDispExp');
+    if (expEl) expEl.textContent = item.expiration_date || 'N/A';
+
+    // Show modal immediately
+    modal.classList.add('open');
+    modal.classList.add('show');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.right = '0';
+    modal.style.bottom = '0';
+    modal.style.zIndex = '15000';
+    document.body.style.overflow = 'hidden';
+};
+window.openAdminAdjustModal = window._execOpenAdminAdjustModal;
+
+function closeAdminAdjustModal() {
+    var modal = document.getElementById('adminAdjModal');
+    if (modal) {
+        modal.classList.remove('open');
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+    document.body.style.overflow = '';
+    _adminAdjItem = null;
+}
+
+function handleAdminAdjTypeChange() {
+    var typeEl = document.getElementById('adminAdjType');
+    var type = typeEl ? typeEl.value : '';
+    var manualDir = document.getElementById('adminAdjManualDir');
+    var badge = document.getElementById('adminAdjActionBadge');
+    var icon = document.getElementById('adminAdjActionIcon');
+    var label = document.getElementById('adminAdjActionLabel');
+    var qtyLabel = document.getElementById('adminAdjQtyLabel');
+    var reasonEl = document.getElementById('adminAdjReason');
+    var actEl = document.getElementById('adminAdjAction');
+
+    if (reasonEl) reasonEl.value = type;
+    if (qtyLabel) qtyLabel.innerHTML = 'Quantity <span style="color:#dc2626">*</span>';
+    if (manualDir) manualDir.style.display = 'none';
+
+    var decreaseTypes = ['Damaged Product', 'Expired Product', 'Missing Item'];
+    var increaseTypes = ['Returned Item'];
+    var manualTypes = ['Encoding Error', 'System Correction', 'Stock Correction', 'Others'];
+
+    if (decreaseTypes.includes(type)) {
+        if (actEl) actEl.value = 'Decrease';
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-minus-circle';
+        if (label) label.textContent = 'Inventory Adjustment (Decrease)';
+    } else if (increaseTypes.includes(type)) {
+        if (actEl) actEl.value = 'Increase';
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-plus-circle';
+        if (label) label.textContent = 'Inventory Adjustment (Increase)';
+    } else if (type === 'Physical Count') {
+        if (actEl) actEl.value = 'Set';
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; color:#1d4ed8; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-clipboard-check';
+        if (label) label.textContent = 'Set to Exact Count';
+        if (qtyLabel) qtyLabel.innerHTML = 'Exact Stock Count <span style="color:#dc2626">*</span>';
+    } else if (manualTypes.includes(type)) {
+        if (manualDir) manualDir.style.display = 'block';
+        updateAdminAdjDetection();
+    } else {
+        if (actEl) actEl.value = 'Decrease';
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-minus-circle';
+        if (label) label.textContent = 'Inventory Adjustment (Decrease)';
+    }
+}
+
+function updateAdminAdjDetection() {
+    var dirEl = document.getElementById('adminAdjManualDirection');
+    var dir = dirEl ? dirEl.value : 'Decrease';
+    var badge = document.getElementById('adminAdjActionBadge');
+    var icon = document.getElementById('adminAdjActionIcon');
+    var label = document.getElementById('adminAdjActionLabel');
+    var actEl = document.getElementById('adminAdjAction');
+
+    if (actEl) actEl.value = dir;
+
+    if (dir === 'Decrease') {
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#dc2626; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-minus-circle';
+        if (label) label.textContent = 'Inventory Adjustment (Decrease)';
+    } else {
+        if (badge) badge.style.cssText = 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; color:#16a34a; font-weight:800; font-size:13px;';
+        if (icon) icon.className = 'fas fa-plus-circle';
+        if (label) label.textContent = 'Inventory Adjustment (Increase)';
+    }
+}
+
+function updateAdminAdjPreview() {}
+
+function submitAdminAdjustForm(e) {
+    if (e) e.preventDefault();
+
+    var typeEl = document.getElementById('adminAdjType');
+    var type = typeEl ? typeEl.value : '';
+    var actEl = document.getElementById('adminAdjAction');
+    var adjAct = actEl ? actEl.value : 'Decrease';
+    var qtyEl = document.getElementById('adminAdjQuantity');
+    var qty = qtyEl ? parseFloat(qtyEl.value) : 0;
+    var remEl = document.getElementById('adminAdjRemarks');
+    var remarks = remEl ? remEl.value.trim() : '';
+    var pidEl = document.getElementById('adminAdjProductId');
+    var prodId = pidEl ? pidEl.value : '';
+    var banner = document.getElementById('adminAdjBanner');
+    var errEl = document.getElementById('adminAdjQtyError');
+
+    if (banner) banner.style.display = 'none';
+    if (errEl) errEl.style.display = 'none';
+
+    if (!type) {
+        if (banner) {
+            banner.style.cssText = 'display:block; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:600; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;';
+            banner.textContent = 'Please select an adjustment type.';
+        }
+        return;
+    }
+    if (isNaN(qty) || qty <= 0) {
+        if (errEl) {
+            errEl.textContent = 'Please enter a valid quantity greater than zero.';
+            errEl.style.display = 'block';
+        }
+        return;
+    }
+
+    var submitBtn = document.getElementById('adminAdjSubmitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying…';
+    }
+
+    fetch(window.location.pathname + '?action=admin_direct_adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            product_id: parseInt(prodId),
+            adjustment_type: type,
+            adjustment_action: adjAct,
+            quantity: qty,
+            reason: type,
+            remarks: remarks
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check-circle"></i> Apply Adjustment Now';
+        }
+
+        if (res.success) {
+            // Immediately close modal — do not show success message inside the modal
+            closeAdminAdjustModal();
+
+            // Save message to sessionStorage so it persists across page reload
+            try {
+                sessionStorage.setItem('adminSuccessBanner', res.message);
+            } catch(e) {}
+
+            // Show top-right success banner immediately
+            showAdminSuccessBanner("STOCK ADJUSTED SUCCESSFULLY!", res.message);
+
+            if (_adminAdjItem && res.new_stock !== undefined) {
+                document.querySelectorAll('tr.merch-row[data-id="' + _adminAdjItem.id + '"]').forEach(function(row) {
+                    row.dataset.stock = res.new_stock;
+                });
+            }
+
+            setTimeout(function() {
+                location.reload();
+            }, 1000);
+        } else {
+            if (banner) {
+                banner.style.cssText = 'display:block; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:600; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;';
+                banner.textContent = '✖ ' + (res.message || 'Adjustment failed. Please try again.');
+            }
+        }
+    })
+    .catch(function() {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check-circle"></i> Apply Adjustment Now';
+        }
+        if (banner) {
+            banner.style.cssText = 'display:block; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:600; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;';
+            banner.textContent = '✖ Network error. Please try again.';
+        }
+    });
+}
+
+// ── Global Success Toast Banner (Top-Right) Handlers ──
+function closeAdminSuccessBanner() {
+    var b = document.getElementById('adminGlobalSuccessBanner');
+    if (b) {
+        b.style.opacity = '0';
+        b.style.transform = 'translateX(50px)';
+        setTimeout(function() { b.style.display = 'none'; }, 260);
+    }
+    try { sessionStorage.removeItem('adminSuccessBanner'); } catch(e) {}
+}
+
+function showAdminSuccessBanner(title, msg) {
+    var banner = document.getElementById('adminGlobalSuccessBanner');
+    var bannerTitle = document.getElementById('adminBannerTitle');
+    var bannerText = document.getElementById('adminBannerText');
+    if (banner) {
+        if (bannerTitle && title) bannerTitle.innerText = title;
+        if (bannerText && msg) bannerText.innerHTML = msg;
+        banner.style.display = 'flex';
+        banner.style.opacity = '1';
+        banner.style.transform = 'translateX(0)';
+        setTimeout(closeAdminSuccessBanner, 6000);
+    }
+}
+
+// Close on backdrop click & initialize DOM elements
+document.addEventListener('DOMContentLoaded', function() {
+    var m = document.getElementById('adminAdjModal');
+    if (m) {
+        m.addEventListener('click', function(e) {
+            if (e.target === this) closeAdminAdjustModal();
+        });
+        // Move to document.body on DOM ready once so future clicks don't cause layout reflow
+        if (m.parentNode !== document.body) {
+            document.body.appendChild(m);
+        }
+    }
+
+    // Show top-right success banner if adjustment was just performed
+    try {
+        var sMsg = sessionStorage.getItem('adminSuccessBanner');
+        if (sMsg) {
+            sessionStorage.removeItem('adminSuccessBanner');
+            showAdminSuccessBanner("STOCK ADJUSTED SUCCESSFULLY!", sMsg);
+        }
+    } catch(e) {}
+});
+
+
+
 function adminViewProduct(item) {
     _adminCurrentProd = item;
     var overlay = document.getElementById('adminViewProdModal');
@@ -2683,13 +3677,62 @@ function adminViewProduct(item) {
     document.getElementById('vpmUnit').textContent = item.unit || 'pcs';
     document.getElementById('vpmBarcode').textContent = item.barcode || '4800012345678';
     
+    var expDate = item.expiration_date && item.expiration_date !== 'N/A' && item.expiration_date !== '' ? item.expiration_date : (function() {
+        var base = item.last_updated ? new Date(item.last_updated) : new Date('2026-08-31');
+        var cat = (item.category || item.category_name || '').toLowerCase();
+        var nm  = (item.name || '').toLowerCase();
+        if (nm.indexOf('chippy') !== -1 || nm.indexOf('coca') !== -1 || nm.indexOf('choco') !== -1 || cat.indexOf('snack') !== -1 || cat.indexOf('beverage') !== -1) {
+            base.setFullYear(base.getFullYear() + 1);
+        } else if (cat.indexOf('accessory') !== -1 || cat.indexOf('tool') !== -1 || nm.indexOf('wiper') !== -1 || nm.indexOf('mat') !== -1) {
+            base.setFullYear(base.getFullYear() + 5);
+        } else {
+            base.setFullYear(base.getFullYear() + 3);
+        }
+        return base.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    })();
+    var isExpired = item.exp_status === 'expired' || item.computed_status === 'expired' || (expDate !== 'N/A' && new Date(expDate) < new Date(new Date().toDateString()));
+    var isExpiringSoon = !isExpired && (item.exp_status === 'expiring_soon' || (expDate !== 'N/A' && (new Date(expDate) - new Date(new Date().toDateString())) / (1000*60*60*24) <= 30));
+
+    var noticeEl = document.getElementById('vpmAlertNotice');
+    if (noticeEl) {
+        if (isExpired) {
+            noticeEl.innerHTML = '<div style="background:#fee2e2; border:1.5px solid #ef4444; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#991b1b; font-size:13.5px; font-weight:700;">' +
+                '<i class="fas fa-exclamation-triangle" style="font-size:22px; color:#dc2626; flex-shrink:0;"></i>' +
+                '<div><strong style="text-transform:uppercase; letter-spacing:0.5px;">Product Has Expired</strong><div style="font-size:12px; font-weight:500; color:#7f1d1d; margin-top:2px;">This product reached its expiration date on ' + esc(expDate) + '. Do not dispense or sell to customers.</div></div>' +
+                '</div>';
+        } else if (isExpiringSoon) {
+            noticeEl.innerHTML = '<div style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#92400e; font-size:13.5px; font-weight:700;">' +
+                '<i class="fas fa-clock" style="font-size:20px; color:#d97706; flex-shrink:0;"></i>' +
+                '<div><strong style="text-transform:uppercase; letter-spacing:0.5px;">Expiring Soon</strong><div style="font-size:12px; font-weight:500; color:#b45309; margin-top:2px;">This product will expire on ' + esc(expDate) + '. Prioritize sales using FIFO.</div></div>' +
+                '</div>';
+        } else {
+            noticeEl.innerHTML = '';
+        }
+    }
+
+    var expiryEl = document.getElementById('vpmExpiry');
+    if (expiryEl) {
+        var expBadge = '';
+        if (isExpired) {
+            expBadge = ' <span style="background:#dc354520;color:#dc3545;border:1.5px solid #dc354560;border-radius:4px;font-size:10px;font-weight:800;padding:2px 6px;text-transform:uppercase;margin-left:6px;display:inline-block;"><i class="fas fa-exclamation-circle"></i> EXPIRED</span>';
+        } else if (isExpiringSoon) {
+            expBadge = ' <span style="background:#fd7e1420;color:#c05c00;border:1.5px solid #fd7e1460;border-radius:4px;font-size:10px;font-weight:800;padding:2px 6px;text-transform:uppercase;margin-left:6px;display:inline-block;"><i class="fas fa-clock"></i> EXPIRING SOON</span>';
+        }
+        expiryEl.innerHTML = '<span style="color:' + (isExpired ? '#dc3545' : (expDate !== 'N/A' ? '#1e293b' : '#94a3b8')) + ';">' + esc(expDate) + '</span>' + expBadge;
+    }
+
     var statusMap = {
+        'expired': '<span class="badge-lbl bg-red" style="font-weight:800;"><i class="fas fa-ban" style="margin-right:3px;"></i> EXPIRED</span>',
         'available': '<span class="badge-lbl bg-green">Available</span>',
         'low': '<span class="badge-lbl bg-amber">Low Stock</span>',
         'critical': '<span class="badge-lbl bg-red">Critical Stock</span>',
         'out': '<span class="badge-lbl bg-red">Out of Stock</span>'
     };
-    document.getElementById('vpmStatus').innerHTML = statusMap[item.computed_status] || '<span class="badge-lbl bg-green">Available</span>';
+    if (isExpired) {
+        document.getElementById('vpmStatus').innerHTML = statusMap['expired'];
+    } else {
+        document.getElementById('vpmStatus').innerHTML = statusMap[item.computed_status] || '<span class="badge-lbl bg-green">Available</span>';
+    }
 
     // Sub-tab 2 Data
     var stock = parseFloat(item.stock_level) || 0;
@@ -2710,7 +3753,7 @@ function adminViewProduct(item) {
     vpmSwitchTab(1);
 
     // FIFO table loading placeholder
-    document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading FIFO batches...</div>';
+    document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading batches...</div>';
 
     // Show modal
     overlay.classList.add('open');
@@ -2730,36 +3773,40 @@ function adminViewProduct(item) {
             document.getElementById('vpmFifoTable').innerHTML = 
                 '<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;box-sizing:border-box;min-width:0;">' +
                 '<colgroup>' +
-                '<col style="width:18%;">' +
-                '<col style="width:17%;">' +
                 '<col style="width:16%;">' +
-                '<col style="width:16%;">' +
-                '<col style="width:16%;">' +
-                '<col style="width:17%;">' +
+                '<col style="width:14%;">' +
+                '<col style="width:14%;">' +
+                '<col style="width:14%;">' +
+                '<col style="width:14%;">' +
+                '<col style="width:14%;">' +
+                '<col style="width:14%;">' +
                 '</colgroup>' +
                 '<thead><tr style="background:#f8fafc;color:#002F70;">' +
                 '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Batch ID</th>' +
                 '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Delivery Date</th>' +
+                '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Expiration Date</th>' +
                 '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Received Qty</th>' +
                 '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Remaining Qty</th>' +
                 '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Unit Cost</th>' +
                 '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Selling Price</th>' +
                 '</tr></thead>' +
-                '<tbody><tr><td colspan="6" style="text-align:center;padding:24px 12px;color:#94a3b8;font-size:13.5px;word-break:break-word;">No FIFO batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
+                '<tbody><tr><td colspan="7" style="text-align:center;padding:24px 12px;color:#94a3b8;font-size:13.5px;word-break:break-word;">No batch records found. Defaulting to main inventory pool.</td></tr></tbody></table>';
             return;
         }
         var fHtml = '<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13.5px;box-sizing:border-box;min-width:0;">';
         fHtml += '<colgroup>' +
-            '<col style="width:18%;">' +
-            '<col style="width:17%;">' +
             '<col style="width:16%;">' +
-            '<col style="width:16%;">' +
-            '<col style="width:16%;">' +
-            '<col style="width:17%;">' +
+            '<col style="width:14%;">' +
+            '<col style="width:14%;">' +
+            '<col style="width:14%;">' +
+            '<col style="width:14%;">' +
+            '<col style="width:14%;">' +
+            '<col style="width:14%;">' +
             '</colgroup>';
         fHtml += '<thead><tr style="background:#f8fafc;color:#002F70;">' +
             '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Batch ID</th>' +
             '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Delivery Date</th>' +
+            '<th style="padding:9px 6px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Expiration Date</th>' +
             '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Received Qty</th>' +
             '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Remaining Qty</th>' +
             '<th style="padding:9px 6px;text-align:right;border-bottom:2px solid #e2e8f0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Unit Cost</th>' +
@@ -2767,8 +3814,10 @@ function adminViewProduct(item) {
             '</tr></thead><tbody>';
         data.deliveries.forEach(function(d) {
             var dateStr = d.encoded_at ? new Date(d.encoded_at).toLocaleDateString() : '—';
+            var expBatchStr = d.expiration_date ? new Date(d.expiration_date).toLocaleDateString() : (item.expiration_date || '—');
             fHtml += '<tr><td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><code style="color:#002F70;font-weight:700;">' + esc(d.batch_no || 'BATCH-' + d.id) + '</code></td>';
             fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + dateStr + '</td>';
+            fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;">' + esc(expBatchStr) + '</td>';
             fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
             fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:#002F70;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + Number(d.qty_received).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
             fHtml += '<td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">₱' + Number(d.unit_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</td>';
@@ -2778,7 +3827,7 @@ function adminViewProduct(item) {
         document.getElementById('vpmFifoTable').innerHTML = fHtml;
     })
     .catch(function() {
-        document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:16px;color:#dc3545;">Connection error loading FIFO data.</div>';
+        document.getElementById('vpmFifoTable').innerHTML = '<div style="text-align:center;padding:16px;color:#dc3545;">Connection error loading batch data.</div>';
     });
 }
 
@@ -2937,6 +3986,7 @@ function filterAdminMovTable() {
     var search = (document.getElementById('adminMovSearchInput')?.value || '').toLowerCase().trim();
     var type = (document.getElementById('adminMovTypeFilter')?.value || '').toLowerCase().trim();
     var rows = document.querySelectorAll('#adminMovBody .mov-row');
+    var matchedCount = 0;
     rows.forEach(function(row) {
         var rowSearch = (row.getAttribute('data-search') || '').toLowerCase();
         var rowType = (row.getAttribute('data-type') || '').toLowerCase();
@@ -2965,31 +4015,51 @@ function filterAdminMovTable() {
 
         if (matchesSearch && matchesType) {
             row.classList.remove('search-hidden');
-            row.style.display = '';
+            matchedCount++;
         } else {
             row.classList.add('search-hidden');
-            row.style.display = 'none';
         }
     });
+
+    var noMatch = document.getElementById('adminMovNoMatchRow');
+    if (noMatch) {
+        noMatch.style.display = (rows.length > 0 && matchedCount === 0) ? '' : 'none';
+    }
 
     if (window.tablePaginationTriggers && window.tablePaginationTriggers['adminMovTable']) {
         window.tablePaginationTriggers['adminMovTable']();
     }
 }
 
+function resetAdminMovFilters() {
+    var search = document.getElementById('adminMovSearchInput');
+    var filter = document.getElementById('adminMovTypeFilter');
+    if (search) search.value = '';
+    if (filter) {
+        filter.value = '';
+        filter.dispatchEvent(new Event('change'));
+    }
+    filterAdminMovTable();
+}
+
 function filterAdminAlertTable() {
     var search = (document.getElementById('adminAlertSearchInput')?.value || '').toLowerCase().trim();
     var rows = document.querySelectorAll('#adminAlertBody .alert-row');
+    var matchedCount = 0;
     rows.forEach(function(row) {
         var rowSearch = (row.getAttribute('data-search') || '').toLowerCase();
         if (!search || rowSearch.indexOf(search) !== -1) {
             row.classList.remove('search-hidden');
-            row.style.display = '';
+            matchedCount++;
         } else {
             row.classList.add('search-hidden');
-            row.style.display = 'none';
         }
     });
+
+    var noMatch = document.getElementById('adminAlertNoMatchRow');
+    if (noMatch) {
+        noMatch.style.display = (rows.length > 0 && matchedCount === 0) ? '' : 'none';
+    }
 
     if (window.tablePaginationTriggers && window.tablePaginationTriggers['adminAlertTable']) {
         window.tablePaginationTriggers['adminAlertTable']();
@@ -3016,21 +4086,439 @@ function filterAdminByCard(statusKey) {
     if (form) form.submit();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function setupPetronDownwardDropdowns(selectors) {
+    var selects = [];
+    selectors.forEach(function(selector) {
+        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (el) selects.push(el);
+    });
 
-    <?php if ($active_tab === 'overview'): ?>
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminMerchTable', 'adminMerchRowsLimit', 'adminMerchPagination', 50);
+    selects.forEach(function(select) {
+        if (!select || select.dataset.petronDownReady === '1') return;
+        select.dataset.petronDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'petron-dropdown-wrap';
+        if (select.style.width && select.style.width !== '100%') {
+            wrap.style.width = select.style.width;
+        } else if (select.closest('.afto-fg')) {
+            wrap.style.width = '100%';
+        } else {
+            wrap.style.width = '200px';
+        }
+        if (select.style.minWidth) {
+            wrap.style.minWidth = select.style.minWidth;
+        }
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'petron-dropdown-trigger';
+
+        var label = document.createElement('span');
+        label.className = 'petron-dropdown-label';
+
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'petron-dropdown-menu';
+
+        Array.from(select.options).forEach(function(option) {
+            if (option.hidden) return;
+            var item = document.createElement('div');
+            item.className = 'petron-dropdown-item';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('is-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(item) {
+                item.classList.toggle('is-selected', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var willOpen = !wrap.classList.contains('is-open');
+            document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(openWrap) {
+                openWrap.classList.remove('is-open');
+            });
+            if (willOpen) {
+                var rect = wrap.getBoundingClientRect();
+                if (rect.right + 140 > window.innerWidth) {
+                    menu.style.left = 'auto';
+                    menu.style.right = '0';
+                } else {
+                    menu.style.left = '0';
+                    menu.style.right = 'auto';
+                }
+                wrap.classList.add('is-open');
+                var selectedItem = menu.querySelector('.petron-dropdown-item.is-selected');
+                if (selectedItem) {
+                    selectedItem.scrollIntoView({ block: 'nearest' });
+                }
+            }
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('petron-dropdown-source');
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__petronDownCloseBound) {
+        window.__petronDownCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.petron-dropdown-wrap')) {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(wrap) {
+                    wrap.classList.remove('is-open');
+                });
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(wrap) {
+                    wrap.classList.remove('is-open');
+                });
+            }
+        });
     }
-    <?php elseif ($active_tab === 'movement'): ?>
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminMovTable', 'adminMovRowsLimit', 'adminMovPagination', 50);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAGINATION STATE MACHINES — Admin Overview, Movement, Alerts
+// ═══════════════════════════════════════════════════════════════
+
+function adminGetVisibleRows(tbodyId) {
+    var tbody = document.getElementById(tbodyId);
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr')).filter(function(r) {
+        return !r.classList.contains('search-hidden') &&
+               !r.classList.contains('no-paginate') &&
+               r.id.indexOf('NoMatchRow') === -1 &&
+               r.id.indexOf('NoResults') === -1;
+    });
+}
+
+/* ── Tab 1: Overview ── */
+var adminMerchState = { page: 1, perPage: 25 };
+
+function adminMerchRender() {
+    var rows = adminGetVisibleRows('adminMerchTableBody');
+    var total = rows.length;
+    var perPage = adminMerchState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (adminMerchState.page > totalPages) adminMerchState.page = totalPages;
+    if (adminMerchState.page < 1) adminMerchState.page = 1;
+
+    var start = (adminMerchState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    var tbody = document.getElementById('adminMerchTableBody');
+    if (tbody) {
+        var allRows = Array.from(tbody.querySelectorAll('tr'));
+        var visIdx = 0;
+        allRows.forEach(function(r) {
+            if (r.classList.contains('no-paginate') || r.id.indexOf('NoMatchRow') !== -1) return;
+            if (r.classList.contains('search-hidden')) {
+                r.style.display = 'none';
+                return;
+            }
+            if (r.classList.contains('cat-header') || r.classList.contains('category-header')) {
+                return;
+            }
+            r.style.display = (visIdx >= start && visIdx < end) ? '' : 'none';
+            visIdx++;
+        });
+
+        tbody.querySelectorAll('.cat-header, .category-header').forEach(function(hdr) {
+            var next = hdr.nextElementSibling;
+            var hasVisible = false;
+            while (next && !next.classList.contains('cat-header') && !next.classList.contains('category-header')) {
+                if (next.style.display !== 'none' &&
+                    !next.classList.contains('search-hidden') &&
+                    !next.classList.contains('no-paginate') &&
+                    next.id.indexOf('NoMatchRow') === -1) {
+                    hasVisible = true;
+                    break;
+                }
+                next = next.nextElementSibling;
+            }
+            hdr.style.display = hasVisible ? '' : 'none';
+        });
     }
-    <?php elseif ($active_tab === 'alerts'): ?>
-    if (typeof setupTablePagination === 'function') {
-        setupTablePagination('adminAlertTable', 'adminAlertRowsLimit', 'adminAlertPagination', 50);
+
+    var showingEl = document.getElementById('adminMerchShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
     }
-    <?php endif; ?>
+    var labelEl = document.getElementById('adminMerchPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + adminMerchState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('adminMerchPrevBtn');
+    var nextBtn = document.getElementById('adminMerchNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = adminMerchState.page <= 1;
+        prevBtn.style.cursor = adminMerchState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = adminMerchState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = adminMerchState.page >= totalPages;
+        nextBtn.style.cursor = adminMerchState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = adminMerchState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function adminMerchGoPage(p) {
+    adminMerchState.page = p;
+    adminMerchRender();
+}
+
+function adminMerchChangePerPage() {
+    var sel = document.getElementById('adminMerchPerPage');
+    if (sel) adminMerchState.perPage = parseInt(sel.value, 10);
+    adminMerchState.page = 1;
+    adminMerchRender();
+}
+
+/* ── Tab 2: Movement ── */
+var adminMovState = { page: 1, perPage: 25 };
+
+function adminMovRender() {
+    var rows = adminGetVisibleRows('adminMovBody');
+    var total = rows.length;
+    var perPage = adminMovState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (adminMovState.page > totalPages) adminMovState.page = totalPages;
+    if (adminMovState.page < 1) adminMovState.page = 1;
+
+    var start = (adminMovState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    rows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    var showingEl = document.getElementById('adminMovShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
+    }
+    var labelEl = document.getElementById('adminMovPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + adminMovState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('adminMovPrevBtn');
+    var nextBtn = document.getElementById('adminMovNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = adminMovState.page <= 1;
+        prevBtn.style.cursor = adminMovState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = adminMovState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = adminMovState.page >= totalPages;
+        nextBtn.style.cursor = adminMovState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = adminMovState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function adminMovGoPage(p) {
+    adminMovState.page = p;
+    adminMovRender();
+}
+
+function adminMovChangePerPage() {
+    var sel = document.getElementById('adminMovPerPage');
+    if (sel) adminMovState.perPage = parseInt(sel.value, 10);
+    adminMovState.page = 1;
+    adminMovRender();
+}
+
+/* ── Tab 3: Alerts ── */
+var adminAlertState = { page: 1, perPage: 25 };
+
+function adminAlertRender() {
+    var rows = adminGetVisibleRows('adminAlertBody');
+    var total = rows.length;
+    var perPage = adminAlertState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (adminAlertState.page > totalPages) adminAlertState.page = totalPages;
+    if (adminAlertState.page < 1) adminAlertState.page = 1;
+
+    var start = (adminAlertState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    rows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    var showingEl = document.getElementById('adminAlertShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
+    }
+    var labelEl = document.getElementById('adminAlertPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + adminAlertState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('adminAlertPrevBtn');
+    var nextBtn = document.getElementById('adminAlertNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = adminAlertState.page <= 1;
+        prevBtn.style.cursor = adminAlertState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = adminAlertState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = adminAlertState.page >= totalPages;
+        nextBtn.style.cursor = adminAlertState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = adminAlertState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function adminAlertGoPage(p) {
+    adminAlertState.page = p;
+    adminAlertRender();
+}
+
+function adminAlertChangePerPage() {
+    var sel = document.getElementById('adminAlertPerPage');
+    if (sel) adminAlertState.perPage = parseInt(sel.value, 10);
+    adminAlertState.page = 1;
+    adminAlertRender();
+}
+
+// Expose on window
+window.adminMerchState = adminMerchState;
+window.adminMerchRender = adminMerchRender;
+window.adminMerchGoPage = adminMerchGoPage;
+window.adminMerchChangePerPage = adminMerchChangePerPage;
+
+window.adminMovState = adminMovState;
+window.adminMovRender = adminMovRender;
+window.adminMovGoPage = adminMovGoPage;
+window.adminMovChangePerPage = adminMovChangePerPage;
+
+window.adminAlertState = adminAlertState;
+window.adminAlertRender = adminAlertRender;
+window.adminAlertGoPage = adminAlertGoPage;
+window.adminAlertChangePerPage = adminAlertChangePerPage;
+
+<?php if (!empty($auto_open_item)): ?>
+window._autoOpenProdItem = <?= json_encode([
+    "id" => $auto_open_item["id"],
+    "name" => $auto_open_item["name"],
+    "sku" => $auto_open_item["sku"],
+    "category_name" => $auto_open_item["category_name"],
+    "brand" => $auto_open_item["brand"] ?? "Petron",
+    "supplier" => $auto_open_item["supplier"] ?? "Petron Corporation",
+    "unit" => $auto_open_item["unit"] ?? "pcs",
+    "barcode" => $auto_open_item["barcode"] ?? "",
+    "stock_level" => $auto_open_item["stock_level"],
+    "price" => $auto_open_item["price"],
+    "cost" => $auto_open_item["cost"],
+    "reorder_level" => $auto_open_item["reorder_level"] ?? 24,
+    "critical_level" => $auto_open_item["critical_level"] ?? 10,
+    "capacity" => $auto_open_item["capacity"] ?? 480,
+    "last_updated" => $auto_open_item["last_updated"] ?? "",
+    "computed_status" => $auto_open_item["computed_status"] ?? "available",
+    "expiration_date" => $auto_open_item["expiration_date"] ?? "N/A",
+    "exp_status" => $auto_open_item["exp_status"] ?? "ok"
+], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+<?php endif; ?>
+
+document.addEventListener('DOMContentLoaded', function() {
+    setupPetronDownwardDropdowns([
+        '#category',
+        '#brand',
+        '#unit',
+        '#status_filter',
+        '#adminMovTypeFilter'
+    ]);
+
+    var activeTab = '<?= htmlspecialchars($active_tab) ?>';
+    if (activeTab === 'overview') {
+        adminMerchRender();
+    } else if (activeTab === 'movement') {
+        adminMovRender();
+    } else if (activeTab === 'alerts') {
+        adminAlertRender();
+    }
+
+    window.tablePaginationTriggers = window.tablePaginationTriggers || {};
+    window.tablePaginationTriggers['adminMerchTable'] = function(){ adminMerchState.page = 1; adminMerchRender(); };
+    window.tablePaginationTriggers['adminMovTable']   = function(){ adminMovState.page = 1; adminMovRender(); };
+    window.tablePaginationTriggers['adminAlertTable'] = function(){ adminAlertState.page = 1; adminAlertRender(); };
+
+    // Auto-open Product Modal & scroll into view when navigated from Global Search
+    var urlParams = new URLSearchParams(window.location.search);
+    var autoOpenPid = urlParams.get('product_id') || urlParams.get('pid');
+    var autoOpenSearch = urlParams.get('search_query') || urlParams.get('search');
+    var autoOpenFlag = urlParams.get('auto_open') === '1' || !!autoOpenPid;
+
+    if (autoOpenFlag || autoOpenPid || autoOpenSearch) {
+        // Strip auto-open params from URL immediately so refresh won't re-trigger
+        (function() {
+            var clean = new URLSearchParams(window.location.search);
+            ['auto_open','product_id','pid','search_query','search'].forEach(function(k){ clean.delete(k); });
+            var newUrl = window.location.pathname + (clean.toString() ? '?' + clean.toString() : '');
+            history.replaceState(null, '', newUrl);
+        })();
+
+        setTimeout(function() {
+            var targetRow = null;
+            if (autoOpenPid) {
+                targetRow = document.querySelector('tr.merch-row[data-id="' + autoOpenPid + '"]');
+            }
+            if (!targetRow && autoOpenSearch) {
+                var sLower = autoOpenSearch.toLowerCase().trim();
+                var allRows = document.querySelectorAll('tr.merch-row');
+                for (var i = 0; i < allRows.length; i++) {
+                    var n = (allRows[i].dataset.name || '').toLowerCase();
+                    var s = (allRows[i].dataset.sku || '').toLowerCase();
+                    if (n === sLower || s === sLower || n.indexOf(sLower) !== -1 || sLower.indexOf(n) !== -1) {
+                        targetRow = allRows[i];
+                        break;
+                    }
+                }
+            }
+
+            if (targetRow) {
+                // If on another page in pagination, jump to that page
+                var visibleRows = Array.from(document.querySelectorAll('tbody#adminMerchTbody tr.merch-row:not(.search-hidden)'));
+                var rowIdx = visibleRows.indexOf(targetRow);
+                if (rowIdx !== -1 && typeof adminMerchGoPage === 'function' && window.adminMerchState) {
+                    var targetPage = Math.floor(rowIdx / adminMerchState.perPage) + 1;
+                    if (targetPage !== adminMerchState.page) {
+                        adminMerchGoPage(targetPage);
+                    }
+                }
+
+                // Scroll smoothly to row and highlight it (no modal auto-open)
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetRow.style.transition = 'all 0.5s ease';
+                targetRow.style.outline = '3px solid #002F70';
+                targetRow.style.backgroundColor = '#dbeafe';
+                setTimeout(function() {
+                    targetRow.style.outline = '';
+                    targetRow.style.backgroundColor = '';
+                }, 2500);
+            }
+        }, 350);
+    }
 });
 </script>
 </div> <!-- /.main-content -->

@@ -329,8 +329,8 @@ $merchandise_products = [];
 $fuel_inventory_rows  = [];
 
 try {
-    // Get merchandise products for THIS station via station_inventory join.
-    // LEFT JOIN so stations with no station_inventory records still see the global catalog.
+    // Get merchandise products for THIS station via station_inventory.
+    // Stations start empty until products are explicitly added/assigned to them.
     $stmt = $pdo->prepare("
         SELECT
             ip.id,
@@ -340,16 +340,16 @@ try {
             COALESCE(ip.size, '')                               AS size,
             COALESCE(si.cost,  ip.unit_cost,  0)                AS unit_cost,
             COALESCE(si.price, ip.unit_price, ip.unit_cost, 0)  AS unit_price,
-            COALESCE(si.stock_level, ip.stock, 0)               AS quantity,
+            COALESCE(si.stock_level, 0)                         AS quantity,
             COALESCE(si.status, 'active')                       AS status,
             COALESCE(si.reorder_level, 24)                      AS reorder_level,
             COALESCE(si.critical_level, 10)                     AS critical_level,
-            CASE WHEN si.id IS NOT NULL THEN 1 ELSE 0 END       AS in_station
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si
-            ON si.product_id = ip.id
-           AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+            1                                                   AS in_station
+        FROM station_inventory si
+        JOIN inventory_products ip
+            ON ip.id = si.product_id
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);
@@ -385,14 +385,15 @@ try {
                    COALESCE(ip.sku,'') AS sku, COALESCE(ip.size,'') AS size,
                    COALESCE(si.cost, ip.unit_cost, 0) AS unit_cost,
                    COALESCE(si.price, ip.unit_price, ip.unit_cost, 0) AS unit_price,
-                   COALESCE(si.stock_level, ip.stock, 0) AS quantity,
+                   COALESCE(si.stock_level, 0) AS quantity,
                    COALESCE(si.status,'active') AS status,
                    COALESCE(si.reorder_level, 24)  AS reorder_level,
                    COALESCE(si.critical_level, 10) AS critical_level,
-                   CASE WHEN si.id IS NOT NULL THEN 1 ELSE 0 END AS in_station
-            FROM inventory_products ip
-            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+                   1 AS in_station
+            FROM station_inventory si
+            JOIN inventory_products ip ON ip.id = si.product_id
+            WHERE si.station_id = ?
+              AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
             ORDER BY ip.category, ip.product_name
         ");
         $stmt->execute([$station_id]);

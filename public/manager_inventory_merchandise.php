@@ -44,6 +44,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
                     COALESCE(si.reorder_level, ip.min_stock, 24) AS reorder_level,
                     COALESCE(si.critical_level, 10)              AS critical_level,
                     COALESCE(si.unit, ip.size, 'pcs')            AS unit,
+                    COALESCE(si.expiration_date, ip.expiration_date) AS expiration_date,
                     si.physical_count,
                     si.variance,
                     si.last_updated
@@ -75,6 +76,7 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
                     COALESCE(NULLIF(si.reorder_level, 0), NULLIF(p.min_stock_level, 0), 24) AS reorder_level,
                     COALESCE(NULLIF(si.critical_level, 0), 10) AS critical_level,
                     COALESCE(NULLIF(p.unit, ''), NULLIF(si.unit, ''), 'pcs') AS unit,
+                    COALESCE(si.expiration_date, p.expiration_date) AS expiration_date,
                     si.physical_count,
                     si.variance,
                     COALESCE(si.last_updated, p.updated_at, p.created_at) AS last_updated
@@ -95,6 +97,52 @@ if (isset($_GET['ajax']) && ($_GET['action'] ?? '') === 'get_product_details') {
         $prod['category_name'] = format_product_category_display($prod['category_name'] ?? '', $prod['name'] ?? '', $prod['description'] ?? '');
         $prod['unit'] = format_product_unit_display($prod['unit'] ?? 'pcs', $prod['name'] ?? '', $prod['category_name'] ?? '', $prod['description'] ?? '');
         $prod['supplier'] = 'Petron Corporation';
+
+        // Expiration computation (prefer real expiration_date from DB)
+        $exp_raw = null;
+        $exp_date = 'N/A';
+        if (!empty($prod['expiration_date']) && $prod['expiration_date'] !== '0000-00-00') {
+            $exp_raw = $prod['expiration_date'];
+            $exp_date = (new DateTime($exp_raw))->format('M d, Y');
+        } else {
+            try {
+                $dt = new DateTime(!empty($prod['last_updated']) ? $prod['last_updated'] : '2026-07-20');
+                $cat_str = strtolower((string)($prod['category_name'] ?? ''));
+                $name_str = strtolower((string)($prod['name'] ?? ''));
+            if (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
+                $dt->modify('+1 year');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } elseif (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
+                $dt->modify('+5 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } else {
+                $dt->modify('+3 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            }
+            } catch (Exception $e) {
+                $exp_date = 'Jul 20, 2029';
+                $exp_raw = '2029-07-20';
+            }
+        }
+        $exp_status = '';
+        if ($exp_raw) {
+            try {
+                $exp_dt   = new DateTime($exp_raw);
+                $today_dt = new DateTime('today');
+                $diff_days = (int)$today_dt->diff($exp_dt)->days * ($exp_dt >= $today_dt ? 1 : -1);
+                if ($diff_days < 0) {
+                    $exp_status = 'expired';
+                } elseif ($diff_days <= 30) {
+                    $exp_status = 'expiring_soon';
+                }
+            } catch (Exception $e) {}
+        }
+        $prod['exp_raw'] = $exp_raw;
+        $prod['expiration_date'] = $exp_date;
+        $prod['exp_status'] = $exp_status;
 
         // Apply capacity fallbacks
         $capacity = (float)($prod['capacity'] ?? 0);
@@ -338,7 +386,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
                     VALUES (?, 'info', 'PR Waiting for PO', ?, 'stock_request', 'high', 'admin_purchase_orders.php?tab=pending', NOW())
                 ");
-                $admins = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
+                $admin_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'admin' AND station_id = ? AND status = 'Active'");
+                $admin_stmt->execute([$station_id]);
+                $admins = $admin_stmt->fetchAll(PDO::FETCH_COLUMN);
                 foreach ($admins as $admin_id) {
                     $notify_stmt->execute([$admin_id, "Purchase Request {$pr_number} has been approved by Manager and is waiting for PO generation."]);
                 }
@@ -656,6 +706,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Data Fetching
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+if (function_exists('ensure_station_inventory_synced')) {
+    ensure_station_inventory_synced($pdo, (int)$station_id);
+}
+
 $merch_inventory = [];
 $msg = '';
 
@@ -666,8 +720,8 @@ try {
             COALESCE(ip.id, p.id, si.product_id)         AS id,
             COALESCE(ip.product_name, p.name, 'Unknown Product') AS name,
             COALESCE(ip.category, pc.name, 'Merchandise') AS category_name,
-            COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
-            COALESCE(si.cost, ip.unit_cost, p.cost, 0)   AS cost,
+            COALESCE(NULLIF(si.price, 0), ip.unit_price, p.price, 0) AS price,
+            COALESCE(NULLIF(si.cost, 0), ip.unit_cost, p.cost, 0)   AS cost,
             COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id,4,'0'))) AS sku,
             COALESCE(ip.brand, 'Petron Corporation')     AS supplier,
             COALESCE(si.status, ip.status, p.status, 'active') AS product_status,
@@ -678,6 +732,7 @@ try {
             COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
             COALESCE(si.critical_level, 10)              AS critical_level,
             COALESCE(si.unit, ip.size, p.unit, 'pcs')    AS unit,
+            COALESCE(si.expiration_date, ip.expiration_date, p.expiration_date) AS expiration_date,
             COALESCE(si.last_updated, NOW())             AS last_updated,
             si.physical_count,
             si.variance
@@ -702,6 +757,52 @@ foreach ($merch_inventory as &$item) {
         $item['description'] ?? ''
     );
     $item['supplier'] = 'Petron Corporation';
+
+    // Expiration computation (prefer real expiration_date from DB)
+    $exp_raw = null;
+    $exp_date = 'N/A';
+    if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
+        $exp_raw = $item['expiration_date'];
+        $exp_date = (new DateTime($exp_raw))->format('M d, Y');
+    } else {
+        try {
+            $dt = new DateTime(!empty($item['last_updated']) ? $item['last_updated'] : '2026-07-20');
+            $cat_str = strtolower((string)($item['category_name'] ?? $item['category'] ?? ''));
+            $name_str = strtolower((string)($item['name'] ?? ''));
+            if (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
+                $dt->modify('+1 year');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } elseif (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
+                $dt->modify('+5 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            } else {
+                $dt->modify('+3 years');
+                $exp_raw = $dt->format('Y-m-d');
+                $exp_date = $dt->format('M d, Y');
+            }
+        } catch (Exception $e) {
+            $exp_date = 'Jul 20, 2029';
+            $exp_raw = '2029-07-20';
+        }
+    }
+    $exp_status = '';
+    if ($exp_raw) {
+        try {
+            $exp_dt   = new DateTime($exp_raw);
+            $today_dt = new DateTime('today');
+            $diff_days = (int)$today_dt->diff($exp_dt)->days * ($exp_dt >= $today_dt ? 1 : -1);
+            if ($diff_days < 0) {
+                $exp_status = 'expired';
+            } elseif ($diff_days <= 30) {
+                $exp_status = 'expiring_soon';
+            }
+        } catch (Exception $e) {}
+    }
+    $item['expiration_date'] = $exp_date;
+    $item['exp_raw'] = $exp_raw;
+    $item['exp_status'] = $exp_status;
 }
 unset($item);
 
@@ -811,6 +912,7 @@ $summary_available = 0;
 $summary_low = 0;       // all below reorder (includes critical)
 $summary_out = 0;
 $summary_variance = 0;
+$summary_expired = 0;
 // Granular alert counts for Stock Alerts tab cards
 $summary_alert_low      = 0; // Low Stock only (stock > reorder/2 && <= reorder)
 $summary_alert_critical = 0; // Critical Stock (stock > 0 && <= reorder/2)
@@ -819,6 +921,11 @@ foreach ($merch_inventory as $item) {
     $reorder = (float)($item['reorder_level'] ?? 24);
     $critical = (float)($item['critical_level'] ?? 10);
     $variance = $item['variance'];
+    $is_expired = ($item['exp_status'] ?? '') === 'expired';
+    
+    if ($is_expired) {
+        $summary_expired++;
+    }
     
     if ($variance !== null && (float)$variance != 0) {
         $summary_variance++;
@@ -833,7 +940,9 @@ foreach ($merch_inventory as $item) {
         $summary_alert_low++;
         $summary_low++;
     } else {
-        $summary_available++;
+        if (!$is_expired) {
+            $summary_available++;
+        }
     }
 }
 // Additional summary stats for new dashboard cards
@@ -1332,6 +1441,30 @@ table.staff-adj-tbl td:nth-child(7) {
     font-size: 13px !important;
     font-weight: 600 !important;
 }
+
+/* Status Column: fully visible, never clipped or covered */
+table#mgrStaffAdjTable th:nth-child(9),
+table#mgrStaffAdjTable td:nth-child(9),
+table.staff-adj-tbl th:nth-child(9),
+table.staff-adj-tbl td:nth-child(9) {
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+/* Actions Column: fully visible, spacious */
+table#mgrStaffAdjTable th:nth-child(10),
+table#mgrStaffAdjTable td:nth-child(10),
+table.staff-adj-tbl th:nth-child(10),
+table.staff-adj-tbl td:nth-child(10) {
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
 </style>
 
 <style>
@@ -1684,8 +1817,8 @@ body { overflow-x: hidden; }
     </a>
     <a href="manager_inventory_merchandise.php?tab=alerts" class="tab-btn <?= $active_tab === 'alerts' ? 'active' : '' ?>">
         <i class="fas fa-exclamation-triangle"></i> Stock Alerts
-        <?php if (($summary_low + $summary_out) > 0): ?>
-            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= ($summary_low + $summary_out) ?></span>
+        <?php if (($summary_low + $summary_out + $summary_expired) > 0): ?>
+            <span style="background:#dc3545;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;"><?= ($summary_low + $summary_out + $summary_expired) ?></span>
         <?php endif; ?>
     </a>
     <a href="manager_inventory_merchandise.php?tab=adjustments" class="tab-btn <?= ($active_tab === 'requests' || $active_tab === 'adjustments') ? 'active' : '' ?>">
@@ -1729,6 +1862,11 @@ body { overflow-x: hidden; }
         <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock</div>
         <div class="txn-kpi-val"><?= number_format($summary_out) ?></div>
     </div>
+    <!-- Expired Stock -->
+    <div onclick="filterMgrByCard('expired')" class="txn-kpi-card danger" style="cursor:pointer;" title="Click to filter expired stock items">
+        <div class="txn-kpi-lbl"><i class="fas fa-ban" style="color:#dc2626;margin-right:4px;"></i> Expired Stock</div>
+        <div class="txn-kpi-val"><?= number_format($summary_expired) ?></div>
+    </div>
     <!-- Total Inventory Value -->
     <div class="txn-kpi-card teal">
         <div class="txn-kpi-lbl"><i class="fas fa-peso-sign" style="color:#0d9488;margin-right:4px;"></i> Total Inventory Value</div>
@@ -1756,6 +1894,7 @@ body { overflow-x: hidden; }
                 
                 <option value="out of stock">Out of Stock</option>
                 <option value="variance detected">Variance Detected</option>
+                <option value="expired">Expired</option>
                 <option value="warning" hidden>Stock Alerts</option>
             </select>
         </div>
@@ -1805,30 +1944,14 @@ body { overflow-x: hidden; }
 
                 $fill_pct = $capacity > 0 ? min(100, ($stock / $capacity) * 100) : 0;
                 $batch_id = !empty($item['batch_ref']) ? $item['batch_ref'] : (!empty($item['batch_number']) ? $item['batch_number'] : ('B' . str_pad((string)$pid, 3, '0', STR_PAD_LEFT)));
-                $exp_date = 'N/A';
-                if (!empty($item['expiration_date']) && $item['expiration_date'] !== '0000-00-00') {
-                    $exp_date = (new DateTime($item['expiration_date']))->format('M d, Y');
-                } elseif (!empty($item['date_received'])) {
-                    $exp_date = (new DateTime($item['date_received']))->format('M d, Y');
-                } else {
-                    try {
-                        $dt = new DateTime(!empty($item['last_updated']) ? $item['last_updated'] : '2026-07-20');
-                        $cat_str = strtolower((string)($item['category_name'] ?? $item['category'] ?? ''));
-                        $name_str = strtolower((string)($item['name'] ?? ''));
-                        if (strpos($cat_str, 'accessory') !== false || strpos($cat_str, 'tool') !== false || strpos($name_str, 'wiper') !== false || strpos($name_str, 'mat') !== false) {
-                            $exp_date = 'N/A';
-                        } elseif (strpos($cat_str, 'snack') !== false || strpos($cat_str, 'beverage') !== false || strpos($name_str, 'chippy') !== false || strpos($name_str, 'coca') !== false || strpos($name_str, 'choco') !== false) {
-                            $dt->modify('+1 year');
-                            $exp_date = $dt->format('M d, Y');
-                        } else {
-                            $dt->modify('+3 years');
-                            $exp_date = $dt->format('M d, Y');
-                        }
-                    } catch (Exception $e) { $exp_date = 'Jul 20, 2029'; }
-                }
+                $exp_date = $item['expiration_date'] ?? 'N/A';
+                $exp_raw = $item['exp_raw'] ?? null;
+                $exp_status = $item['exp_status'] ?? '';
                 $initial_qty = $added_qty > 0 ? (int)$added_qty : (int)$capacity;
 
-                if ($stock <= 0) {
+                if ($exp_status === 'expired') {
+                    $st = 'EXPIRED'; $sc = '#dc3545'; $si_cls = 'expired';
+                } elseif ($stock <= 0) {
                     $st = 'OUT OF STOCK'; $sc = '#dc3545'; $si_cls = 'out of stock';
                 } elseif ($stock <= $critical) {
                     $st = 'CRITICAL STOCK'; $sc = '#dc3545'; $si_cls = 'critical';
@@ -1838,9 +1961,9 @@ body { overflow-x: hidden; }
                     $st = 'AVAILABLE'; $sc = '#28a745'; $si_cls = 'available';
                 }
 
-                // If has variance, show it in status but keep underlying status in data-stock-status
+                // If has variance and not expired, show it in status but keep underlying status in data-stock-status
                 $stock_status_class = $si_cls; // Preserve original status for filtering
-                if ($has_variance) {
+                if ($has_variance && $exp_status !== 'expired') {
                     $st = 'VARIANCE DETECTED'; $sc = '#fd7e14'; // Warning color (Orange)
                     $si_cls = 'variance detected';
                 }
@@ -1858,8 +1981,8 @@ body { overflow-x: hidden; }
                 data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                 data-cat="<?php echo strtolower(htmlspecialchars($item['category_name'] ?? '')); ?>"
                 data-has-variance="<?php echo $has_variance ? 'true' : 'false'; ?>"
-                data-inv-status="<?php echo $si_cls; ?>"
-                data-stock-status="<?php echo $stock_status_class; ?>">
+                data-inv-status="<?php echo $exp_status === 'expired' ? 'expired' : $si_cls; ?>"
+                data-stock-status="<?php echo $exp_status === 'expired' ? 'expired' : $stock_status_class; ?>">
                 
                 <!-- 1. ITEM IDENTIFIERS -->
                 <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;">
@@ -1883,9 +2006,22 @@ body { overflow-x: hidden; }
 
                 <!-- 3. EXPIRY DATE -->
                 <td style="padding:9px 8px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
-                    <span style="font-size:12.5px;font-weight:700;color:<?= $exp_date !== 'N/A' ? '#0f172a' : '#94a3b8' ?>;white-space:nowrap;">
-                        <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1' ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
+                    <span style="font-size:12.5px;font-weight:700;color:<?= $exp_status === 'expired' ? '#dc3545' : ($exp_date !== 'N/A' ? '#0f172a' : '#94a3b8') ?>;white-space:nowrap;">
+                        <i class="fas fa-calendar-alt" style="font-size:11px;color:<?= $exp_status === 'expired' ? '#dc3545' : ($exp_date !== 'N/A' ? '#2563eb' : '#cbd5e1') ?>;margin-right:3px;"></i> <?= htmlspecialchars($exp_date) ?>
                     </span>
+                    <?php if ($exp_status === 'expired'): ?>
+                    <div style="margin-top:4px;">
+                        <span style="display:inline-block;background:#dc354520;color:#dc3545;border:1.5px solid #dc354560;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;text-transform:uppercase;white-space:nowrap;letter-spacing:0.4px;">
+                            <i class="fas fa-exclamation-circle" style="font-size:9px;margin-right:2px;"></i>EXPIRED
+                        </span>
+                    </div>
+                    <?php elseif ($exp_status === 'expiring_soon'): ?>
+                    <div style="margin-top:4px;">
+                        <span style="display:inline-block;background:#fd7e1420;color:#c05c00;border:1.5px solid #fd7e1460;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;text-transform:uppercase;white-space:nowrap;letter-spacing:0.4px;">
+                            <i class="fas fa-clock" style="font-size:9px;margin-right:2px;"></i>EXPIRING SOON
+                        </span>
+                    </div>
+                    <?php endif; ?>
                 </td>
 
                 <!-- 4. STOCK LEVELS -->
@@ -1901,10 +2037,16 @@ body { overflow-x: hidden; }
                 </td>
 
                 <!-- 5. STATUS -->
-                <td style="padding:9px 6px;max-width:0;overflow:hidden;box-sizing:border-box;vertical-align:middle;text-align:center;">
-                    <span class="inv-stock-badge" style="background:<?= $sc ?>20;color:<?= $sc ?>;border:1.5px solid <?= $sc ?>50;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap;display:inline-block;">
-                        <?= htmlspecialchars($st) ?>
-                    </span>
+                <td style="padding:9px 6px;max-width:0;overflow:visible;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                    <?php if ($exp_status === 'expired'): ?>
+                        <span class="inv-stock-badge" style="background:#dc354520;color:#dc3545;border:1.5px solid #dc354560;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap;display:inline-block;">
+                            <i class="fas fa-ban" style="font-size:9.5px;margin-right:2px;"></i> EXPIRED
+                        </span>
+                    <?php else: ?>
+                        <span class="inv-stock-badge" style="background:<?= $sc ?>20;color:<?= $sc ?>;border:1.5px solid <?= $sc ?>50;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap;display:inline-block;">
+                            <?= htmlspecialchars($st) ?>
+                        </span>
+                    <?php endif; ?>
                 </td>
 
                 <!-- 6. LAST UPDATED -->
@@ -1926,10 +2068,46 @@ body { overflow-x: hidden; }
             </tr>
             <?php endforeach; ?>
         <?php endforeach; ?>
+            <tr id="invNoMatchRow" style="display:none;" class="no-paginate">
+                <td colspan="7" class="empty-state" style="text-align:center;padding:36px 20px;color:#64748b;font-size:14px;font-weight:600;">
+                    <i class="fas fa-search" style="font-size:28px;display:block;margin-bottom:10px;color:#94a3b8;"></i>
+                    <span id="invNoMatchMsg">No products found matching your search.</span>
+                </td>
+            </tr>
         </tbody>
         </table>
     </div>
-    <div id="mgrMerchPagination" style="padding:10px 20px;"></div>
+    <!-- Inventory Pagination Footer -->
+    <div id="mgrMerchPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="mgrMerchShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="mgrMerchPerPage" onchange="mgrMerchChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="mgrMerchPrevBtn" onclick="mgrMerchGoPage(mgrMerchState.page - 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="mgrMerchPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <button id="mgrMerchNextBtn" onclick="mgrMerchGoPage(mgrMerchState.page + 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="mgrMerchPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2055,10 +2233,46 @@ body { overflow-x: hidden; }
                 </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
+                <tr id="mgrMovNoMatchRow" style="display:none;" class="no-paginate">
+                    <td colspan="9" class="empty-state" style="text-align:center;padding:36px 20px;color:#64748b;font-size:14px;font-weight:600;">
+                        <i class="fas fa-search" style="font-size:28px;display:block;margin-bottom:10px;color:#94a3b8;"></i>
+                        <span id="mgrMovNoMatchMsg">No movements found matching your search.</span>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
-    <div id="mgrMerchMovPagination" style="padding:10px 20px;"></div>
+    <!-- Movement Pagination Footer -->
+    <div id="mgrMerchMovPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="mgrMerchMovShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="mgrMerchMovPerPage" onchange="mgrMerchMovChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="mgrMerchMovPrevBtn" onclick="mgrMerchMovGoPage(mgrMerchMovState.page - 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="mgrMerchMovPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <button id="mgrMerchMovNextBtn" onclick="mgrMerchMovGoPage(mgrMerchMovState.page + 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="mgrMerchMovPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2079,6 +2293,10 @@ body { overflow-x: hidden; }
         <div class="txn-kpi-lbl"><i class="fas fa-times-circle" style="color:#991b1b;margin-right:4px;"></i> Out of Stock Items</div>
         <div class="txn-kpi-val"><?= number_format($summary_out) ?></div>
     </div>
+    <div class="txn-kpi-card danger">
+        <div class="txn-kpi-lbl"><i class="fas fa-ban" style="color:#dc2626;margin-right:4px;"></i> Expired Stock Items</div>
+        <div class="txn-kpi-val"><?= number_format($summary_expired) ?></div>
+    </div>
     <div class="txn-kpi-card purple">
         <div class="txn-kpi-lbl"><i class="fas fa-balance-scale" style="color:#7c3aed;margin-right:4px;"></i> Variance Alerts</div>
         <div class="txn-kpi-val"><?= number_format($summary_variance) ?></div>
@@ -2089,7 +2307,7 @@ body { overflow-x: hidden; }
     <div style="padding:16px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="font-size:16px;font-weight:800;color:#002F70;display:flex;align-items:center;gap:8px;">
             <i class="fas fa-exclamation-triangle" style="color:#fd7e14;"></i> Stock Alerts
-            <?php $total_alerts = $summary_alert_low + $summary_alert_critical + $summary_out + $summary_variance; ?>
+            <?php $total_alerts = $summary_alert_low + $summary_alert_critical + $summary_out + $summary_variance + $summary_expired; ?>
             <?php if ($total_alerts > 0): ?>
             <span style="background:#dc3545;color:#fff;border-radius:12px;padding:4px 12px;font-size:13px;font-weight:800;"><?= $total_alerts ?> items</span>
             <?php endif; ?>
@@ -2139,7 +2357,7 @@ body { overflow-x: hidden; }
                     $critical = (float)($item['critical_level'] ?? 10);
                     $var     = $item['variance'];
                     $has_var = ($var !== null && (float)$var != 0);
-                    if ($stock <= $reorder || $has_var) { $cat_alerts[] = $item; }
+                    if ($stock <= $reorder || $has_var || ($item['exp_status'] ?? '') === 'expired') { $cat_alerts[] = $item; }
                 }
                 if (empty($cat_alerts)) continue;
             ?>
@@ -2152,12 +2370,16 @@ body { overflow-x: hidden; }
                     $unit     = htmlspecialchars($item['unit'] ?? 'pcs');
                     $variance = $item['variance'];
                     $has_variance = ($variance !== null && (float)$variance != 0);
-                    if ($has_variance && $stock > $reorder) {
+                    if (($item['exp_status'] ?? '') === 'expired') {
+                        $st='Expired'; $sc='#dc3545'; $icon='fa-ban';
+                        $recommended='Do Not Sell / Dispose & Adjust Stock';
+                        $rec_icon='fa-trash-alt'; $rec_color='#dc3545'; $alert_type_cls='expired';
+                    } elseif ($has_variance && $stock > $reorder) {
                         $st='Variance Detected'; $sc='#28a745'; $icon='fa-balance-scale';
                         $recommended='Conduct Physical Count';
                         $rec_icon='fa-clipboard-check'; $rec_color='#28a745'; $alert_type_cls='variance detected';
                     } elseif ($stock <= 0) {
-                        $st='Out of Stock'; $sc='#343a40'; $icon='fa-times-circle';
+                        $st='Out of Stock'; $sc='#dc3545'; $icon='fa-times-circle';
                         $recommended='Immediate Restock Required';
                         $rec_icon='fa-exclamation-circle'; $rec_color='#dc3545'; $alert_type_cls='out of stock';
                     } elseif ($stock <= $critical) {
@@ -2169,7 +2391,7 @@ body { overflow-x: hidden; }
                         $recommended='Create Stock Request';
                         $rec_icon='fa-file-alt'; $rec_color='#fd7e14'; $alert_type_cls='low stock';
                     }
-                    if ($has_variance && $stock <= $reorder) { $recommended .= ' + Physical Count'; }
+                    if ($has_variance && $stock <= $reorder && ($item['exp_status'] ?? '') !== 'expired') { $recommended .= ' + Physical Count'; }
                     $var_text='&mdash;'; $var_style='color:#64748b;';
                     if ($variance !== null) {
                         $v_val = (float)$variance;
@@ -2209,10 +2431,46 @@ body { overflow-x: hidden; }
                     No stock alerts. All products are at healthy stock levels!
                 </td></tr>
             <?php endif; ?>
+                <tr id="alertNoMatchRow" style="display:none;" class="no-paginate">
+                    <td colspan="8" class="empty-state" style="text-align:center;padding:36px 20px;color:#64748b;font-size:14px;font-weight:600;">
+                        <i class="fas fa-search" style="font-size:28px;display:block;margin-bottom:10px;color:#94a3b8;"></i>
+                        <span id="alertNoMatchMsg">No stock alerts found matching your search.</span>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
-    <div id="mgrAlertPagination" style="padding:10px 20px;"></div>
+    <!-- Alerts Pagination Footer -->
+    <div id="mgrAlertPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-top:1px solid #e2e8f0; background:#fff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="mgrAlertShowingText" style="font-size:13px; color:#64748b; font-weight:600;">Showing entries…</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                <select id="mgrAlertPerPage" onchange="mgrAlertChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="mgrAlertPrevBtn" onclick="mgrAlertGoPage(mgrAlertState.page - 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="mgrAlertPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                <button id="mgrAlertNextBtn" onclick="mgrAlertGoPage(mgrAlertState.page + 1)"
+                        style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; color:#475569; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+                        onmouseover="if(!this.disabled)this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="mgrAlertPagination" style="display:none;"></div>
 </div>
 <?php endif; ?>
 
@@ -2233,14 +2491,14 @@ body { overflow-x: hidden; }
             <colgroup>
                 <col style="width:7%;">
                 <col style="width:10%;">
-                <col style="width:18%;">
+                <col style="width:17%;">
+                <col style="width:8.5%;">
+                <col style="width:6%;">
+                <col style="width:6%;">
+                <col style="width:14.5%;">
                 <col style="width:9%;">
-                <col style="width:8%;">
-                <col style="width:8%;">
-                <col style="width:16%;">
-                <col style="width:9%;">
-                <col style="width:7%;">
-                <col style="width:8%;">
+                <col style="width:11%;">
+                <col style="width:11%;">
             </colgroup>
             <thead>
                 <tr>
@@ -2281,7 +2539,18 @@ body { overflow-x: hidden; }
                         <td style="text-align:right; font-weight:900; color:<?= $change_color ?>; font-size:15px;"><?= $change_fmt ?></td>
                         <td style="white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important; font-size:13px; color:#334155; line-height:1.35;"><?= htmlspecialchars($adj['reason'] ?: '—') ?></td>
                         <td><strong style="font-size:13px; font-weight:700; color:#0f172a;"><?= htmlspecialchars($adj['staff_name'] ?? 'Staff') ?></strong></td>
-                        <td style="text-align:center;"><span class="status-badge <?= $badge_cls ?>" style="font-weight:800; font-size:11.5px; text-transform:uppercase; padding:4px 10px; border-radius:12px;"><?= htmlspecialchars($adj['status']) ?></span></td>
+                        <td style="text-align:center; overflow:visible !important; white-space:nowrap !important;">
+                            <span class="status-badge <?= $badge_cls ?>" style="display:inline-flex; align-items:center; justify-content:center; gap:5px; font-weight:800; font-size:11px; text-transform:uppercase; padding:5px 12px; border-radius:14px; white-space:nowrap !important; letter-spacing:0.3px; box-sizing:border-box;">
+                                <?php if ($st === 'approved'): ?>
+                                    <i class="fas fa-check-circle" style="font-size:10.5px;"></i>
+                                <?php elseif ($st === 'rejected'): ?>
+                                    <i class="fas fa-times-circle" style="font-size:10.5px;"></i>
+                                <?php else: ?>
+                                    <i class="fas fa-clock" style="font-size:10.5px;"></i>
+                                <?php endif; ?>
+                                <?= htmlspecialchars($adj['status']) ?>
+                            </span>
+                        </td>
                         <td style="text-align:center;">
                             <?php if ($st === 'pending'): ?>
                                 <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
@@ -2518,8 +2787,8 @@ body { overflow-x: hidden; }
             </div>
 
             <div class="form-group">
-                <label>Reason / Manager Notes <span style="color:red;">*</span></label>
-                <textarea name="manager_notes" rows="3" required placeholder="Provide reason for variance adjustment..."></textarea>
+                <label>Reason / Manager Notes <span style="color:#64748b; font-weight:normal; font-size:11px;">(Optional)</span></label>
+                <textarea name="manager_notes" rows="3" placeholder="Provide reason for variance adjustment (optional)..."></textarea>
             </div>
             <div class="modal-actions" style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
                 <button type="button" onclick="closeAdjustmentModal()" class="ato-btn ato-btn-back">Cancel</button>
@@ -3238,6 +3507,10 @@ function filterInvTable() {
             matchesStock = isWarning;
         } else if (stFlt === 'variance detected') {
             matchesStock = (rInv === 'variance detected');
+        } else if (stFlt === 'expired') {
+            matchesStock = (rInv === 'expired' || rStockStatus === 'expired');
+        } else if (stFlt === 'available') {
+            matchesStock = (rInv === 'available' || rStockStatus === 'available') && rInv !== 'expired' && rStockStatus !== 'expired';
         } else {
             matchesStock = (rInv === stFlt || (rInv !== 'variance detected' && rStockStatus === stFlt));
         }
@@ -3248,8 +3521,10 @@ function filterInvTable() {
             matchesSrch = true;
         } else if (['low', 'low stock', 'out', 'out of stock', 'critical', 'critical stock', 'warning'].indexOf(srch) !== -1) {
             matchesSrch = isWarning;
+        } else if (srch === 'expired') {
+            matchesSrch = (rInv === 'expired' || rStockStatus === 'expired');
         } else if (srch === 'available') {
-            matchesSrch = (rInv === 'available' || rStockStatus === 'available');
+            matchesSrch = (rInv === 'available' || rStockStatus === 'available') && rInv !== 'expired' && rStockStatus !== 'expired';
         } else {
             matchesSrch = rName.includes(srch) || rSku.includes(srch) || rCat.includes(srch);
         }
@@ -3257,47 +3532,68 @@ function filterInvTable() {
         var ok = matchesCat && matchesSrch && matchesStock;
         if (ok) {
             r.classList.remove('search-hidden');
+            r.style.display = '';
             visibleCount++;
         } else {
             r.classList.add('search-hidden');
+            r.style.display = 'none';
         }
     });
-
-    console.log('Status Counts:', statusCounts);
-    console.log('Visible Rows:', visibleCount);
-    console.log('==================');
 
     // Update category header visibility based on filtered items
     var tbody = document.getElementById('merchTableBody');
-    var rows = Array.from(tbody.querySelectorAll('tr'));
-    var currentHeader = null;
-    var hasVisibleItems = false;
-    rows.forEach(function(r) {
-        if (r.classList.contains('cat-header')) {
-            if (currentHeader) {
-                if (hasVisibleItems) {
-                    currentHeader.classList.remove('search-hidden');
-                    currentHeader.style.display = '';
-                } else {
-                    currentHeader.classList.add('search-hidden');
-                    currentHeader.style.display = 'none';
+    if (tbody) {
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        var currentHeader = null;
+        var hasVisibleItems = false;
+        rows.forEach(function(r) {
+            if (r.classList.contains('cat-header')) {
+                if (currentHeader) {
+                    if (hasVisibleItems) {
+                        currentHeader.classList.remove('search-hidden');
+                        currentHeader.style.display = '';
+                    } else {
+                        currentHeader.classList.add('search-hidden');
+                        currentHeader.style.display = 'none';
+                    }
+                }
+                currentHeader = r;
+                hasVisibleItems = false;
+            } else if (r.classList.contains('merch-row')) {
+                if (!r.classList.contains('search-hidden') && r.style.display !== 'none') {
+                    hasVisibleItems = true;
                 }
             }
-            currentHeader = r;
-            hasVisibleItems = false;
-        } else if (r.classList.contains('merch-row')) {
-            if (!r.classList.contains('search-hidden')) {
-                hasVisibleItems = true;
+        });
+        if (currentHeader) {
+            if (hasVisibleItems) {
+                currentHeader.classList.remove('search-hidden');
+                currentHeader.style.display = '';
+            } else {
+                currentHeader.classList.add('search-hidden');
+                currentHeader.style.display = 'none';
             }
         }
-    });
-    if (currentHeader) {
-        if (hasVisibleItems) {
-            currentHeader.classList.remove('search-hidden');
-            currentHeader.style.display = '';
+    }
+
+    // Dynamic No-Match Empty State for Inventory Overview
+    var noMatchRow = document.getElementById('invNoMatchRow');
+    if (noMatchRow) {
+        var allMerchRows = document.querySelectorAll('#merchTableBody .merch-row');
+        if (visibleCount === 0 && allMerchRows.length > 0) {
+            noMatchRow.style.display = '';
+            var invMsgEl = document.getElementById('invNoMatchMsg');
+            if (invMsgEl) {
+                if (srch) {
+                    invMsgEl.innerHTML = 'No products found matching "<strong>' + esc(srch) + '</strong>".';
+                } else if (cat) {
+                    invMsgEl.textContent = 'No products found in category "' + cat.toUpperCase() + '".';
+                } else {
+                    invMsgEl.textContent = 'No products match the selected criteria.';
+                }
+            }
         } else {
-            currentHeader.classList.add('search-hidden');
-            currentHeader.style.display = 'none';
+            noMatchRow.style.display = 'none';
         }
     }
 
@@ -3315,29 +3611,93 @@ function filterAlertTable() {
     var srch = srchEl ? srchEl.value.toLowerCase().trim() : '';
     var type = typeEl ? typeEl.value.toLowerCase().trim() : '';
     
-    document.querySelectorAll('#alertTableBody .alert-row').forEach(function(r) {
+    var visibleCount = 0;
+    var rows = document.querySelectorAll('#alertTableBody .alert-row');
+    
+    rows.forEach(function(r) {
         var rCat = (r.dataset.cat || '').toLowerCase().trim();
         var rName = (r.dataset.name || '').toLowerCase().trim();
         var rSku = (r.dataset.sku || '').toLowerCase().trim();
         var rType = (r.dataset.alertType || '').toLowerCase().trim();
+        var rText = (r.textContent || r.innerText || '').toLowerCase();
         
         var matchesCat = !cat || rCat === cat;
-        var matchesSrch = !srch || rName.includes(srch) || rSku.includes(srch);
+        // Search matches SKU, Product Name, Category, Alert Type, or any text in the row
+        var matchesSrch = !srch || 
+                          rName.indexOf(srch) !== -1 || 
+                          rSku.indexOf(srch) !== -1 || 
+                          rCat.indexOf(srch) !== -1 || 
+                          rType.indexOf(srch) !== -1 || 
+                          rText.indexOf(srch) !== -1;
         var matchesType = !type || rType === type;
         
         var ok = matchesCat && matchesSrch && matchesType;
         if (ok) {
             r.classList.remove('search-hidden');
             r.style.display = '';
+            visibleCount++;
         } else {
             r.classList.add('search-hidden');
             r.style.display = 'none';
         }
     });
 
-    console.log('Visible alerts:', visibleCount);
-    console.log('Alert type breakdown:', typeCount);
-    console.log('===========================');
+    // Update category header visibility: Hide header if all products under it are filtered out
+    var tbody = document.getElementById('alertTableBody');
+    if (tbody) {
+        var trs = Array.from(tbody.querySelectorAll('tr'));
+        var currentHeader = null;
+        var hasVisibleItems = false;
+        
+        trs.forEach(function(r) {
+            if (r.classList.contains('cat-header')) {
+                if (currentHeader) {
+                    if (hasVisibleItems) {
+                        currentHeader.classList.remove('search-hidden');
+                        currentHeader.style.display = '';
+                    } else {
+                        currentHeader.classList.add('search-hidden');
+                        currentHeader.style.display = 'none';
+                    }
+                }
+                currentHeader = r;
+                hasVisibleItems = false;
+            } else if (r.classList.contains('alert-row')) {
+                if (!r.classList.contains('search-hidden') && r.style.display !== 'none') {
+                    hasVisibleItems = true;
+                }
+            }
+        });
+        if (currentHeader) {
+            if (hasVisibleItems) {
+                currentHeader.classList.remove('search-hidden');
+                currentHeader.style.display = '';
+            } else {
+                currentHeader.classList.add('search-hidden');
+                currentHeader.style.display = 'none';
+            }
+        }
+    }
+
+    // Dynamic No-Match Empty State for Stock Alerts
+    var noMatchRow = document.getElementById('alertNoMatchRow');
+    if (noMatchRow) {
+        if (visibleCount === 0 && rows.length > 0) {
+            noMatchRow.style.display = '';
+            var msgEl = document.getElementById('alertNoMatchMsg');
+            if (msgEl) {
+                if (srch) {
+                    msgEl.innerHTML = 'No stock alerts found matching "<strong>' + esc(srch) + '</strong>".';
+                } else if (cat) {
+                    msgEl.textContent = 'No stock alerts found in category "' + cat.toUpperCase() + '".';
+                } else {
+                    msgEl.textContent = 'No stock alerts match the selected criteria.';
+                }
+            }
+        } else {
+            noMatchRow.style.display = 'none';
+        }
+    }
 
     if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrAlertTable']) {
         window.tablePaginationTriggers['mgrAlertTable']();
@@ -3720,20 +4080,7 @@ document.addEventListener('DOMContentLoaded', function() {
         '#reqUserFilter'
     ]);
 
-    // Standard table pagination setup
-    <?php if ($active_tab === 'inventory'): ?>
-    setupTablePagination('mgrMerchTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
-    <?php elseif ($active_tab === 'alerts'): ?>
-    setupTablePagination('mgrAlertTable', 'mgrMerchRowsLimit', 'mgrAlertPagination', 50);
-    <?php elseif ($active_tab === 'movement'): ?>
-    setupTablePagination('mgrMovTable', 'mgrMerchRowsLimit', 'mgrMovPagination', 50);
-    <?php elseif ($active_tab === 'requests'): ?>
-    setupTablePagination('mgrRequestsTable', 'mgrMerchRowsLimit', 'mgrRequestsPagination', 50);
-    <?php elseif ($active_tab === 'deliveries'): ?>
-    setupTablePagination('mgrDeliveriesTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
-    <?php elseif ($active_tab === 'history'): ?>
-    setupTablePagination('mgrHistoryTable', 'mgrMerchRowsLimit', 'mgrMerchPagination', 50);
-    <?php endif; ?>
+
 
     // â”€â”€ Auto-apply URL-driven filter (from sidebar deep-links) â”€â”€
     <?php if ($url_filter === 'low'): ?>
@@ -3777,9 +4124,8 @@ function filterMgrByCard(val) {
         <!-- Sub-tabs -->
         <div style="display:flex;border-bottom:2px solid #e2e8f0;background:#f8fafc;flex-shrink:0;padding:0 16px;">
             <button class="modal-tab-btn active" id="pdmTab1" onclick="pdmSwitchTab(1)"><i class="fas fa-info-circle"></i> Product Info</button>
-            <button class="modal-tab-btn" id="pdmTab2" onclick="pdmSwitchTab(2)"><i class="fas fa-layer-group"></i> Batch FIFO</button>
-            <button class="modal-tab-btn" id="pdmTab3" onclick="pdmSwitchTab(3)"><i class="fas fa-history"></i> Movement Log</button>
-            <button class="modal-tab-btn" id="pdmTab4" onclick="pdmSwitchTab(4)"><i class="fas fa-clipboard-list"></i> Physical Count</button>
+            <button class="modal-tab-btn" id="pdmTab2" onclick="pdmSwitchTab(2)"><i class="fas fa-layer-group"></i> Batch Inventory</button>
+            <button class="modal-tab-btn" id="pdmTab3" onclick="pdmSwitchTab(3)"><i class="fas fa-clipboard-list"></i> Physical Count</button>
         </div>
         <!-- Body -->
         <div style="overflow-y:auto;flex:1;padding:22px;" id="pdmBody">
@@ -3787,6 +4133,7 @@ function filterMgrByCard(val) {
             <div id="pdmPane1">
                 <div id="pdmLoadingMsg" style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-spinner fa-spin fa-2x"></i><br>Loading...</div>
                 <div id="pdmContent" style="display:none;">
+                    <div id="pdmAlertNotice"></div>
                     <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-tag"></i> Product Information</div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;margin-bottom:20px;">
                         <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">SKU</div><div id="pdmSKU" style="font-weight:700;color:#002F70;font-size:14px;"></div></div>
@@ -3796,6 +4143,7 @@ function filterMgrByCard(val) {
                         <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Supplier</div><div id="pdmSupplier"></div></div>
                         <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Barcode</div><div id="pdmBarcode"></div></div>
                         <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Unit of Measure</div><div id="pdmUOM"></div></div>
+                        <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Expiration Date</div><div id="pdmExpiry"></div></div>
                         <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Status</div><div id="pdmStatus"></div></div>
                     </div>
                     <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-chart-bar"></i> Inventory Summary</div>
@@ -3809,18 +4157,13 @@ function filterMgrByCard(val) {
                     </div>
                 </div>
             </div>
-            <!-- TAB 2: Batch FIFO -->
+            <!-- TAB 2: Batch Inventory -->
             <div id="pdmPane2" style="display:none;">
-                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> Batch Inventory (FIFO)</div>
+                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-layer-group"></i> Batch Inventory Breakdown</div>
                 <div id="pdmBatchTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No batch data.</div></div>
             </div>
-            <!-- TAB 3: Stock Movement Log -->
+            <!-- TAB 3: Physical Count History -->
             <div id="pdmPane3" style="display:none;">
-                <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-history"></i> Stock Movement Log</div>
-                <div id="pdmMovementTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No movement log.</div></div>
-            </div>
-            <!-- TAB 4: Physical Count History -->
-            <div id="pdmPane4" style="display:none;">
                 <div style="font-size:11px;font-weight:700;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e9ecef;"><i class="fas fa-clipboard-list"></i> Physical Count History</div>
                 <div id="pdmPhysicalTable"><div style="text-align:center;padding:24px;color:#94a3b8;">No physical count records.</div></div>
             </div>
@@ -3932,6 +4275,40 @@ function openProductModal(productId) {
         document.getElementById('pdmContent').style.display = 'block';
         document.getElementById('pdmTitle').textContent = p.name || 'View Product';
 
+        // Expiration Alert & Badge Handling
+        var expDate = p.expiration_date && p.expiration_date !== 'N/A' && p.expiration_date !== '' ? p.expiration_date : (function() {
+            var base = p.last_updated ? new Date(p.last_updated) : new Date('2026-08-31');
+            var cat = (p.category || p.category_name || '').toLowerCase();
+            var nm  = (p.name || '').toLowerCase();
+            if (nm.indexOf('chippy') !== -1 || nm.indexOf('coca') !== -1 || nm.indexOf('choco') !== -1 || cat.indexOf('snack') !== -1 || cat.indexOf('beverage') !== -1) {
+                base.setFullYear(base.getFullYear() + 1);
+            } else if (cat.indexOf('accessory') !== -1 || cat.indexOf('tool') !== -1 || nm.indexOf('wiper') !== -1 || nm.indexOf('mat') !== -1) {
+                base.setFullYear(base.getFullYear() + 5);
+            } else {
+                base.setFullYear(base.getFullYear() + 3);
+            }
+            return base.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        })();
+        var isExpired = p.exp_status === 'expired' || (expDate !== 'N/A' && new Date(expDate) < new Date(new Date().toDateString()));
+        var isExpiringSoon = !isExpired && (p.exp_status === 'expiring_soon' || (expDate !== 'N/A' && (new Date(expDate) - new Date(new Date().toDateString())) / (1000*60*60*24) <= 30));
+
+        var noticeEl = document.getElementById('pdmAlertNotice');
+        if (noticeEl) {
+            if (isExpired) {
+                noticeEl.innerHTML = '<div style="background:#fee2e2; border:1.5px solid #ef4444; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#991b1b; font-size:13.5px; font-weight:700;">' +
+                    '<i class="fas fa-exclamation-triangle" style="font-size:22px; color:#dc2626; flex-shrink:0;"></i>' +
+                    '<div><strong style="text-transform:uppercase; letter-spacing:0.5px;">Product Has Expired</strong><div style="font-size:12px; font-weight:500; color:#7f1d1d; margin-top:2px;">This product reached its expiration date on ' + expDate + '. Do not dispense or sell to customers.</div></div>' +
+                    '</div>';
+            } else if (isExpiringSoon) {
+                noticeEl.innerHTML = '<div style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#92400e; font-size:13.5px; font-weight:700;">' +
+                    '<i class="fas fa-clock" style="font-size:20px; color:#d97706; flex-shrink:0;"></i>' +
+                    '<div><strong style="text-transform:uppercase; letter-spacing:0.5px;">Expiring Soon</strong><div style="font-size:12px; font-weight:500; color:#b45309; margin-top:2px;">This product will expire on ' + expDate + '. Prioritize sales using FIFO.</div></div>' +
+                    '</div>';
+            } else {
+                noticeEl.innerHTML = '';
+            }
+        }
+
         // Product Info
         document.getElementById('pdmSKU').textContent = p.sku || '—';
         document.getElementById('pdmName').textContent = p.name || '—';
@@ -3940,10 +4317,26 @@ function openProductModal(productId) {
         document.getElementById('pdmSupplier').textContent = p.supplier || 'Petron Corporation';
         document.getElementById('pdmBarcode').textContent = p.barcode || p.sku || '—';
         document.getElementById('pdmUOM').textContent = p.unit || '—';
-        var status = (p.product_status || 'active').toLowerCase();
-        var sBg = status === 'active' ? '#d4edda' : '#e9ecef';
-        var sColor = status === 'active' ? '#155724' : '#495057';
-        document.getElementById('pdmStatus').innerHTML = '<span style="background:' + sBg + ';color:' + sColor + ';padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;">' + (p.product_status || 'Active') + '</span>';
+
+        var expiryEl = document.getElementById('pdmExpiry');
+        if (expiryEl) {
+            var expBadge = '';
+            if (isExpired) {
+                expBadge = ' <span style="background:#dc354520;color:#dc3545;border:1.5px solid #dc354560;border-radius:4px;font-size:10px;font-weight:800;padding:2px 6px;text-transform:uppercase;margin-left:6px;display:inline-block;"><i class="fas fa-exclamation-circle"></i> EXPIRED</span>';
+            } else if (isExpiringSoon) {
+                expBadge = ' <span style="background:#fd7e1420;color:#c05c00;border:1.5px solid #fd7e1460;border-radius:4px;font-size:10px;font-weight:800;padding:2px 6px;text-transform:uppercase;margin-left:6px;display:inline-block;"><i class="fas fa-clock"></i> EXPIRING SOON</span>';
+            }
+            expiryEl.innerHTML = '<span style="color:' + (isExpired ? '#dc3545' : (expDate !== 'N/A' ? '#1e293b' : '#94a3b8')) + ';font-weight:700;">' + expDate + '</span>' + expBadge;
+        }
+
+        if (isExpired) {
+            document.getElementById('pdmStatus').innerHTML = '<span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;"><i class="fas fa-ban" style="margin-right:3px;"></i> EXPIRED</span>';
+        } else {
+            var status = (p.product_status || 'active').toLowerCase();
+            var sBg = status === 'active' ? '#d4edda' : '#e9ecef';
+            var sColor = status === 'active' ? '#155724' : '#495057';
+            document.getElementById('pdmStatus').innerHTML = '<span style="background:' + sBg + ';color:' + sColor + ';padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;">' + (p.product_status || 'Active') + '</span>';
+        }
 
         // Inventory Summary
         var stock = parseFloat(p.stock_level || 0);
@@ -3952,15 +4345,13 @@ function openProductModal(productId) {
         var price = parseFloat(p.price || p.cost || 0);
         document.getElementById('pdmCurrentStock').textContent = stock.toLocaleString() + ' ' + (p.unit || 'pcs');
         document.getElementById('pdmReserved').textContent = '0';
-        document.getElementById('pdmAvailable').textContent = stock.toLocaleString() + ' ' + (p.unit || 'pcs');
+        document.getElementById('pdmAvailable').textContent = isExpired ? ('0 ' + (p.unit || 'pcs')) : (stock.toLocaleString() + ' ' + (p.unit || 'pcs'));
         document.getElementById('pdmReorderLevel').textContent = reorder.toLocaleString();
         document.getElementById('pdmCriticalLevel').textContent = critical.toLocaleString();
-        document.getElementById('pdmInvValue').textContent = '\u20b1' + (stock * price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+        document.getElementById('pdmInvValue').textContent = '₱' + (stock * price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-        // Batch FIFO
-        renderBatchTable(res.batches || []);
-        // Movement Log
-        renderMovementTable(res.movements || []);
+        // Batch Inventory
+        renderBatchTable((res.batches && res.batches.length > 0) ? res.batches : (res.deliveries || []), p);
         // Physical Count
         renderPhysicalTable(res.physical_counts || res.movements || []);
 
@@ -3985,16 +4376,19 @@ function openProductModal(productId) {
     });
 }
 
-function renderBatchTable(batches) {
+function renderBatchTable(batches, p) {
     var el = document.getElementById('pdmBatchTable');
     if (!batches || batches.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">No batch records found.</div>';
         return;
     }
+    var pExpiry = (p && p.expiration_date && p.expiration_date !== 'N/A') ? p.expiration_date : '—';
+    var pPrice = (p && (p.price || p.selling_price)) ? parseFloat(p.price || p.selling_price) : 0;
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">' +
         '<thead><tr style="background:#002F70;color:#fff;">' +
         '<th style="padding:8px 10px;">Batch ID</th>' +
         '<th style="padding:8px 10px;">Delivery Date</th>' +
+        '<th style="padding:8px 10px;">Expiration Date</th>' +
         '<th style="padding:8px 10px;text-align:right;">Received Qty</th>' +
         '<th style="padding:8px 10px;text-align:right;">Remaining Qty</th>' +
         '<th style="padding:8px 10px;text-align:right;">Unit Cost</th>' +
@@ -4002,18 +4396,23 @@ function renderBatchTable(batches) {
         '<th style="padding:8px 10px;text-align:center;">Status</th>' +
         '</tr></thead><tbody>';
     batches.forEach(function(b) {
-        var dDate = b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-        var remaining = parseFloat(b.remaining_qty || b.quantity || 0);
+        var dDate = b.encoded_at ? new Date(b.encoded_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : (b.delivery_date ? new Date(b.delivery_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
+        var expBatchStr = b.expiration_date ? new Date(b.expiration_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : pExpiry;
+        var rcv = parseFloat(b.qty_received || b.received_qty || b.quantity || 0);
+        var remaining = parseFloat(b.remaining_qty !== undefined ? b.remaining_qty : (b.qty_received || b.quantity || 0));
+        var cost = parseFloat(b.unit_cost || b.cost || 0);
+        var price = parseFloat(b.selling_price || b.price || pPrice);
         var status = remaining <= 0 ? 'Depleted' : 'Active';
         var sBg = remaining <= 0 ? '#f1f5f9' : '#d4edda';
         var sColor = remaining <= 0 ? '#64748b' : '#155724';
         html += '<tr style="border-bottom:1px solid #f1f5f9;">' +
-            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_id || b.id || '—') + '</td>' +
+            '<td style="padding:8px 10px;font-weight:700;color:#002F70;">' + (b.batch_no || b.batch_id || ('BATCH-' + (b.id || '1'))) + '</td>' +
             '<td style="padding:8px 10px;color:#475569;">' + dDate + '</td>' +
-            '<td style="padding:8px 10px;text-align:right;">' + parseFloat(b.received_qty || b.quantity || 0).toLocaleString() + '</td>' +
+            '<td style="padding:8px 10px;color:#475569;font-weight:600;">' + expBatchStr + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + rcv.toLocaleString() + '</td>' +
             '<td style="padding:8px 10px;text-align:right;font-weight:700;">' + remaining.toLocaleString() + '</td>' +
-            '<td style="padding:8px 10px;text-align:right;">\u20b1' + parseFloat(b.unit_cost || b.cost || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
-            '<td style="padding:8px 10px;text-align:right;">\u20b1' + parseFloat(b.selling_price || b.price || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">₱' + cost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">₱' + price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>' +
             '<td style="padding:8px 10px;text-align:center;"><span style="background:' + sBg + ';color:' + sColor + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">' + status + '</span></td>' +
             '</tr>';
     });
@@ -4023,6 +4422,7 @@ function renderBatchTable(batches) {
 
 function renderMovementTable(movements) {
     var el = document.getElementById('pdmMovementTable');
+    if (!el) return;
     if (!movements || movements.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">No movement records found.</div>';
         return;
@@ -4094,7 +4494,7 @@ function renderPhysicalTable(movements) {
 }
 
 function pdmSwitchTab(n) {
-    for (var i = 1; i <= 4; i++) {
+    for (var i = 1; i <= 3; i++) {
         var btn = document.getElementById('pdmTab' + i);
         var pane = document.getElementById('pdmPane' + i);
         if (btn) btn.classList.toggle('active', i === n);
@@ -4219,28 +4619,403 @@ function filterMgrMovTable() {
     var sq = (document.getElementById('mgrMovSearchInput') ? document.getElementById('mgrMovSearchInput').value : '').toLowerCase().trim();
     var tp = (document.getElementById('mgrMovTypeFilter') ? document.getElementById('mgrMovTypeFilter').value : '').toLowerCase().trim();
 
+    var visibleCount = 0;
     var rows = document.querySelectorAll('#mgrMerchMovTbody tr.mgr-mmov-row');
     rows.forEach(function(row) {
-        var sText = row.getAttribute('data-search') || '';
-        var mType = row.getAttribute('data-type') || '';
+        var sText = (row.getAttribute('data-search') || '').toLowerCase();
+        var mType = (row.getAttribute('data-type') || '').toLowerCase();
+        var rowText = (row.textContent || row.innerText || '').toLowerCase();
 
-        var matchS = !sq || sText.indexOf(sq) !== -1;
+        var matchS = !sq || sText.indexOf(sq) !== -1 || rowText.indexOf(sq) !== -1;
         var matchT = !tp || mType.indexOf(tp) !== -1;
 
         if (matchS && matchT) {
             row.style.display = '';
+            row.classList.remove('search-hidden');
+            visibleCount++;
         } else {
             row.style.display = 'none';
+            row.classList.add('search-hidden');
         }
+    });
+
+    // Dynamic No-Match Empty State for Movement Logs
+    var noMatchRow = document.getElementById('mgrMovNoMatchRow');
+    if (noMatchRow) {
+        if (visibleCount === 0 && rows.length > 0) {
+            noMatchRow.style.display = '';
+            var msgEl = document.getElementById('mgrMovNoMatchMsg');
+            if (msgEl) {
+                msgEl.innerHTML = sq ? 'No movements found matching "<strong>' + esc(sq) + '</strong>".' : 'No movements found matching selected filter.';
+            }
+        } else {
+            noMatchRow.style.display = 'none';
+        }
+    }
+
+    if (window.tablePaginationTriggers && window.tablePaginationTriggers['mgrMerchMovTable']) {
+        window.tablePaginationTriggers['mgrMerchMovTable']();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAGINATION STATE MACHINES — Inventory, Movement, Alerts tables
+// ═══════════════════════════════════════════════════════════════
+
+/* ── Shared helper: get visible (non-hidden, non-no-paginate) rows ── */
+function mgrGetVisibleRows(tbodyId) {
+    var tbody = document.getElementById(tbodyId);
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr')).filter(function(r) {
+        return !r.classList.contains('search-hidden') &&
+               !r.classList.contains('no-paginate') &&
+               r.id.indexOf('NoMatchRow') === -1 &&
+               r.id.indexOf('NoResults') === -1;
     });
 }
 
+/* ══════════════ INVENTORY TAB ══════════════ */
+var mgrMerchState = { page: 1, perPage: 25 };
+
+function mgrMerchRender() {
+    var rows = mgrGetVisibleRows('merchTableBody');
+    var total = rows.length;
+    var perPage = mgrMerchState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (mgrMerchState.page > totalPages) mgrMerchState.page = totalPages;
+    if (mgrMerchState.page < 1) mgrMerchState.page = 1;
+
+    var start = (mgrMerchState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    /* Hide/show all rows in tbody including category headers */
+    var tbody = document.getElementById('merchTableBody');
+    if (tbody) {
+        var allRows = Array.from(tbody.querySelectorAll('tr'));
+        /* Track which paginated rows to show */
+        var visIdx = 0;
+        allRows.forEach(function(r) {
+            if (r.classList.contains('no-paginate') ||
+                r.id.indexOf('NoMatchRow') !== -1 ||
+                r.id.indexOf('NoResults') !== -1) {
+                return; /* keep as-is */
+            }
+            if (r.classList.contains('search-hidden')) {
+                r.style.display = 'none';
+                return;
+            }
+            if (r.classList.contains('cat-header') || r.classList.contains('category-header')) {
+                return; /* handle below */
+            }
+            /* Regular data row */
+            r.style.display = (visIdx >= start && visIdx < end) ? '' : 'none';
+            visIdx++;
+        });
+        /* Show/hide category headers: visible if they have ≥1 visible sibling */
+        tbody.querySelectorAll('.cat-header, .category-header').forEach(function(hdr) {
+            var next = hdr.nextElementSibling;
+            var hasVisible = false;
+            while (next && !next.classList.contains('cat-header') && !next.classList.contains('category-header')) {
+                if (next.style.display !== 'none' &&
+                    !next.classList.contains('search-hidden') &&
+                    !next.classList.contains('no-paginate') &&
+                    next.id.indexOf('NoMatchRow') === -1) {
+                    hasVisible = true;
+                    break;
+                }
+                next = next.nextElementSibling;
+            }
+            hdr.style.display = hasVisible ? '' : 'none';
+        });
+    }
+
+    /* Update footer */
+    var showingEl = document.getElementById('mgrMerchShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
+    }
+    var labelEl = document.getElementById('mgrMerchPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + mgrMerchState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('mgrMerchPrevBtn');
+    var nextBtn = document.getElementById('mgrMerchNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = mgrMerchState.page <= 1;
+        prevBtn.style.cursor = mgrMerchState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = mgrMerchState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = mgrMerchState.page >= totalPages;
+        nextBtn.style.cursor = mgrMerchState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = mgrMerchState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function mgrMerchGoPage(p) {
+    mgrMerchState.page = p;
+    mgrMerchRender();
+}
+
+function mgrMerchChangePerPage() {
+    var sel = document.getElementById('mgrMerchPerPage');
+    if (sel) mgrMerchState.perPage = parseInt(sel.value, 10);
+    mgrMerchState.page = 1;
+    mgrMerchRender();
+}
+
+/* ══════════════ MOVEMENT TAB ══════════════ */
+var mgrMerchMovState = { page: 1, perPage: 25 };
+
+function mgrMerchMovRender() {
+    var rows = mgrGetVisibleRows('mgrMerchMovTbody');
+    var total = rows.length;
+    var perPage = mgrMerchMovState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (mgrMerchMovState.page > totalPages) mgrMerchMovState.page = totalPages;
+    if (mgrMerchMovState.page < 1) mgrMerchMovState.page = 1;
+
+    var start = (mgrMerchMovState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    rows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    var showingEl = document.getElementById('mgrMerchMovShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
+    }
+    var labelEl = document.getElementById('mgrMerchMovPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + mgrMerchMovState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('mgrMerchMovPrevBtn');
+    var nextBtn = document.getElementById('mgrMerchMovNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = mgrMerchMovState.page <= 1;
+        prevBtn.style.cursor = mgrMerchMovState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = mgrMerchMovState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = mgrMerchMovState.page >= totalPages;
+        nextBtn.style.cursor = mgrMerchMovState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = mgrMerchMovState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function mgrMerchMovGoPage(p) {
+    mgrMerchMovState.page = p;
+    mgrMerchMovRender();
+}
+
+function mgrMerchMovChangePerPage() {
+    var sel = document.getElementById('mgrMerchMovPerPage');
+    if (sel) mgrMerchMovState.perPage = parseInt(sel.value, 10);
+    mgrMerchMovState.page = 1;
+    mgrMerchMovRender();
+}
+
+/* ══════════════ ALERTS TAB ══════════════ */
+var mgrAlertState = { page: 1, perPage: 25 };
+
+function mgrAlertRender() {
+    var rows = mgrGetVisibleRows('alertTableBody');
+    var total = rows.length;
+    var perPage = mgrAlertState.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (mgrAlertState.page > totalPages) mgrAlertState.page = totalPages;
+    if (mgrAlertState.page < 1) mgrAlertState.page = 1;
+
+    var start = (mgrAlertState.page - 1) * perPage;
+    var end   = Math.min(start + perPage, total);
+
+    var tbody = document.getElementById('alertTableBody');
+    if (tbody) {
+        var allRows = Array.from(tbody.querySelectorAll('tr'));
+        var visIdx = 0;
+        allRows.forEach(function(r) {
+            if (r.classList.contains('no-paginate') ||
+                r.id.indexOf('NoMatchRow') !== -1 ||
+                r.id.indexOf('NoResults') !== -1) {
+                return;
+            }
+            if (r.classList.contains('search-hidden')) {
+                r.style.display = 'none';
+                return;
+            }
+            if (r.classList.contains('cat-header') || r.classList.contains('category-header')) {
+                return;
+            }
+            r.style.display = (visIdx >= start && visIdx < end) ? '' : 'none';
+            visIdx++;
+        });
+        tbody.querySelectorAll('.cat-header, .category-header').forEach(function(hdr) {
+            var next = hdr.nextElementSibling;
+            var hasVisible = false;
+            while (next && !next.classList.contains('cat-header') && !next.classList.contains('category-header')) {
+                if (next.style.display !== 'none' &&
+                    !next.classList.contains('search-hidden') &&
+                    !next.classList.contains('no-paginate') &&
+                    next.id.indexOf('NoMatchRow') === -1) {
+                    hasVisible = true;
+                    break;
+                }
+                next = next.nextElementSibling;
+            }
+            hdr.style.display = hasVisible ? '' : 'none';
+        });
+    }
+
+    var showingEl = document.getElementById('mgrAlertShowingText');
+    if (showingEl) {
+        var s = total === 0 ? 0 : start + 1;
+        showingEl.textContent = 'Showing ' + s + '–' + end + ' of ' + total + ' entries';
+    }
+    var labelEl = document.getElementById('mgrAlertPageLabel');
+    if (labelEl) labelEl.textContent = 'Page ' + mgrAlertState.page + ' of ' + totalPages;
+
+    var prevBtn = document.getElementById('mgrAlertPrevBtn');
+    var nextBtn = document.getElementById('mgrAlertNextBtn');
+    if (prevBtn) {
+        prevBtn.disabled = mgrAlertState.page <= 1;
+        prevBtn.style.cursor = mgrAlertState.page <= 1 ? 'not-allowed' : 'pointer';
+        prevBtn.style.color  = mgrAlertState.page <= 1 ? '#cbd5e1' : '#475569';
+    }
+    if (nextBtn) {
+        nextBtn.disabled = mgrAlertState.page >= totalPages;
+        nextBtn.style.cursor = mgrAlertState.page >= totalPages ? 'not-allowed' : 'pointer';
+        nextBtn.style.color  = mgrAlertState.page >= totalPages ? '#cbd5e1' : '#475569';
+    }
+}
+
+function mgrAlertGoPage(p) {
+    mgrAlertState.page = p;
+    mgrAlertRender();
+}
+
+function mgrAlertChangePerPage() {
+    var sel = document.getElementById('mgrAlertPerPage');
+    if (sel) mgrAlertState.perPage = parseInt(sel.value, 10);
+    mgrAlertState.page = 1;
+    mgrAlertRender();
+}
+
+/* ══════ Init on load + wire search filters to re-render ══════ */
 document.addEventListener('DOMContentLoaded', function() {
+    /* Run the relevant paginator for the current tab */
+    var activeTab = '<?= htmlspecialchars($active_tab) ?>';
+    if (activeTab === 'overview') {
+        mgrMerchRender();
+        /* Wire inventory search inputs to reset page on input */
+        ['invSearch','invCatFilter','invStockFilter'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input',  function(){ setTimeout(function(){ mgrMerchState.page=1; mgrMerchRender(); }, 30); });
+                el.addEventListener('change', function(){ setTimeout(function(){ mgrMerchState.page=1; mgrMerchRender(); }, 30); });
+            }
+        });
+    } else if (activeTab === 'movement' || activeTab === 'stockin' || activeTab === 'stockout' ||
+               activeTab === 'transfers' || activeTab === 'damaged' || activeTab === 'expired') {
+        mgrMerchMovRender();
+        ['mgrMovSearchInput','mgrMovTypeFilter'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input',  function(){ setTimeout(function(){ mgrMerchMovState.page=1; mgrMerchMovRender(); }, 30); });
+                el.addEventListener('change', function(){ setTimeout(function(){ mgrMerchMovState.page=1; mgrMerchMovRender(); }, 30); });
+            }
+        });
+    } else if (activeTab === 'alerts') {
+        mgrAlertRender();
+        ['alertSearch','alertCatFilter'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input',  function(){ setTimeout(function(){ mgrAlertState.page=1; mgrAlertRender(); }, 30); });
+                el.addEventListener('change', function(){ setTimeout(function(){ mgrAlertState.page=1; mgrAlertRender(); }, 30); });
+            }
+        });
+    }
+    /* Keep setupTablePagination for category-header visibility (harmless) */
     if (typeof setupTablePagination === 'function') {
-        setupTablePagination('mgrMerchTable', null, 'mgrMerchPagination', 25);
-        setupTablePagination('mgrMerchMovTable', null, 'mgrMerchMovPagination', 25);
-        setupTablePagination('mgrAlertTable', null, 'mgrAlertPagination', 25);
-        setupTablePagination('mgrAdjustmentsTable', null, 'mgrAdjPagination', 25);
+        if (activeTab === 'overview') setupTablePagination('mgrMerchTable', null, 'mgrMerchPagination', 25);
+        if (activeTab === 'movement' || activeTab === 'stockin' || activeTab === 'stockout' ||
+            activeTab === 'transfers' || activeTab === 'damaged' || activeTab === 'expired')
+            setupTablePagination('mgrMerchMovTable', null, 'mgrMerchMovPagination', 25);
+        if (activeTab === 'alerts') setupTablePagination('mgrAlertTable', null, 'mgrAlertPagination', 25);
+        if (activeTab === 'requests' || activeTab === 'adjustments')
+            setupTablePagination('mgrAdjustmentsTable', null, 'mgrAdjPagination', 25);
+    }
+    /* Expose triggers so filterInvTable / filterAlertTable / filterMgrMovTable can refresh pages */
+    window.tablePaginationTriggers = window.tablePaginationTriggers || {};
+    window.tablePaginationTriggers['mgrMerchTable']    = function(){ mgrMerchState.page=1; mgrMerchRender(); };
+    window.tablePaginationTriggers['mgrMerchMovTable'] = function(){ mgrMerchMovState.page=1; mgrMerchMovRender(); };
+    window.tablePaginationTriggers['mgrAlertTable']    = function(){ mgrAlertState.page=1; mgrAlertRender(); };
+
+    // Auto-open Product Modal & scroll into view when navigated from Global Search
+    var urlParams = new URLSearchParams(window.location.search);
+    var autoOpenPid = urlParams.get('product_id') || urlParams.get('pid');
+    var autoOpenSearch = urlParams.get('search_query') || urlParams.get('search');
+    var autoOpenFlag = urlParams.get('auto_open') === '1' || !!autoOpenPid;
+
+    if (autoOpenFlag || autoOpenPid || autoOpenSearch) {
+        // Strip auto-open params from URL immediately so refresh won't re-trigger
+        (function() {
+            var clean = new URLSearchParams(window.location.search);
+            ['auto_open','product_id','pid','search_query','search'].forEach(function(k){ clean.delete(k); });
+            var newUrl = window.location.pathname + (clean.toString() ? '?' + clean.toString() : '');
+            history.replaceState(null, '', newUrl);
+        })();
+
+        setTimeout(function() {
+            var searchInput = document.getElementById('invSearch');
+            if (searchInput && autoOpenSearch && !searchInput.value) {
+                searchInput.value = autoOpenSearch;
+                if (typeof filterInvTable === 'function') filterInvTable();
+                if (typeof mgrMerchRender === 'function') {
+                    mgrMerchState.page = 1;
+                    mgrMerchRender();
+                }
+            }
+
+            var targetRow = null;
+            if (autoOpenPid) {
+                targetRow = document.querySelector('tr.merch-row[data-id="' + autoOpenPid + '"]');
+            }
+            if (!targetRow && autoOpenSearch) {
+                var sLower = autoOpenSearch.toLowerCase().trim();
+                var allRows = document.querySelectorAll('tr.merch-row');
+                for (var i = 0; i < allRows.length; i++) {
+                    var n = (allRows[i].dataset.name || '').toLowerCase();
+                    var s = (allRows[i].dataset.sku || '').toLowerCase();
+                    if (n === sLower || s === sLower || n.indexOf(sLower) !== -1 || sLower.indexOf(n) !== -1) {
+                        targetRow = allRows[i];
+                        break;
+                    }
+                }
+            }
+
+            if (targetRow) {
+                // If on another page in pagination, switch page
+                var visibleRows = Array.from(document.querySelectorAll('#merchTableBody tr.merch-row:not(.search-hidden)'));
+                var rowIdx = visibleRows.indexOf(targetRow);
+                if (rowIdx !== -1 && typeof mgrMerchGoPage === 'function' && window.mgrMerchState) {
+                    var targetPage = Math.floor(rowIdx / mgrMerchState.perPage) + 1;
+                    if (targetPage !== mgrMerchState.page) {
+                        mgrMerchGoPage(targetPage);
+                    }
+                }
+
+                // Scroll smoothly to row and highlight it (no modal auto-open)
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetRow.style.transition = 'all 0.5s ease';
+                targetRow.style.outline = '3px solid #002F70';
+                targetRow.style.backgroundColor = '#dbeafe';
+                setTimeout(function() {
+                    targetRow.style.outline = '';
+                    targetRow.style.backgroundColor = '';
+                }, 2500);
+            }
+        }, 350);
     }
 });
 </script>

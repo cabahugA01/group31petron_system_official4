@@ -104,9 +104,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ->execute([$station_id, $name, $category, $sku, $unit_cost, $unit_price, $initial_stock, $min_stock, $max_stock]);
                     $product_id = (int)$pdo->lastInsertId();
 
-                    // Insert into station_inventory
-                    $pdo->prepare("INSERT INTO station_inventory (product_id, station_id, stock_level, status, last_updated) VALUES (?, ?, ?, 'active', NOW())")
-                        ->execute([$product_id, $station_id, $initial_stock]);
+                    // Insert into station_inventory with full price, cost, unit, and thresholds
+                    $pdo->prepare("INSERT INTO station_inventory (product_id, station_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, ?, 'pcs', ?, ?, ?, ?, 'active', NOW())")
+                        ->execute([$product_id, $station_id, $initial_stock, $unit_cost, $unit_price, $min_stock ?: 24, $min_stock ? round($min_stock * 0.4) : 10]);
+
+                    // Sync to products table for complete catalog consistency
+                    try {
+                        $cat_id = function_exists('ensure_product_category_id') ? ensure_product_category_id($pdo, $category) : null;
+                        $pdo->prepare("
+                            INSERT INTO products 
+                            (id, sku, name, description, category_id, unit, cost, price, created_at, updated_at, min_stock_level, max_stock_level, station_id, current_stock, capacity, status)
+                            VALUES (?, ?, ?, '', ?, 'pcs', ?, ?, NOW(), NOW(), ?, ?, ?, ?, 480, 'active')
+                        ")->execute([$product_id, $sku, $name, $cat_id, $unit_cost, $unit_price, $min_stock ?: 24, $max_stock ?: 480, $station_id, $initial_stock]);
+                    } catch (Exception $e) {}
 
                     if ($initial_stock > 0) {
                         $batch_num = $initial_batch !== '' ? $initial_batch : 'B-INIT-' . str_pad($product_id, 4, '0', STR_PAD_LEFT);
@@ -326,9 +336,9 @@ try {
             COALESCE(ba.active_batches, 0) AS active_batches,
             COALESCE(ba.total_batches,  0) AS total_batches,
             COALESCE(ba.batch_stock,    0) AS batch_stock
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si
-               ON si.product_id = ip.id AND si.station_id = ?
+        FROM station_inventory si
+        JOIN inventory_products ip
+               ON ip.id = si.product_id
         LEFT JOIN (
             SELECT
                 product_id,
@@ -339,7 +349,8 @@ try {
             WHERE station_id = ?
             GROUP BY product_id
         ) ba ON ba.product_id = ip.id
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id, $station_id]);

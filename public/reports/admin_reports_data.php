@@ -109,7 +109,34 @@ if (!function_exists('getAdminReportData')) {
                     $extra_where .= " AND ({$sql_norm}) = :filter_fuel_type ";
                     $extra_params['filter_fuel_type'] = $filters['fuel_type'];
                 }
-                if (!empty($filters['pump_id'])) {
+                // UGT filter: filter_ugt holds a UGT label like "UGT #1" or "UGT-01"
+                // We convert it to a fuel_type LIKE match via get_exact_ugt_no logic
+                if (!empty($filters['ugt'])) {
+                    $fi_ugt_raw = strtoupper(trim($filters['ugt']));
+                    // Map UGT label to fuel_type LIKE patterns
+                    $ugt_fuel_like = null;
+                    if (strpos($fi_ugt_raw, '#1') !== false || strpos($fi_ugt_raw, '-01') !== false || strpos($fi_ugt_raw, ' 1') !== false) {
+                        $ugt_fuel_like = 'DIESEL 1%';
+                    } elseif (strpos($fi_ugt_raw, '#2') !== false || strpos($fi_ugt_raw, '-02') !== false || strpos($fi_ugt_raw, ' 2') !== false) {
+                        $ugt_fuel_like = 'DIESEL 2%';
+                    } elseif (strpos($fi_ugt_raw, '#3') !== false || strpos($fi_ugt_raw, '-03') !== false || strpos($fi_ugt_raw, ' 3') !== false) {
+                        $ugt_fuel_like = 'TURBO%';
+                    } elseif (strpos($fi_ugt_raw, '#4') !== false || strpos($fi_ugt_raw, '-04') !== false || strpos($fi_ugt_raw, ' 4') !== false) {
+                        $ugt_fuel_like = 'XCS%';
+                    } elseif (strpos($fi_ugt_raw, '#5') !== false || strpos($fi_ugt_raw, '-05') !== false || strpos($fi_ugt_raw, ' 5') !== false) {
+                        $ugt_fuel_like = 'XTRA UNL 1%';
+                    } elseif (strpos($fi_ugt_raw, '#6') !== false || strpos($fi_ugt_raw, '-06') !== false || strpos($fi_ugt_raw, ' 6') !== false) {
+                        $ugt_fuel_like = 'XTRA UNL 2%';
+                    } elseif (strpos($fi_ugt_raw, '#7') !== false || strpos($fi_ugt_raw, '-07') !== false || strpos($fi_ugt_raw, ' 7') !== false) {
+                        $ugt_fuel_like = 'KEROSENE%';
+                    }
+                    if ($ugt_fuel_like !== null) {
+                        $extra_where .= " AND UPPER(ft.fuel_type) LIKE :filter_ugt_like ";
+                        $extra_params['filter_ugt_like'] = $ugt_fuel_like;
+                    }
+                }
+                // Fallback: old pump_id integer filter (kept for backward compat if pump_id is set)
+                if (!empty($filters['pump_id']) && (int)$filters['pump_id'] > 0) {
                     $extra_where .= " AND ft.pump_id = :filter_pump_id ";
                     $extra_params['filter_pump_id'] = (int)$filters['pump_id'];
                 }
@@ -123,24 +150,58 @@ if (!function_exists('getAdminReportData')) {
                 }
                 $base_params = array_merge(['date_from' => $date_from, 'date_to' => $date_to], $st_params, $extra_params);
 
-                // Map pump_ids to clean UGT-01, UGT-02, ... labels
-                $all_pumps_stmt = $pdo->prepare(
-                    "SELECT DISTINCT ft.pump_id
-                     FROM fuel_transactions ft
-                     WHERE 1=1 {$st_clause('ft')}
-                     ORDER BY ft.pump_id ASC"
-                );
-                $all_pumps_stmt->execute($st_params);
-                $all_pump_ids = $all_pumps_stmt->fetchAll(PDO::FETCH_COLUMN);
-
-                $ugt_map = [];
+                // Build UGT list for the filter dropdown from fuel_inventory (reliable UGT labels)
                 $pump_list = [];
-                foreach ($all_pump_ids as $idx => $pid) {
-                    $code = sprintf('UGT-%02d', $idx + 1);
-                    $ugt_map[$pid] = $code;
-                    $pump_list[] = ['pump_id' => $pid, 'label' => $code];
+                try {
+                    $ugt_fi_stmt = $pdo->prepare(
+                        "SELECT ugt_no, fuel_type FROM fuel_inventory
+                         WHERE station_id = :sid AND status IN ('active','Active','Normal')
+                           AND ugt_no IS NOT NULL AND TRIM(ugt_no) != ''
+                         ORDER BY ugt_no ASC"
+                    );
+                    $ugt_fi_stmt->execute(['sid' => $station_id]);
+                    $fi_rows = $ugt_fi_stmt->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($fi_rows as $fr) {
+                        $pump_list[] = ['pump_id' => $fr['ugt_no'], 'label' => $fr['ugt_no'] . ' (' . $fr['fuel_type'] . ')'];
+                    }
+                } catch (Exception $e) { $pump_list = []; }
+
+                // Fallback: build from fuel_transactions pump_ids if fuel_inventory empty
+                if (empty($pump_list)) {
+                    $all_pumps_stmt = $pdo->prepare(
+                        "SELECT DISTINCT ft.pump_id
+                         FROM fuel_transactions ft
+                         WHERE ft.pump_id IS NOT NULL AND ft.pump_id > 0 {$st_clause('ft')}
+                         ORDER BY ft.pump_id ASC"
+                    );
+                    $all_pumps_stmt->execute($st_params);
+                    $all_pump_ids = $all_pumps_stmt->fetchAll(PDO::FETCH_COLUMN);
+                    $ugt_map = [];
+                    foreach ($all_pump_ids as $idx => $pid) {
+                        $code = sprintf('UGT-%02d', $idx + 1);
+                        $ugt_map[$pid] = $code;
+                        $pump_list[] = ['pump_id' => $pid, 'label' => $code];
+                    }
                 }
                 $data['pump_list'] = $pump_list;
+
+                // Fuel sales only appear in official reports if approved by Manager/Admin and fuel closing is verified
+                $app_clause = function(string $alias) {
+                    return " AND LOWER(COALESCE({$alias}.status, '')) IN ('verified','approved','validated')
+                             AND EXISTS (
+                                 SELECT 1 FROM fuel_sales_closing fsc_app
+                                 WHERE fsc_app.station_id = {$alias}.station_id
+                                   AND fsc_app.report_date = DATE(COALESCE({$alias}.transaction_date, {$alias}.created_at))
+                                   AND (
+                                       fsc_app.shift_period = {$alias}.shift_period
+                                       OR fsc_app.shift = {$alias}.shift_name
+                                       OR fsc_app.shift = {$alias}.shift_period
+                                       OR LOWER(fsc_app.shift) LIKE CONCAT('%', LOWER(COALESCE({$alias}.shift_period, '')), '%')
+                                       OR {$alias}.shift_period IS NULL OR {$alias}.shift_period = ''
+                                   )
+                                   AND LOWER(COALESCE(fsc_app.status, '')) IN ('verified','approved','validated')
+                             ) ";
+                };
 
                 // 1. UGT DAILY SALES TABLE — deduplicated latest reading per pump per day
                 $stmt = $pdo->prepare(
@@ -162,7 +223,7 @@ if (!function_exists('getAdminReportData')) {
                              FROM fuel_transactions
                              WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                {$st_clause('fuel_transactions')}
-                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                               {$app_clause('fuel_transactions')}
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                          ) latest ON ft.id = latest.max_id
                      WHERE 1=1 {$extra_where}
@@ -174,6 +235,15 @@ if (!function_exists('getAdminReportData')) {
                     $rawFuel = $r['raw_fuel_type'] ?? '';
                     $r['ugt_no'] = get_exact_ugt_no($rawFuel);
                     $r['fuel_type'] = !empty($rawFuel) ? $rawFuel : ($r['clean_fuel_type'] ?? 'Fuel');
+                }
+                unset($r);
+                if (!empty($filters['ugt'])) {
+                    $target_ugt = strtoupper(trim($filters['ugt']));
+                    $canonical_target = get_exact_ugt_no($target_ugt);
+                    $raw_ugt = array_values(array_filter($raw_ugt, function($r) use ($target_ugt, $canonical_target) {
+                        $u = strtoupper(trim($r['ugt_no'] ?? ''));
+                        return $u === $target_ugt || $u === $canonical_target || stripos($u, $target_ugt) !== false;
+                    }));
                 }
                 $data['ugt_rows'] = $raw_ugt;
 
@@ -194,7 +264,7 @@ if (!function_exists('getAdminReportData')) {
                                 FROM fuel_transactions
                                 WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                   {$st_clause('fuel_transactions')}
-                                  AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                                  {$app_clause('fuel_transactions')}
                                 GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                             ) latest ON ft.id = latest.max_id
                         WHERE 1=1 {$extra_where}
@@ -219,7 +289,7 @@ if (!function_exists('getAdminReportData')) {
                          FROM fuel_transactions
                          WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                            {$st_clause('fuel_transactions')}
-                           AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                           {$app_clause('fuel_transactions')}
                          GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                      ) latest ON ft.id = latest.max_id
                      WHERE 1=1 {$extra_where}"
@@ -243,7 +313,7 @@ if (!function_exists('getAdminReportData')) {
                             FROM fuel_transactions
                             WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                               {$st_clause('fuel_transactions')}
-                              AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                              {$app_clause('fuel_transactions')}
                             GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at))
                         ) latest ON ft.id = latest.max_id
                         WHERE 1=1 {$extra_where}
@@ -266,7 +336,7 @@ if (!function_exists('getAdminReportData')) {
                             SUM(COALESCE(ft.total_amount, 0)) as total_sales
                          FROM fuel_transactions ft
                          WHERE DATE(ft.transaction_date) BETWEEN :date_from AND :date_to
-                           AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
+                           {$app_clause('ft')}
                            {$st_clause('ft')} {$extra_where}
                          GROUP BY ft.pump_id, ft.fuel_type
                          ORDER BY ft.pump_id ASC"
@@ -376,7 +446,7 @@ if (!function_exists('getAdminReportData')) {
                             SUM(COALESCE(fsc.total_cash_bank, 0)) as total_cash_bank
                          FROM fuel_sales_closing fsc
                          WHERE fsc.report_date BETWEEN :date_from AND :date_to
-                           AND LOWER(COALESCE(fsc.status, '')) IN ('verified', 'approved', 'official')
+                           AND LOWER(COALESCE(fsc.status, '')) IN ('verified', 'approved', 'official', 'validated')
                            {$st_clause('fsc')} {$close_where}"
                     );
                     $stmt_close->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
@@ -397,7 +467,7 @@ if (!function_exists('getAdminReportData')) {
                              FROM fuel_transactions
                              WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                {$st_clause('fuel_transactions')}
-                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                               {$app_clause('fuel_transactions')}
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
                          ) latest ON ft.id = latest.max_id
                          WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%first%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 1%' OR ft.shift_id = 1 OR COALESCE(ft.shift_period, ft.shift_name, '') = '1')"
@@ -415,13 +485,28 @@ if (!function_exists('getAdminReportData')) {
                              FROM fuel_transactions
                              WHERE DATE(COALESCE(transaction_date, created_at)) BETWEEN :date_from AND :date_to
                                {$st_clause('fuel_transactions')}
-                               AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
+                               {$app_clause('fuel_transactions')}
                              GROUP BY COALESCE(pump_id, fuel_type), DATE(COALESCE(transaction_date, created_at)), COALESCE(shift_period, shift_name, shift_id)
                          ) latest ON ft.id = latest.max_id
                          WHERE (LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%second%' OR LOWER(COALESCE(ft.shift_period, ft.shift_name, '')) LIKE '%shift 2%' OR ft.shift_id = 2 OR COALESCE(ft.shift_period, ft.shift_name, '') = '2')"
                     );
                     $stmt_s2->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
                     $s2_data = $stmt_s2->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                    // Check for pending readings/closing requiring approval
+                    try {
+                        $stmt_pen = $pdo->prepare("
+                            SELECT COUNT(*) FROM fuel_transactions ft
+                            WHERE DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN :date_from AND :date_to
+                              {$st_clause('ft')}
+                              AND LOWER(COALESCE(ft.status, '')) NOT IN ('verified','approved','validated','rejected','voided','cancelled','canceled')
+                        ");
+                        $stmt_pen->execute(['date_from' => $date_from, 'date_to' => $date_to] + $st_params);
+                        $pen_cnt = (int)$stmt_pen->fetchColumn();
+                        if ($pen_cnt > 0) {
+                            $data['pending_approval_notice'] = "There are {$pen_cnt} fuel transaction reading(s) awaiting validation/approval. Unapproved sales figures are held until validated.";
+                        }
+                    } catch (Exception $e) {}
 
                     $cs = $data['closing_summary'] ?? [];
                     $data['shift_breakdown'] = [
@@ -786,6 +871,11 @@ if (!function_exists('getAdminReportData')) {
                     $params['fi_ttype'] = $db_action;
                 }
                 if (!empty($fi_prod))  { $where .= " AND LOWER(COALESCE(p.name,'')) LIKE LOWER(:fi_prod) "; $params['fi_prod'] = "%$fi_prod%"; }
+                if (!empty($fi_batch)) {
+                    $where .= " AND (LOWER(COALESCE(mb.batch_number,'')) LIKE LOWER(:fi_batch) OR LOWER(COALESCE(il.reference_type,'')) LIKE LOWER(:fi_batch2)) ";
+                    $params['fi_batch'] = "%$fi_batch%";
+                    $params['fi_batch2'] = "%$fi_batch%";
+                }
                 if (!empty($fi_user))  { $where .= " AND (LOWER(COALESCE(u.name,'')) LIKE LOWER(:fi_user) OR LOWER(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) LIKE LOWER(:fi_user2)) "; $params['fi_user'] = "%$fi_user%"; $params['fi_user2'] = "%$fi_user%"; }
 
                 $sql = "SELECT DATE(il.created_at) as date,
@@ -819,31 +909,147 @@ if (!function_exists('getAdminReportData')) {
                 $fi_status = trim($filters['status']    ?? '');
                 $fi_atype  = trim($filters['adj_type']  ?? '');
                 $fi_batch  = trim($filters['batch_id']  ?? '');
+                $fi_prod   = trim($filters['product']   ?? '');
 
-                $where  = " WHERE DATE(ma.requested_at) BETWEEN :date_from AND :date_to AND ma.station_id = :station_id ";
-                $params = ['date_from' => $date_from, 'date_to' => $date_to, 'station_id' => $station_id];
+                $all_adj_rows = [];
 
-                if (!empty($fi_status)) { $where .= " AND LOWER(ma.status) = LOWER(:fi_status) ";           $params['fi_status'] = $fi_status; }
-                if (!empty($fi_atype))  { $where .= " AND LOWER(ma.adjustment_type) LIKE LOWER(:fi_atype) "; $params['fi_atype']  = "%$fi_atype%"; }
-                if (!empty($fi_batch))  { $where .= " AND LOWER(COALESCE(ma.sku,'')) LIKE LOWER(:fi_batch) "; $params['fi_batch'] = "%$fi_batch%"; }
+                // 1. Merchandise Adjustments
+                if (ard_table_exists($pdo, 'merchandise_adjustments')) {
+                    $where_m  = " WHERE DATE(COALESCE(ma.requested_at, ma.created_at)) BETWEEN :date_from_m AND :date_to_m AND ma.station_id = :station_id_m ";
+                    $params_m = ['date_from_m' => $date_from, 'date_to_m' => $date_to, 'station_id_m' => $station_id];
 
-                $sql = "SELECT CONCAT('ADJ-', LPAD(ma.id, 5, '0')) as request_no,
-                               COALESCE(ma.sku, 'N/A') as batch_id,
-                               ma.product_name as product,
-                               ma.adjustment_type,
-                               ma.quantity_change as qty,
-                               COALESCE(NULLIF(u1.name,''), NULLIF(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,'')),''), 'Staff') as requested_by,
-                               COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), '-') as approved_by,
-                               ma.status,
-                               ma.approved_at as approval_date
-                        FROM merchandise_adjustments ma
-                        LEFT JOIN users u1 ON ma.requested_by = u1.id
-                        LEFT JOIN users u2 ON ma.approved_by  = u2.id
-                        {$where}
-                        ORDER BY ma.requested_at DESC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $data['rows'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($fi_status)) { $where_m .= " AND LOWER(ma.status) = LOWER(:fi_status_m) ";           $params_m['fi_status_m'] = $fi_status; }
+                    if (!empty($fi_atype))  { $where_m .= " AND LOWER(ma.adjustment_type) LIKE LOWER(:fi_atype_m) "; $params_m['fi_atype_m']  = "%$fi_atype%"; }
+                    if (!empty($fi_batch))  { $where_m .= " AND LOWER(COALESCE(ma.sku,'')) LIKE LOWER(:fi_batch_m) "; $params_m['fi_batch_m'] = "%$fi_batch%"; }
+                    if (!empty($fi_prod))   { $where_m .= " AND LOWER(ma.product_name) LIKE LOWER(:fi_prod_m) ";      $params_m['fi_prod_m']  = "%$fi_prod%"; }
+
+                    $sql_m = "SELECT CONCAT('ADJ-', LPAD(ma.id, 5, '0')) as request_no,
+                                     COALESCE(ma.sku, 'N/A') as batch_id,
+                                     ma.product_name as product,
+                                     ma.adjustment_type,
+                                     ma.quantity_change as qty,
+                                     COALESCE(NULLIF(u1.name,''), NULLIF(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,'')),''), 'Staff') as requested_by,
+                                     COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), '-') as approved_by,
+                                     ma.status,
+                                     ma.approved_at as approval_date,
+                                     COALESCE(ma.requested_at, ma.created_at) as sort_date
+                              FROM merchandise_adjustments ma
+                              LEFT JOIN users u1 ON ma.requested_by = u1.id
+                              LEFT JOIN users u2 ON ma.approved_by  = u2.id
+                              {$where_m}";
+                    try {
+                        $stmt_m = $pdo->prepare($sql_m);
+                        $stmt_m->execute($params_m);
+                        $m_rows = $stmt_m->fetchAll(PDO::FETCH_ASSOC);
+                        if ($m_rows) {
+                            $all_adj_rows = array_merge($all_adj_rows, $m_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 2. Fuel Adjustments (Physical count / tank dips, transaction adjustments, stock-in adjustments, calibration)
+                if (ard_table_exists($pdo, 'fuel_adjustments')) {
+                    $where_f  = " WHERE DATE(COALESCE(fa.adjustment_date, fa.created_at)) BETWEEN :date_from_f AND :date_to_f AND fa.station_id = :station_id_f ";
+                    $params_f = ['date_from_f' => $date_from, 'date_to_f' => $date_to, 'station_id_f' => $station_id];
+
+                    if (!empty($fi_status)) { $where_f .= " AND LOWER(fa.status) = LOWER(:fi_status_f) ";           $params_f['fi_status_f'] = $fi_status; }
+                    if (!empty($fi_atype))  { 
+                        $where_f .= " AND (LOWER(fa.adjustment_type) LIKE LOWER(:fi_atype_f1) OR LOWER(REPLACE(fa.adjustment_type, '_', ' ')) LIKE LOWER(:fi_atype_f2)) "; 
+                        $params_f['fi_atype_f1']  = "%$fi_atype%"; 
+                        $params_f['fi_atype_f2']  = "%$fi_atype%"; 
+                    }
+                    if (!empty($fi_batch))  { 
+                        $where_f .= " AND (LOWER(COALESCE(fa.ugt_no,'')) LIKE LOWER(:fi_batch_f1) OR LOWER(COALESCE(fa.notes,'')) LIKE LOWER(:fi_batch_f2)) "; 
+                        $params_f['fi_batch_f1'] = "%$fi_batch%"; 
+                        $params_f['fi_batch_f2'] = "%$fi_batch%"; 
+                    }
+                    if (!empty($fi_prod))   { $where_f .= " AND LOWER(fa.fuel_type) LIKE LOWER(:fi_prod_f) ";         $params_f['fi_prod_f']  = "%$fi_prod%"; }
+
+                    $sql_f = "SELECT CONCAT('FADJ-', LPAD(fa.id, 5, '0')) as request_no,
+                                     COALESCE(NULLIF(fa.ugt_no,''), 'Fuel Tank') as batch_id,
+                                     fa.fuel_type as product,
+                                     CASE 
+                                         WHEN LOWER(fa.adjustment_type) = 'transaction_adjustment' THEN 'Transaction Adjustment'
+                                         WHEN LOWER(fa.adjustment_type) = 'stock_in' THEN 'Stock-In Adjustment'
+                                         WHEN LOWER(fa.adjustment_type) LIKE '%tank dip%' OR LOWER(fa.adjustment_type) LIKE '%physical count%' THEN 'Physical Count / Tank Dip'
+                                         ELSE COALESCE(NULLIF(fa.adjustment_type,''), 'Fuel Adjustment')
+                                     END as adjustment_type,
+                                     fa.liters as qty,
+                                     COALESCE(NULLIF(u1.name,''), NULLIF(CONCAT(COALESCE(u1.first_name,''),' ',COALESCE(u1.last_name,'')),''), 'Staff') as requested_by,
+                                     COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), '-') as approved_by,
+                                     fa.status,
+                                     COALESCE(fa.approved_at, fa.adjustment_date) as approval_date,
+                                     COALESCE(fa.adjustment_date, fa.created_at) as sort_date
+                              FROM fuel_adjustments fa
+                              LEFT JOIN users u1 ON fa.user_id = u1.id
+                              LEFT JOIN users u2 ON fa.approved_by = u2.id
+                              {$where_f}";
+                    try {
+                        $stmt_f = $pdo->prepare($sql_f);
+                        $stmt_f->execute($params_f);
+                        $f_rows = $stmt_f->fetchAll(PDO::FETCH_ASSOC);
+                        if ($f_rows) {
+                            $all_adj_rows = array_merge($all_adj_rows, $f_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 3. Merchandise Item Adjustments logged in Transaction Adjustments (POS transactions)
+                if (ard_table_exists($pdo, 'transaction_adjustments')) {
+                    $where_ta = " WHERE DATE(ta.adjustment_date) BETWEEN :date_from_ta AND :date_to_ta AND ta.station_id = :station_id_ta ";
+                    $params_ta = ['date_from_ta' => $date_from, 'date_to_ta' => $date_to, 'station_id_ta' => $station_id];
+
+                    if (!empty($fi_batch)) { $where_ta .= " AND LOWER(ta.transaction_id) LIKE LOWER(:fi_batch_ta) "; $params_ta['fi_batch_ta'] = "%$fi_batch%"; }
+
+                    $sql_ta = "SELECT ta.id, ta.transaction_id, ta.adjustment_reason, ta.adjustment_date, ta.fields_changed,
+                                      COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),''), 'Manager') as approved_by
+                               FROM transaction_adjustments ta
+                               LEFT JOIN users u ON ta.adjusted_by = u.id
+                               {$where_ta}";
+                    try {
+                        $stmt_ta = $pdo->prepare($sql_ta);
+                        $stmt_ta->execute($params_ta);
+                        $ta_rows = $stmt_ta->fetchAll(PDO::FETCH_ASSOC);
+                        foreach ($ta_rows as $tar) {
+                            $fc = json_decode($tar['fields_changed'] ?? '{}', true);
+                            if (!empty($fc['adjusted_items']) && is_array($fc['adjusted_items'])) {
+                                foreach ($fc['adjusted_items'] as $item) {
+                                    $item_type = $item['item_type'] ?? '';
+                                    if ($item_type === 'merchandise' || $item_type === 'item') {
+                                        $pname = $item['product_name'] ?? 'Merchandise';
+                                        $old_q = (float)($item['old_qty'] ?? 0);
+                                        $new_q = (float)($item['new_qty'] ?? 0);
+                                        $diff_q = $new_q - $old_q;
+
+                                        if (!empty($fi_prod) && stripos($pname, $fi_prod) === false) continue;
+                                        if (!empty($fi_atype) && stripos('Transaction Adjustment', $fi_atype) === false) continue;
+                                        if (!empty($fi_status) && strtolower($fi_status) !== 'approved') continue;
+
+                                        $all_adj_rows[] = [
+                                            'request_no'      => 'TADJ-' . str_pad($tar['id'], 5, '0', STR_PAD_LEFT),
+                                            'batch_id'        => $tar['transaction_id'],
+                                            'product'         => $pname,
+                                            'adjustment_type' => 'Transaction Adjustment',
+                                            'qty'             => $diff_q,
+                                            'requested_by'    => 'POS Staff',
+                                            'approved_by'     => $tar['approved_by'],
+                                            'status'          => 'Approved',
+                                            'approval_date'   => $tar['adjustment_date'],
+                                            'sort_date'       => $tar['adjustment_date']
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // Sort all rows by sort_date DESC
+                usort($all_adj_rows, function($a, $b) {
+                    return strcmp($b['sort_date'] ?? '', $a['sort_date'] ?? '');
+                });
+
+                $data['rows'] = $all_adj_rows;
 
             // ---- 5. EXPIRED & DAMAGED REPORT ----
             } else { // expired_damaged
@@ -851,57 +1057,259 @@ if (!function_exists('getAdminReportData')) {
                 $fi_prod  = trim($filters['product']    ?? '');
                 $fi_atype = trim($filters['adj_type']   ?? '');
 
-                $where  = " WHERE DATE(ma.requested_at) BETWEEN :date_from AND :date_to AND ma.station_id = :station_id ";
-                $params = ['date_from' => $date_from, 'date_to' => $date_to, 'station_id' => $station_id];
+                $all_exp_dmg_rows = [];
 
-                // Expired & Damaged = adjustments of type Expired or Damaged
-                $where .= " AND LOWER(ma.adjustment_type) IN ('expired product', 'damaged product', 'expired', 'damaged') ";
+                // 1. Merchandise Adjustments with type expired or damaged
+                if (ard_table_exists($pdo, 'merchandise_adjustments')) {
+                    $where_m  = " WHERE DATE(COALESCE(ma.approved_at, ma.requested_at, ma.created_at)) BETWEEN :date_from_m AND :date_to_m AND ma.station_id = :station_id_m
+                                  AND (LOWER(ma.adjustment_type) LIKE '%expire%' OR LOWER(ma.adjustment_type) LIKE '%damage%' OR LOWER(ma.adjustment_type) LIKE '%spoil%' OR LOWER(ma.adjustment_type) LIKE '%waste%' OR LOWER(COALESCE(ma.reason,'')) LIKE '%damage%' OR LOWER(COALESCE(ma.reason,'')) LIKE '%expire%') ";
+                    $params_m = ['date_from_m' => $date_from, 'date_to_m' => $date_to, 'station_id_m' => $station_id];
 
-                if (!empty($fi_batch)) { $where .= " AND LOWER(COALESCE(ma.sku,'')) LIKE LOWER(:fi_batch) ";      $params['fi_batch'] = "%$fi_batch%"; }
-                if (!empty($fi_prod))  { $where .= " AND LOWER(ma.product_name) LIKE LOWER(:fi_prod) ";           $params['fi_prod']  = "%$fi_prod%"; }
-                if (!empty($fi_atype)) { $where .= " AND LOWER(ma.adjustment_type) LIKE LOWER(:fi_atype) ";       $params['fi_atype'] = "%$fi_atype%"; }
+                    if (!empty($fi_batch)) { $where_m .= " AND (LOWER(COALESCE(ma.sku,'')) LIKE LOWER(:fi_batch_m) OR LOWER(CONCAT('ADJ-', LPAD(ma.id, 5, '0'))) LIKE LOWER(:fi_batch_m2)) "; $params_m['fi_batch_m'] = "%$fi_batch%"; $params_m['fi_batch_m2'] = "%$fi_batch%"; }
+                    if (!empty($fi_prod))  { $where_m .= " AND LOWER(ma.product_name) LIKE LOWER(:fi_prod_m) "; $params_m['fi_prod_m'] = "%$fi_prod%"; }
 
-                $sql = "SELECT COALESCE(ma.sku, CONCAT('ADJ-', ma.id)) as batch_id,
-                               ma.product_name as product,
-                               (SELECT do.expiry_date FROM deliveries_oversight do WHERE do.product = ma.product_name AND do.station_id = ma.station_id AND do.expiry_date IS NOT NULL LIMIT 1) as expiration_date,
-                               CASE
-                                 WHEN LOWER(ma.adjustment_type) LIKE '%expire%' THEN ABS(ma.quantity_change)
-                                 ELSE 0
-                               END as expired_qty,
-                               CASE
-                                 WHEN LOWER(ma.adjustment_type) LIKE '%damage%' THEN ABS(ma.quantity_change)
-                                 ELSE 0
-                               END as damaged_qty,
-                               ABS(ma.quantity_change) as total_deduction,
-                               ma.approved_at as approval_date,
-                               COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), '-') as approved_by
-                        FROM merchandise_adjustments ma
-                        LEFT JOIN users u2 ON ma.approved_by = u2.id
-                        {$where}
-                        ORDER BY ma.requested_at DESC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $data['rows'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    $sql_m = "SELECT COALESCE(NULLIF(ma.sku,''), CONCAT('ADJ-', LPAD(ma.id, 5, '0'))) as batch_id,
+                                     ma.product_name as product,
+                                     (SELECT do.expiry_date FROM deliveries_oversight do WHERE do.product = ma.product_name AND do.station_id = ma.station_id AND do.expiry_date IS NOT NULL LIMIT 1) as expiration_date,
+                                     CASE WHEN LOWER(ma.adjustment_type) LIKE '%expire%' OR LOWER(COALESCE(ma.reason,'')) LIKE '%expire%' THEN ABS(ma.quantity_change) ELSE 0 END as expired_qty,
+                                     CASE WHEN LOWER(ma.adjustment_type) LIKE '%damage%' OR LOWER(COALESCE(ma.reason,'')) LIKE '%damage%' THEN ABS(ma.quantity_change) ELSE 0 END as damaged_qty,
+                                     ABS(ma.quantity_change) as total_deduction,
+                                     COALESCE(ma.approved_at, ma.requested_at, ma.created_at) as approval_date,
+                                     COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), u2.username, 'Manager / Admin') as approved_by,
+                                     COALESCE(ma.requested_at, ma.created_at) as sort_date
+                              FROM merchandise_adjustments ma
+                              LEFT JOIN users u2 ON ma.approved_by = u2.id
+                              {$where_m}";
+                    try {
+                        $stmt_m = $pdo->prepare($sql_m);
+                        $stmt_m->execute($params_m);
+                        $m_rows = $stmt_m->fetchAll(PDO::FETCH_ASSOC);
+                        if ($m_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $m_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
 
-                // Also include deliveries with damaged_quantity > 0 if they exist in date range
-                $sql2 = "SELECT COALESCE(do.dr_number, do.batch_id, CONCAT('DMG-', do.id)) as batch_id,
-                                do.product as product,
-                                do.expiry_date as expiration_date,
-                                0 as expired_qty,
-                                COALESCE(do.damaged_quantity, 0) as damaged_qty,
-                                COALESCE(do.damaged_quantity, 0) as total_deduction,
-                                COALESCE(do.admin_action_at, do.manager_action_at) as approval_date,
-                                COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),''), '-') as approved_by
-                         FROM deliveries_oversight do
-                         LEFT JOIN users u ON (do.admin_id = u.id OR do.manager_id = u.id)
-                         WHERE do.station_id = :station_id2
-                           AND do.damaged_quantity > 0
-                           AND DATE(do.created_at) BETWEEN :date_from2 AND :date_to2
-                         ORDER BY do.created_at DESC";
-                $stmt2 = $pdo->prepare($sql2);
-                $stmt2->execute(['station_id2' => $station_id, 'date_from2' => $date_from, 'date_to2' => $date_to]);
-                $dmg_rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-                $data['rows'] = array_merge($data['rows'], $dmg_rows);
+                // 2. Deliveries Oversight (damaged deliveries or rejected / returned deliveries)
+                if (ard_table_exists($pdo, 'deliveries_oversight')) {
+                    $where_do = " WHERE do.station_id = :station_id_do
+                                    AND (do.damaged_quantity > 0 OR LOWER(COALESCE(do.status,'')) LIKE '%damage%' OR LOWER(COALESCE(do.status,'')) LIKE '%reject%' OR LOWER(COALESCE(do.remarks,'')) LIKE '%damage%' OR LOWER(COALESCE(do.remarks,'')) LIKE '%expire%')
+                                    AND DATE(COALESCE(do.delivery_date, do.admin_action_at, do.manager_action_at, do.created_at)) BETWEEN :date_from_do AND :date_to_do ";
+                    $params_do = ['station_id_do' => $station_id, 'date_from_do' => $date_from, 'date_to_do' => $date_to];
+
+                    if (!empty($fi_batch)) { 
+                        $where_do .= " AND (LOWER(COALESCE(do.batch_id,'')) LIKE LOWER(:fi_batch_do1) OR LOWER(COALESCE(do.delivery_ref,'')) LIKE LOWER(:fi_batch_do2) OR LOWER(COALESCE(do.dr_number,'')) LIKE LOWER(:fi_batch_do3)) "; 
+                        $params_do['fi_batch_do1'] = "%$fi_batch%"; 
+                        $params_do['fi_batch_do2'] = "%$fi_batch%"; 
+                        $params_do['fi_batch_do3'] = "%$fi_batch%"; 
+                    }
+                    if (!empty($fi_prod))  { $where_do .= " AND LOWER(do.product) LIKE LOWER(:fi_prod_do) "; $params_do['fi_prod_do'] = "%$fi_prod%"; }
+
+                    $sql_do = "SELECT COALESCE(NULLIF(do.dr_number,''), NULLIF(do.batch_id,''), NULLIF(do.delivery_ref,''), CONCAT('DMG-', LPAD(do.id, 5, '0'))) as batch_id,
+                                      do.product as product,
+                                      do.expiry_date as expiration_date,
+                                      CASE WHEN LOWER(COALESCE(do.status,'')) LIKE '%expire%' OR LOWER(COALESCE(do.remarks,'')) LIKE '%expire%' THEN COALESCE(NULLIF(do.damaged_quantity,0), do.expected_quantity - do.actual_quantity, 0) ELSE 0 END as expired_qty,
+                                      CASE WHEN LOWER(COALESCE(do.status,'')) LIKE '%expire%' OR LOWER(COALESCE(do.remarks,'')) LIKE '%expire%' THEN 0 ELSE COALESCE(NULLIF(do.damaged_quantity,0), GREATEST(do.expected_quantity - do.actual_quantity, 0), 0) END as damaged_qty,
+                                      GREATEST(COALESCE(do.damaged_quantity, 0), GREATEST(do.expected_quantity - do.actual_quantity, 0)) as total_deduction,
+                                      COALESCE(do.admin_action_at, do.manager_action_at, do.delivery_date, do.created_at) as approval_date,
+                                      COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),''), u.username, 'Admin') as approved_by,
+                                      COALESCE(do.admin_action_at, do.manager_action_at, do.created_at) as sort_date
+                               FROM deliveries_oversight do
+                               LEFT JOIN users u ON (do.admin_id = u.id OR do.manager_id = u.id)
+                               {$where_do}";
+                    try {
+                        $stmt_do = $pdo->prepare($sql_do);
+                        $stmt_do->execute($params_do);
+                        $do_rows = $stmt_do->fetchAll(PDO::FETCH_ASSOC);
+                        if ($do_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $do_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 3. Merchandise Stock-In with condition Damaged or negative variance
+                if (ard_table_exists($pdo, 'merchandise_stock_in')) {
+                    $where_msi = " WHERE msi.station_id = :station_id_msi
+                                   AND (LOWER(msi.condition_flag) IN ('damaged','bad','defective','short') OR LOWER(COALESCE(msi.remarks,'')) LIKE '%damage%' OR LOWER(COALESCE(msi.remarks,'')) LIKE '%expire%' OR msi.qty_variance < 0)
+                                   AND DATE(msi.encoded_at) BETWEEN :date_from_msi AND :date_to_msi ";
+                    $params_msi = ['station_id_msi' => $station_id, 'date_from_msi' => $date_from, 'date_to_msi' => $date_to];
+                    if (!empty($fi_batch)) { $where_msi .= " AND (LOWER(COALESCE(msi.batch_ref,'')) LIKE LOWER(:fi_batch_msi1) OR LOWER(COALESCE(msi.po_number,'')) LIKE LOWER(:fi_batch_msi2)) "; $params_msi['fi_batch_msi1'] = "%$fi_batch%"; $params_msi['fi_batch_msi2'] = "%$fi_batch%"; }
+                    if (!empty($fi_prod))  { $where_msi .= " AND LOWER(msi.product_name) LIKE LOWER(:fi_prod_msi) "; $params_msi['fi_prod_msi'] = "%$fi_prod%"; }
+
+                    $sql_msi = "SELECT COALESCE(NULLIF(msi.batch_ref,''), NULLIF(msi.po_number,''), CONCAT('STK-', LPAD(msi.id, 5, '0'))) as batch_id,
+                                       msi.product_name as product,
+                                       NULL as expiration_date,
+                                       CASE WHEN LOWER(COALESCE(msi.remarks,'')) LIKE '%expire%' THEN ABS(COALESCE(msi.qty_variance, 0)) ELSE 0 END as expired_qty,
+                                       CASE WHEN LOWER(COALESCE(msi.remarks,'')) LIKE '%expire%' THEN 0 ELSE (CASE WHEN msi.qty_variance < 0 THEN ABS(msi.qty_variance) ELSE msi.qty_received END) END as damaged_qty,
+                                       CASE WHEN msi.qty_variance < 0 THEN ABS(msi.qty_variance) ELSE msi.qty_received END as total_deduction,
+                                       msi.encoded_at as approval_date,
+                                       COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),''), u.username, 'Admin / Manager') as approved_by,
+                                       msi.encoded_at as sort_date
+                                FROM merchandise_stock_in msi
+                                LEFT JOIN users u ON msi.encoded_by = u.id
+                                {$where_msi}";
+                    try {
+                        $stmt_msi = $pdo->prepare($sql_msi);
+                        $stmt_msi->execute($params_msi);
+                        $msi_rows = $stmt_msi->fetchAll(PDO::FETCH_ASSOC);
+                        if ($msi_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $msi_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 4. Fuel Adjustments with spillage, loss, leakage, or damage
+                if (ard_table_exists($pdo, 'fuel_adjustments')) {
+                    $where_fa = " WHERE fa.station_id = :station_id_fa
+                                    AND (LOWER(fa.adjustment_type) IN ('spillage', 'theft/loss', 'loss', 'damage', 'waste', 'discrepancy')
+                                         OR LOWER(COALESCE(fa.reason,'')) LIKE '%spill%' OR LOWER(COALESCE(fa.reason,'')) LIKE '%leak%' OR LOWER(COALESCE(fa.reason,'')) LIKE '%damage%' OR LOWER(COALESCE(fa.reason,'')) LIKE '%loss%'
+                                         OR LOWER(COALESCE(fa.notes,'')) LIKE '%spill%' OR LOWER(COALESCE(fa.notes,'')) LIKE '%loss%')
+                                    AND DATE(COALESCE(fa.adjustment_date, fa.created_at)) BETWEEN :date_from_fa AND :date_to_fa ";
+                    $params_fa = ['station_id_fa' => $station_id, 'date_from_fa' => $date_from, 'date_to_fa' => $date_to];
+
+                    if (!empty($fi_batch)) { 
+                        $where_fa .= " AND (LOWER(COALESCE(fa.ugt_no,'')) LIKE LOWER(:fi_batch_fa1) OR LOWER(COALESCE(fa.notes,'')) LIKE LOWER(:fi_batch_fa2)) "; 
+                        $params_fa['fi_batch_fa1'] = "%$fi_batch%"; 
+                        $params_fa['fi_batch_fa2'] = "%$fi_batch%"; 
+                    }
+                    if (!empty($fi_prod))  { $where_fa .= " AND LOWER(fa.fuel_type) LIKE LOWER(:fi_prod_fa) "; $params_fa['fi_prod_fa'] = "%$fi_prod%"; }
+
+                    $sql_fa = "SELECT COALESCE(NULLIF(fa.ugt_no,''), CONCAT('FADJ-', LPAD(fa.id, 5, '0'))) as batch_id,
+                                      fa.fuel_type as product,
+                                      NULL as expiration_date,
+                                      0 as expired_qty,
+                                      ABS(fa.liters) as damaged_qty,
+                                      ABS(fa.liters) as total_deduction,
+                                      COALESCE(fa.approved_at, fa.adjustment_date) as approval_date,
+                                      COALESCE(NULLIF(u2.name,''), NULLIF(CONCAT(COALESCE(u2.first_name,''),' ',COALESCE(u2.last_name,'')),''), u2.username, 'Manager / Admin') as approved_by,
+                                      COALESCE(fa.adjustment_date, fa.created_at) as sort_date
+                               FROM fuel_adjustments fa
+                               LEFT JOIN users u2 ON fa.approved_by = u2.id
+                               {$where_fa}";
+                    try {
+                        $stmt_fa = $pdo->prepare($sql_fa);
+                        $stmt_fa->execute($params_fa);
+                        $fa_rows = $stmt_fa->fetchAll(PDO::FETCH_ASSOC);
+                        if ($fa_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $fa_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 5. Inventory Logs with expired or damaged action (using actual schema: quantity_change, reference_no, products.name)
+                if (ard_table_exists($pdo, 'inventory_logs')) {
+                    $where_il = " WHERE il.station_id = :station_id_il
+                                    AND (LOWER(il.action) IN ('damage', 'damaged', 'defective', 'disposal', 'waste', 'spoilage', 'expired', 'loss', 'spill')
+                                         OR LOWER(COALESCE(il.reason,'')) LIKE '%damage%' OR LOWER(COALESCE(il.reason,'')) LIKE '%expire%' OR LOWER(COALESCE(il.reason,'')) LIKE '%spoil%'
+                                         OR LOWER(COALESCE(il.notes,'')) LIKE '%damage%' OR LOWER(COALESCE(il.notes,'')) LIKE '%expire%')
+                                    AND DATE(il.created_at) BETWEEN :date_from_il AND :date_to_il ";
+                    $params_il = ['station_id_il' => $station_id, 'date_from_il' => $date_from, 'date_to_il' => $date_to];
+
+                    if (!empty($fi_batch)) { $where_il .= " AND LOWER(COALESCE(il.reference_no,'')) LIKE LOWER(:fi_batch_il) "; $params_il['fi_batch_il'] = "%$fi_batch%"; }
+                    if (!empty($fi_prod))  { $where_il .= " AND LOWER(COALESCE(p.name,'')) LIKE LOWER(:fi_prod_il) "; $params_il['fi_prod_il'] = "%$fi_prod%"; }
+
+                    $sql_il = "SELECT COALESCE(NULLIF(il.reference_no,''), CONCAT('ILOG-', LPAD(il.id, 5, '0'))) as batch_id,
+                                      COALESCE(p.name, CONCAT('Product #', il.product_id)) as product,
+                                      p.expiration_date as expiration_date,
+                                      CASE WHEN LOWER(il.action) LIKE '%expire%' OR LOWER(COALESCE(il.reason,'')) LIKE '%expire%' OR LOWER(COALESCE(il.notes,'')) LIKE '%expire%' THEN ABS(il.quantity_change) ELSE 0 END as expired_qty,
+                                      CASE WHEN LOWER(il.action) LIKE '%expire%' OR LOWER(COALESCE(il.reason,'')) LIKE '%expire%' OR LOWER(COALESCE(il.notes,'')) LIKE '%expire%' THEN 0 ELSE ABS(il.quantity_change) END as damaged_qty,
+                                      ABS(il.quantity_change) as total_deduction,
+                                      il.created_at as approval_date,
+                                      COALESCE(NULLIF(u.name,''), NULLIF(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')),''), u.username, 'Staff / Manager') as approved_by,
+                                      il.created_at as sort_date
+                               FROM inventory_logs il
+                               LEFT JOIN products p ON il.product_id = p.id
+                               LEFT JOIN users u ON il.user_id = u.id
+                               {$where_il}";
+                    try {
+                        $stmt_il = $pdo->prepare($sql_il);
+                        $stmt_il->execute($params_il);
+                        $il_rows = $stmt_il->fetchAll(PDO::FETCH_ASSOC);
+                        if ($il_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $il_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // 6. Products / Inventory Products with past expiration date
+                if (ard_table_exists($pdo, 'inventory_products')) {
+                    try {
+                        $where_ip = " WHERE ip.station_id = :station_id_ip AND ip.expiration_date IS NOT NULL AND DATE(ip.expiration_date) BETWEEN :date_from_ip AND :date_to_ip ";
+                        $params_ip = ['station_id_ip' => $station_id, 'date_from_ip' => $date_from, 'date_to_ip' => $date_to];
+                        if (!empty($fi_batch)) { $where_ip .= " AND LOWER(COALESCE(ip.sku,'')) LIKE LOWER(:fi_batch_ip) "; $params_ip['fi_batch_ip'] = "%$fi_batch%"; }
+                        if (!empty($fi_prod))  { $where_ip .= " AND LOWER(ip.product_name) LIKE LOWER(:fi_prod_ip) "; $params_ip['fi_prod_ip'] = "%$fi_prod%"; }
+
+                        $sql_ip = "SELECT COALESCE(NULLIF(ip.sku,''), CONCAT('PRD-', LPAD(ip.id, 5, '0'))) as batch_id,
+                                          ip.product_name as product,
+                                          ip.expiration_date as expiration_date,
+                                          COALESCE(ip.stock_quantity, 0) as expired_qty,
+                                          0 as damaged_qty,
+                                          COALESCE(ip.stock_quantity, 0) as total_deduction,
+                                          ip.expiration_date as approval_date,
+                                          'System Audit' as approved_by,
+                                          ip.expiration_date as sort_date
+                                   FROM inventory_products ip
+                                   {$where_ip}";
+                        $stmt_ip = $pdo->prepare($sql_ip);
+                        $stmt_ip->execute($params_ip);
+                        $ip_rows = $stmt_ip->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        if ($ip_rows) {
+                            $all_exp_dmg_rows = array_merge($all_exp_dmg_rows, $ip_rows);
+                        }
+                    } catch (Exception $e) {}
+                }
+
+                // Apply filter by Type if specified
+                if (!empty($fi_atype)) {
+                    $all_exp_dmg_rows = array_values(array_filter($all_exp_dmg_rows, function($r) use ($fi_atype) {
+                        $fa = strtolower($fi_atype);
+                        if ($fa === 'expired') {
+                            return (float)($r['expired_qty'] ?? 0) > 0;
+                        } elseif ($fa === 'damaged') {
+                            return (float)($r['damaged_qty'] ?? 0) > 0;
+                        } elseif ($fa === 'spillage') {
+                            return stripos($r['batch_id'] ?? '', 'FADJ') !== false 
+                                || stripos($r['product'] ?? '', 'diesel') !== false 
+                                || stripos($r['product'] ?? '', 'unl') !== false
+                                || stripos($r['product'] ?? '', 'xcs') !== false
+                                || stripos($r['product'] ?? '', 'kerosene') !== false;
+                        }
+                        return true;
+                    }));
+                }
+
+                // Sort all rows by sort_date DESC
+                usort($all_exp_dmg_rows, function($a, $b) {
+                    return strcmp($b['sort_date'] ?? '', $a['sort_date'] ?? '');
+                });
+
+                // Deduplicate rows
+                $unique_exp = [];
+                $seen_exp = [];
+                foreach ($all_exp_dmg_rows as $r) {
+                    $k = ($r['batch_id'] ?? '') . '|' . ($r['product'] ?? '') . '|' . substr($r['sort_date'] ?? '', 0, 16);
+                    if (!isset($seen_exp[$k])) {
+                        $seen_exp[$k] = true;
+                        $unique_exp[] = $r;
+                    }
+                }
+
+                $data['rows'] = $unique_exp;
+
+                $tot_exp_qty = 0;
+                $tot_dmg_qty = 0;
+                $tot_deduction = 0;
+                foreach ($unique_exp as $r) {
+                    $tot_exp_qty += (float)($r['expired_qty'] ?? 0);
+                    $tot_dmg_qty += (float)($r['damaged_qty'] ?? 0);
+                    $tot_deduction += (float)($r['total_deduction'] ?? 0);
+                }
+                $data['summary'] = [
+                    'total_records'   => count($unique_exp),
+                    'total_expired'   => $tot_exp_qty,
+                    'total_damaged'   => $tot_dmg_qty,
+                    'total_deduction' => $tot_deduction
+                ];
             }
             break;
 
@@ -909,7 +1317,7 @@ if (!function_exists('getAdminReportData')) {
         // 3. OPERATIONS REPORTS
         // =========================================================================
         case 'operations':
-            $data['mechanics'] = $pdo->prepare("SELECT id, full_name FROM mechanics WHERE station_id = :sid AND (archived = 0 OR archived IS NULL) ORDER BY full_name ASC");
+            $data['mechanics'] = $pdo->prepare("SELECT id, full_name, full_name as name FROM mechanics WHERE station_id = :sid AND (archived = 0 OR archived IS NULL) ORDER BY full_name ASC");
             $data['mechanics']->execute(['sid' => $station_id]);
             $data['mechanics'] = $data['mechanics']->fetchAll(PDO::FETCH_ASSOC);
 
@@ -925,116 +1333,264 @@ if (!function_exists('getAdminReportData')) {
                 $fi_payst  = trim($filters['payment_status'] ?? '');
                 $fi_search = trim($filters['search']         ?? '');
 
-                $where  = " WHERE DATE(jo.created_at) BETWEEN :date_from AND :date_to AND jo.station_id = :station_id ";
-                $params = ['date_from' => $date_from, 'date_to' => $date_to, 'station_id' => $station_id];
+                // Station filtering conditions
+                $sid_cond1 = ($station_id > 0) ? " AND jo.station_id = :sid1 " : "";
+                $sid_cond2 = ($station_id > 0) ? " AND mt.station_id = :sid2 " : "";
 
-                if (!empty($fi_status)) { $where .= " AND LOWER(jo.status) = LOWER(:fi_status) ";               $params['fi_status'] = $fi_status; }
-                if (!empty($fi_mech))   { $where .= " AND LOWER(COALESCE(m.full_name,'')) LIKE LOWER(:fi_mech) "; $params['fi_mech']   = "%$fi_mech%"; }
-                if (!empty($fi_scat))   { $where .= " AND LOWER(COALESCE(sc.name,'')) LIKE LOWER(:fi_scat) ";     $params['fi_scat']   = "%$fi_scat%"; }
-                if (!empty($fi_cust))   { $where .= " AND LOWER(COALESCE(jo.customer_name,'')) LIKE LOWER(:fi_cust) "; $params['fi_cust'] = "%$fi_cust%"; }
-                if (!empty($fi_plate))  { $where .= " AND LOWER(COALESCE(jo.vehicle_plate,'')) LIKE LOWER(:fi_plate) "; $params['fi_plate'] = "%$fi_plate%"; }
-                if (!empty($fi_payst))  { $where .= " AND (LOWER(COALESCE(jo.payment_status,'')) = LOWER(:fi_payst) OR LOWER(COALESCE(jo.payment_method,'')) = LOWER(:fi_payst2)) "; $params['fi_payst'] = $fi_payst; $params['fi_payst2'] = $fi_payst; }
+                $sql = "SELECT * FROM (
+                            SELECT jo.id as id,
+                                   jo.job_order_number as jo_no,
+                                   jo.created_at as date,
+                                   COALESCE(NULLIF(jo.customer_name,''), NULLIF(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,'')),''), 'Walk-in') as customer,
+                                   CONCAT(COALESCE(jo.vehicle_plate,'N/A'), ' - ', COALESCE(jo.vehicle_type,'Vehicle')) as vehicle,
+                                   COALESCE(m.full_name, 'Unassigned') as mechanic,
+                                   COALESCE(sc.name, jo.service_type, jo.service_description, 'General Service') as service_category,
+                                   COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) as labor_fee,
+                                   COALESCE(jo.estimated_cost, 0) as service_fee,
+                                   COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) as parts_cost,
+                                   COALESCE(jo.total_cost, (COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0)), 0) as total_amount,
+                                   COALESCE(NULLIF(jo.payment_method,''), NULLIF(jo.payment_status,''), 'Unpaid') as payment_method,
+                                   COALESCE(jo.status, 'Pending') as status,
+                                   jo.completed_at as released_date,
+                                   'job_orders' as source_table
+                            FROM job_orders jo
+                            LEFT JOIN mechanics m ON jo.assigned_mechanic_id = m.id
+                            LEFT JOIN service_categories sc ON jo.service_category_id = sc.id
+                            LEFT JOIN customers c ON jo.customer_id = c.id
+                            WHERE DATE(jo.created_at) BETWEEN :df1 AND :dt1
+                              {$sid_cond1}
+
+                            UNION ALL
+
+                            SELECT mt.id as id,
+                                   COALESCE(NULLIF(mt.job_order_id,''), mt.transaction_id) as jo_no,
+                                   COALESCE(mt.transaction_date, mt.created_at) as date,
+                                   COALESCE(NULLIF(mt.customer_name,''), NULLIF(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,'')),''), 'Walk-in') as customer,
+                                   CONCAT(COALESCE(mt.job_order_vehicle_plate,'N/A'), ' - ', COALESCE(NULLIF(mt.job_order_vehicle_type,''),'Vehicle')) as vehicle,
+                                   COALESCE(NULLIF(mt.job_order_mechanic_name,''), 'Unassigned') as mechanic,
+                                   COALESCE(NULLIF(mt.job_order_service,''), 'Vehicle Service') as service_category,
+                                   COALESCE(mt.subtotal_amount, 0) as labor_fee,
+                                   0 as service_fee,
+                                   GREATEST(COALESCE(mt.total_amount,0) - COALESCE(mt.subtotal_amount,0), 0) as parts_cost,
+                                   COALESCE(mt.total_amount, 0) as total_amount,
+                                   COALESCE(NULLIF(mt.payment_method,''), 'Cash') as payment_method,
+                                   COALESCE(NULLIF(mt.workflow_status,''), NULLIF(mt.validation_status,''), 'Completed') as status,
+                                   COALESCE(mt.transaction_date, mt.created_at) as released_date,
+                                   'merchandise_transactions' as source_table
+                            FROM merchandise_transactions mt
+                            WHERE DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN :df2 AND :dt2
+                              {$sid_cond2}
+                              AND (
+                                  LOWER(COALESCE(mt.transaction_type,'')) IN ('job_order','service','combined')
+                                  OR (mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) != '')
+                              )
+                              AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id = 0 OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders))
+                        ) cjo
+                        WHERE 1=1 ";
+
+                $params = [
+                    'df1' => $date_from,
+                    'dt1' => $date_to,
+                    'df2' => $date_from,
+                    'dt2' => $date_to,
+                ];
+                if ($station_id > 0) {
+                    $params['sid1'] = $station_id;
+                    $params['sid2'] = $station_id;
+                }
+
+                if (!empty($fi_status)) {
+                    $st_low = strtolower($fi_status);
+                    if ($st_low === 'completed') {
+                        $sql .= " AND LOWER(cjo.status) IN ('completed','verified','finalized') ";
+                    } elseif ($st_low === 'released') {
+                        $sql .= " AND LOWER(cjo.status) = 'released' ";
+                    } elseif ($st_low === 'pending') {
+                        $sql .= " AND LOWER(cjo.status) IN ('pending','reviewed') ";
+                    } elseif ($st_low === 'in progress' || $st_low === 'inprogress') {
+                        $sql .= " AND LOWER(cjo.status) IN ('in progress','inprogress','awaiting parts') ";
+                    } elseif ($st_low === 'cancelled' || $st_low === 'canceled') {
+                        $sql .= " AND LOWER(cjo.status) IN ('cancelled','canceled','rejected','voided') ";
+                    } else {
+                        $sql .= " AND LOWER(cjo.status) = LOWER(:fi_status) ";
+                        $params['fi_status'] = $fi_status;
+                    }
+                }
+                if (!empty($fi_mech)) {
+                    $sql .= " AND LOWER(cjo.mechanic) LIKE LOWER(:fi_mech) ";
+                    $params['fi_mech'] = "%$fi_mech%";
+                }
+                if (!empty($fi_scat)) {
+                    $sql .= " AND LOWER(cjo.service_category) LIKE LOWER(:fi_scat) ";
+                    $params['fi_scat'] = "%$fi_scat%";
+                }
+                if (!empty($fi_cust)) {
+                    $sql .= " AND LOWER(cjo.customer) LIKE LOWER(:fi_cust) ";
+                    $params['fi_cust'] = "%$fi_cust%";
+                }
+                if (!empty($fi_plate)) {
+                    $sql .= " AND LOWER(cjo.vehicle) LIKE LOWER(:fi_plate) ";
+                    $params['fi_plate'] = "%$fi_plate%";
+                }
+                if (!empty($fi_payst)) {
+                    $sql .= " AND LOWER(cjo.payment_method) LIKE LOWER(:fi_payst) ";
+                    $params['fi_payst'] = "%$fi_payst%";
+                }
                 if (!empty($fi_search)) {
-                    $where .= " AND (LOWER(jo.job_order_number) LIKE LOWER(:srch) OR LOWER(COALESCE(jo.customer_name,'')) LIKE LOWER(:srch) OR LOWER(COALESCE(jo.vehicle_plate,'')) LIKE LOWER(:srch) OR LOWER(COALESCE(m.full_name,'')) LIKE LOWER(:srch)) ";
+                    $sql .= " AND (
+                        LOWER(cjo.jo_no) LIKE LOWER(:srch)
+                        OR LOWER(cjo.customer) LIKE LOWER(:srch)
+                        OR LOWER(cjo.vehicle) LIKE LOWER(:srch)
+                        OR LOWER(cjo.mechanic) LIKE LOWER(:srch)
+                        OR LOWER(cjo.service_category) LIKE LOWER(:srch)
+                    ) ";
                     $params['srch'] = "%$fi_search%";
                 }
 
-                $sql = "SELECT jo.job_order_number as jo_no,
-                               jo.created_at as date,
-                               COALESCE(NULLIF(jo.customer_name,''), 'Walk-in') as customer,
-                               CONCAT(COALESCE(jo.vehicle_plate,'N/A'), ' - ', COALESCE(jo.vehicle_type,'Vehicle')) as vehicle,
-                               COALESCE(m.full_name, 'Unassigned') as mechanic,
-                               COALESCE(sc.name, jo.service_type, jo.service_description, 'General Service') as service_category,
-                               COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) as labor_fee,
-                               COALESCE(jo.estimated_labor_cost, 0) as service_fee,
-                               COALESCE(jo.actual_parts_cost, jo.estimated_parts_cost, 0) as parts_cost,
-                               COALESCE(jo.total_cost, (COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0)), 0) as total_amount,
-                               COALESCE(NULLIF(jo.payment_method,''), NULLIF(jo.payment_status,''), 'Unpaid') as payment_method,
-                               jo.status,
-                               jo.completed_at as released_date
-                        FROM job_orders jo
-                        LEFT JOIN mechanics m ON jo.assigned_mechanic_id = m.id
-                        LEFT JOIN service_categories sc ON jo.service_category_id = sc.id
-                        {$where}
-                        ORDER BY jo.created_at DESC";
+                $sql .= " ORDER BY cjo.date DESC ";
+
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $data['rows'] = $rows;
 
                 // Footer Summary calculations
-                $total_jos      = count($rows);
-                $completed_jos  = 0;
-                $pending_jos    = 0;
+                $total_jos       = count($rows);
+                $completed_jos   = 0;
+                $pending_jos     = 0;
                 $in_progress_jos = 0;
-                $released_jos   = 0;
-                $cancelled_jos  = 0;
-                $total_labor    = 0;
-                $total_sfee     = 0;
-                $total_parts    = 0;
-                $overall_rev    = 0;
+                $released_jos    = 0;
+                $cancelled_jos   = 0;
+                $total_labor     = 0;
+                $total_sfee      = 0;
+                $total_parts     = 0;
+                $overall_rev     = 0;
 
                 foreach ($rows as $r) {
-                    $st = strtolower($r['status'] ?? '');
+                    $st = strtolower(trim($r['status'] ?? ''));
                     if (in_array($st, ['completed', 'verified', 'finalized'])) $completed_jos++;
                     elseif (in_array($st, ['pending', 'reviewed'])) $pending_jos++;
-                    elseif (in_array($st, ['in progress', 'awaiting parts'])) $in_progress_jos++;
+                    elseif (in_array($st, ['in progress', 'inprogress', 'awaiting parts'])) $in_progress_jos++;
                     elseif ($st === 'released') $released_jos++;
-                    elseif (in_array($st, ['cancelled', 'rejected'])) $cancelled_jos++;
+                    elseif (in_array($st, ['cancelled', 'canceled', 'rejected', 'voided'])) $cancelled_jos++;
 
-                    $total_labor += (float)$r['labor_fee'];
-                    $total_sfee  += (float)$r['service_fee'];
-                    $total_parts += (float)$r['parts_cost'];
-                    $overall_rev += (float)$r['total_amount'];
+                    $total_labor += (float)($r['labor_fee'] ?? 0);
+                    $total_sfee  += (float)($r['service_fee'] ?? 0);
+                    $total_parts += (float)($r['parts_cost'] ?? 0);
+                    $overall_rev += (float)($r['total_amount'] ?? 0);
                 }
 
                 $data['summary'] = [
-                    'total_jos'       => $total_jos,
-                    'completed_jos'   => $completed_jos,
-                    'pending_jos'     => $pending_jos,
-                    'in_progress_jos' => $in_progress_jos,
-                    'released_jos'    => $released_jos,
-                    'cancelled_jos'   => $cancelled_jos,
-                    'total_labor'     => $total_labor,
+                    'total_jos'         => $total_jos,
+                    'completed_jos'     => $completed_jos,
+                    'pending_jos'       => $pending_jos,
+                    'in_progress_jos'   => $in_progress_jos,
+                    'released_jos'      => $released_jos,
+                    'cancelled_jos'     => $cancelled_jos,
+                    'total_labor'       => $total_labor,
                     'total_service_fee' => $total_sfee,
-                    'total_parts'     => $total_parts,
-                    'overall_revenue' => $overall_rev,
+                    'total_parts'       => $total_parts,
+                    'overall_revenue'   => $overall_rev,
                 ];
 
             // ---- 2. MECHANIC PERFORMANCE REPORT ----
             } else {
-                $fi_mech  = trim($filters['mechanic']    ?? '');
-                $fi_scat  = trim($filters['service_cat'] ?? '');
-                $fi_status = trim($filters['status']     ?? '');
-                $fi_search = trim($filters['search']     ?? '');
+                $fi_mech   = trim($filters['mechanic']    ?? '');
+                $fi_scat   = trim($filters['service_cat'] ?? '');
+                $fi_status = trim($filters['status']      ?? '');
+                $fi_search = trim($filters['search']      ?? '');
 
-                $where  = " WHERE m.station_id = :station_id AND (m.archived = 0 OR m.archived IS NULL) ";
-                $params = ['station_id' => $station_id];
+                $sid_cond1  = ($station_id > 0) ? " AND jo.station_id = :sid1 " : "";
+                $sid_cond2  = ($station_id > 0) ? " AND mt.station_id = :sid2 " : "";
+                $sid_cond_m = ($station_id > 0) ? " AND m.station_id = :sid_m " : "";
 
-                if (!empty($fi_mech))   { $where .= " AND LOWER(m.full_name) LIKE LOWER(:fi_mech) "; $params['fi_mech'] = "%$fi_mech%"; }
-                if (!empty($fi_search)) { $where .= " AND LOWER(m.full_name) LIKE LOWER(:srch) ";    $params['srch']    = "%$fi_search%"; }
+                $where_m = " WHERE (m.archived = 0 OR m.archived IS NULL) {$sid_cond_m} ";
+                $params = [
+                    'df1' => $date_from,
+                    'dt1' => $date_to,
+                    'df2' => $date_from,
+                    'dt2' => $date_to,
+                ];
+                if ($station_id > 0) {
+                    $params['sid1']  = $station_id;
+                    $params['sid2']  = $station_id;
+                    $params['sid_m'] = $station_id;
+                }
 
-                $jo_and = "";
-                if (!empty($fi_scat))   { $jo_and .= " AND LOWER(COALESCE(sc.name,'')) LIKE LOWER(:fi_scat) "; $params['fi_scat'] = "%$fi_scat%"; }
-                if (!empty($fi_status)) { $jo_and .= " AND LOWER(jo.status) = LOWER(:fi_status) ";             $params['fi_status'] = $fi_status; }
+                if (!empty($fi_mech))   { $where_m .= " AND LOWER(m.full_name) LIKE LOWER(:fi_mech) "; $params['fi_mech'] = "%$fi_mech%"; }
+                if (!empty($fi_search)) { $where_m .= " AND LOWER(m.full_name) LIKE LOWER(:srch) ";    $params['srch']    = "%$fi_search%"; }
+
+                $cjo_filter = "";
+                if (!empty($fi_scat))   { $cjo_filter .= " AND LOWER(cjo.service_cat) LIKE LOWER(:fi_scat) "; $params['fi_scat'] = "%$fi_scat%"; }
+                if (!empty($fi_status)) {
+                    $st_low = strtolower($fi_status);
+                    if ($st_low === 'completed') {
+                        $cjo_filter .= " AND LOWER(cjo.status) IN ('completed','verified','finalized') ";
+                    } elseif ($st_low === 'released') {
+                        $cjo_filter .= " AND LOWER(cjo.status) = 'released' ";
+                    } elseif ($st_low === 'pending') {
+                        $cjo_filter .= " AND LOWER(cjo.status) IN ('pending','reviewed') ";
+                    } elseif ($st_low === 'in progress' || $st_low === 'inprogress') {
+                        $cjo_filter .= " AND LOWER(cjo.status) IN ('in progress','inprogress','awaiting parts') ";
+                    } elseif ($st_low === 'cancelled' || $st_low === 'canceled') {
+                        $cjo_filter .= " AND LOWER(cjo.status) IN ('cancelled','canceled','rejected','voided') ";
+                    } else {
+                        $cjo_filter .= " AND LOWER(cjo.status) = LOWER(:fi_status) ";
+                        $params['fi_status'] = $fi_status;
+                    }
+                }
 
                 $sql = "SELECT m.full_name as mechanic,
-                               COUNT(jo.id) as assigned_jobs,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('completed','verified','finalized','released') THEN 1 ELSE 0 END) as completed_jobs,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('pending','reviewed','in progress','awaiting parts') THEN 1 ELSE 0 END) as pending_jobs,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('cancelled','rejected') THEN 1 ELSE 0 END) as cancelled_jobs,
-                               ROUND(AVG(CASE WHEN jo.completed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, jo.created_at, jo.completed_at) ELSE NULL END), 0) as avg_completion_mins,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('completed','verified','finalized','released') THEN COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) ELSE 0 END) as labor_revenue,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('completed','verified','finalized','released') THEN COALESCE(jo.estimated_labor_cost, 0) ELSE 0 END) as service_revenue,
-                               SUM(CASE WHEN LOWER(jo.status) IN ('completed','verified','finalized','released') THEN COALESCE(jo.total_cost, 0) ELSE 0 END) as total_revenue
+                               COUNT(cjo.id) as assigned_jobs,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('completed','verified','finalized','released') THEN 1 ELSE 0 END) as completed_jobs,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('pending','reviewed','in progress','awaiting parts') THEN 1 ELSE 0 END) as pending_jobs,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('cancelled','rejected','voided') THEN 1 ELSE 0 END) as cancelled_jobs,
+                               ROUND(AVG(CASE WHEN cjo.released_date IS NOT NULL AND cjo.date IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, cjo.date, cjo.released_date) ELSE NULL END), 0) as avg_completion_mins,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('completed','verified','finalized','released') THEN COALESCE(cjo.labor_fee, 0) ELSE 0 END) as labor_revenue,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('completed','verified','finalized','released') THEN COALESCE(cjo.service_fee, 0) ELSE 0 END) as service_revenue,
+                               SUM(CASE WHEN LOWER(COALESCE(cjo.status,'')) IN ('completed','verified','finalized','released') THEN COALESCE(cjo.total_amount, 0) ELSE 0 END) as total_revenue
                         FROM mechanics m
-                        LEFT JOIN job_orders jo ON m.id = jo.assigned_mechanic_id AND DATE(jo.created_at) BETWEEN :date_from AND :date_to {$jo_and}
-                        LEFT JOIN service_categories sc ON jo.service_category_id = sc.id
-                        {$where}
+                        LEFT JOIN (
+                            SELECT jo.id,
+                                   jo.assigned_mechanic_id,
+                                   m2.full_name as mechanic,
+                                   jo.created_at as date,
+                                   jo.completed_at as released_date,
+                                   COALESCE(jo.actual_labor_cost, jo.estimated_labor_cost, 0) as labor_fee,
+                                   COALESCE(jo.estimated_cost, 0) as service_fee,
+                                   COALESCE(jo.total_cost, (COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0)), 0) as total_amount,
+                                   COALESCE(jo.status, 'Pending') as status,
+                                   sc.name as service_cat
+                            FROM job_orders jo
+                            LEFT JOIN mechanics m2 ON jo.assigned_mechanic_id = m2.id
+                            LEFT JOIN service_categories sc ON jo.service_category_id = sc.id
+                            WHERE DATE(jo.created_at) BETWEEN :df1 AND :dt1
+                              {$sid_cond1}
+
+                            UNION ALL
+
+                            SELECT mt.id,
+                                   NULL as assigned_mechanic_id,
+                                   mt.job_order_mechanic_name as mechanic,
+                                   COALESCE(mt.transaction_date, mt.created_at) as date,
+                                   COALESCE(mt.transaction_date, mt.created_at) as released_date,
+                                   COALESCE(mt.subtotal_amount, 0) as labor_fee,
+                                   0 as service_fee,
+                                   COALESCE(mt.total_amount, 0) as total_amount,
+                                   COALESCE(NULLIF(mt.workflow_status,''), NULLIF(mt.validation_status,''), 'Completed') as status,
+                                   mt.job_order_service as service_cat
+                            FROM merchandise_transactions mt
+                            WHERE DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN :df2 AND :dt2
+                              {$sid_cond2}
+                              AND (
+                                  LOWER(COALESCE(mt.transaction_type,'')) IN ('job_order','service','combined')
+                                  OR (mt.job_order_service IS NOT NULL AND TRIM(mt.job_order_service) != '')
+                              )
+                              AND (mt.job_order_db_id IS NULL OR mt.job_order_db_id = 0 OR mt.job_order_db_id NOT IN (SELECT id FROM job_orders))
+                        ) cjo ON (m.id = cjo.assigned_mechanic_id OR LOWER(TRIM(m.full_name)) = LOWER(TRIM(cjo.mechanic))) {$cjo_filter}
+                        {$where_m}
                         GROUP BY m.id, m.full_name
                         ORDER BY total_revenue DESC, m.full_name ASC";
-                $params['date_from'] = $date_from;
-                $params['date_to']   = $date_to;
 
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
@@ -1127,8 +1683,27 @@ if (!function_exists('getAdminReportData')) {
                     $fr_params['fuel_type'] = '%' . strtolower($filters['fuel_type']) . '%';
                 }
                 if (!empty($filters['ugt'])) {
-                    $fr_where .= " AND LOWER(ft.fuel_type) LIKE :ugt";
-                    $fr_params['ugt'] = '%' . strtolower($filters['ugt']) . '%';
+                    $fi_ugt_raw = strtoupper(trim($filters['ugt']));
+                    $ugt_fuel_like = null;
+                    if (strpos($fi_ugt_raw, '#1') !== false || strpos($fi_ugt_raw, '-01') !== false || strpos($fi_ugt_raw, ' 1') !== false) {
+                        $ugt_fuel_like = 'DIESEL 1%';
+                    } elseif (strpos($fi_ugt_raw, '#2') !== false || strpos($fi_ugt_raw, '-02') !== false || strpos($fi_ugt_raw, ' 2') !== false) {
+                        $ugt_fuel_like = 'DIESEL 2%';
+                    } elseif (strpos($fi_ugt_raw, '#3') !== false || strpos($fi_ugt_raw, '-03') !== false || strpos($fi_ugt_raw, ' 3') !== false) {
+                        $ugt_fuel_like = 'TURBO%';
+                    } elseif (strpos($fi_ugt_raw, '#4') !== false || strpos($fi_ugt_raw, '-04') !== false || strpos($fi_ugt_raw, ' 4') !== false) {
+                        $ugt_fuel_like = 'XCS%';
+                    } elseif (strpos($fi_ugt_raw, '#5') !== false || strpos($fi_ugt_raw, '-05') !== false || strpos($fi_ugt_raw, ' 5') !== false) {
+                        $ugt_fuel_like = 'XTRA UNL 1%';
+                    } elseif (strpos($fi_ugt_raw, '#6') !== false || strpos($fi_ugt_raw, '-06') !== false || strpos($fi_ugt_raw, ' 6') !== false) {
+                        $ugt_fuel_like = 'XTRA UNL 2%';
+                    } elseif (strpos($fi_ugt_raw, '#7') !== false || strpos($fi_ugt_raw, '-07') !== false || strpos($fi_ugt_raw, ' 7') !== false) {
+                        $ugt_fuel_like = 'KEROSENE%';
+                    }
+                    if ($ugt_fuel_like !== null) {
+                        $fr_where .= " AND UPPER(ft.fuel_type) LIKE :ugt_fuel_like ";
+                        $fr_params['ugt_fuel_like'] = $ugt_fuel_like;
+                    }
                 }
                 if (!empty($filters['status'])) {
                     if (strtolower($filters['status']) === 'submitted') {
@@ -1167,6 +1742,12 @@ if (!function_exists('getAdminReportData')) {
                     if ((float)$r['fuel_sales'] <= 0 && (float)$r['net_volume'] > 0 && (float)$r['selling_price'] > 0) {
                         $r['fuel_sales'] = round((float)$r['net_volume'] * (float)$r['selling_price'], 2);
                     }
+                }
+                if (!empty($filters['ugt'])) {
+                    $target_ugt = strtoupper(trim($filters['ugt']));
+                    $raw_rows = array_values(array_filter($raw_rows, function($r) use ($target_ugt) {
+                        return strtoupper(trim($r['ugt_no'] ?? '')) === $target_ugt || stripos($r['ugt_no'] ?? '', $target_ugt) !== false;
+                    }));
                 }
                 $data['rows'] = $raw_rows;
 
@@ -1309,62 +1890,136 @@ if (!function_exists('getAdminReportData')) {
                 $filter_status = trim($filters['status'] ?? '');
                 $filter_due    = trim($filters['due_date'] ?? '');
 
-                // 1. Query credit transactions
-                $ar_where = " WHERE (LOWER(COALESCE(mt.payment_method,'')) LIKE '%credit%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%' OR mt.credit_customer_id IS NOT NULL) ";
-                $ar_params = [];
+                $all_ar_rows = [];
+
+                // ── Source 1: customer_accounts_receivable table (no station_id col – join customers for station) ──
+                $car_params = [];
+                $car_where  = " WHERE c.station_id = :car_sid AND DATE(car.created_at) BETWEEN :car_df AND :car_dt ";
+                $car_params['car_sid'] = $station_id;
+                $car_params['car_df']  = $date_from;
+                $car_params['car_dt']  = $date_to;
                 if (!empty($filter_cust)) {
-                    $ar_where .= " AND (LOWER(mt.customer_name) LIKE LOWER(:filter_cust) OR LOWER(c.name) LIKE LOWER(:filter_cust2)) ";
-                    $ar_params['filter_cust']  = '%' . $filter_cust . '%';
-                    $ar_params['filter_cust2'] = '%' . $filter_cust . '%';
+                    $car_where .= " AND LOWER(c.name) LIKE LOWER(:car_cust) ";
+                    $car_params['car_cust'] = '%' . $filter_cust . '%';
                 }
                 if (!empty($filter_due)) {
-                    $ar_where .= " AND DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) = :filter_due ";
-                    $ar_params['filter_due'] = $filter_due;
+                    $car_where .= " AND DATE(COALESCE(mtt.credit_due_date, mtt.due_date, DATE_ADD(DATE(car.created_at), INTERVAL 30 DAY))) = :car_due ";
+                    $car_params['car_due'] = $filter_due;
                 }
+                $sql_car = "SELECT
+                                COALESCE(c.name, 'Credit Customer') as customer,
+                                'Credit Account (AR)' as account_type,
+                                COALESCE(NULLIF(car.or_number,''), car.transaction_id, CONCAT('AR-', LPAD(car.id,5,'0'))) as invoice_no,
+                                DATE(car.created_at) as transaction_date,
+                                COALESCE(mtt.credit_due_date, mtt.due_date, DATE_ADD(DATE(car.created_at), INTERVAL 30 DAY)) as due_date,
+                                COALESCE(car.outstanding_balance, 0) as outstanding_balance,
+                                GREATEST(DATEDIFF(CURDATE(), COALESCE(mtt.credit_due_date, mtt.due_date, DATE_ADD(DATE(car.created_at), INTERVAL 30 DAY))), 0) as days_overdue,
+                                CASE
+                                  WHEN LOWER(COALESCE(car.status,'')) IN ('paid','settled') THEN 'Paid'
+                                  WHEN COALESCE(car.outstanding_balance,0) <= 0 THEN 'Paid'
+                                  WHEN DATE(COALESCE(mtt.credit_due_date, mtt.due_date, DATE_ADD(DATE(car.created_at), INTERVAL 30 DAY))) = CURDATE() THEN 'Due Today'
+                                  WHEN DATE(COALESCE(mtt.credit_due_date, mtt.due_date, DATE_ADD(DATE(car.created_at), INTERVAL 30 DAY))) < CURDATE() THEN 'Overdue'
+                                  ELSE 'Current'
+                                END as status
+                            FROM customer_accounts_receivable car
+                            LEFT JOIN customers c ON car.customer_id = c.id
+                            LEFT JOIN merchandise_transactions mtt ON car.transaction_db_id = mtt.id
+                            {$car_where}
+                            ORDER BY car.created_at DESC";
+                $stmt_car = $pdo->prepare($sql_car);
+                $stmt_car->execute($car_params);
+                $all_ar_rows = array_merge($all_ar_rows, $stmt_car->fetchAll(PDO::FETCH_ASSOC));
 
-                $sql_ar = "SELECT 
-                            COALESCE(NULLIF(mt.customer_name,''), NULLIF(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,'')),''), c.name, 'Credit Customer') as customer,
-                            COALESCE(mt.payment_method, 'Credit Account (AR)') as account_type,
-                            COALESCE(mt.transaction_id, CONCAT('INV-', mt.id)) as invoice_no,
-                            DATE(mt.transaction_date) as transaction_date,
-                            COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY)) as due_date,
-                            COALESCE(mt.balance_due, mt.total_amount, 0) as outstanding_balance,
-                            GREATEST(DATEDIFF(CURDATE(), COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))), 0) as days_overdue,
-                            CASE
-                              WHEN LOWER(COALESCE(mt.payment_status,'')) = 'paid' THEN 'Paid'
-                              WHEN DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) = CURDATE() THEN 'Due Today'
-                              WHEN DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) < CURDATE() THEN 'Overdue'
-                              ELSE 'Current'
-                            END as status
+                // ── Source 2: merchandise_transactions – any credit/unpaid/balance_due/ar rows ──
+                $mt_params = [];
+                $mt_where  = " WHERE mt.station_id = :mt_sid
+                               AND DATE(mt.transaction_date) BETWEEN :mt_df AND :mt_dt
+                               AND (
+                                   LOWER(COALESCE(mt.payment_method,'')) LIKE '%credit%'
+                                   OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%'
+                                   OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%account%'
+                                   OR LOWER(COALESCE(mt.payment_status,'')) IN ('unpaid','credit','partial')
+                                   OR LOWER(COALESCE(mt.ar_status,'')) IN ('pending','partial','unpaid')
+                                   OR COALESCE(mt.balance_due,0) > 0
+                                   OR mt.credit_customer_id IS NOT NULL
+                               ) ";
+                $mt_params['mt_sid'] = $station_id;
+                $mt_params['mt_df']  = $date_from;
+                $mt_params['mt_dt']  = $date_to;
+                if (!empty($filter_cust)) {
+                    $mt_where .= " AND (LOWER(COALESCE(mt.customer_name,'')) LIKE LOWER(:mt_cust)
+                                    OR LOWER(TRIM(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,'')))) LIKE LOWER(:mt_cust2)
+                                    OR LOWER(COALESCE(c.name,'')) LIKE LOWER(:mt_cust3)) ";
+                    $mt_params['mt_cust']  = '%' . $filter_cust . '%';
+                    $mt_params['mt_cust2'] = '%' . $filter_cust . '%';
+                    $mt_params['mt_cust3'] = '%' . $filter_cust . '%';
+                }
+                if (!empty($filter_due)) {
+                    $mt_where .= " AND DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) = :mt_due ";
+                    $mt_params['mt_due'] = $filter_due;
+                }
+                $sql_mt = "SELECT
+                               COALESCE(NULLIF(TRIM(mt.customer_name),''),
+                                        NULLIF(TRIM(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,''))),''),
+                                        c.name, 'Credit Customer') as customer,
+                               COALESCE(mt.payment_method, 'Credit Account (AR)') as account_type,
+                               COALESCE(NULLIF(mt.transaction_id,''), CONCAT('MT-', LPAD(mt.id,5,'0'))) as invoice_no,
+                               DATE(mt.transaction_date) as transaction_date,
+                               COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY)) as due_date,
+                               COALESCE(NULLIF(mt.balance_due,0), mt.total_amount, 0) as outstanding_balance,
+                               GREATEST(DATEDIFF(CURDATE(), COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))), 0) as days_overdue,
+                               CASE
+                                 WHEN LOWER(COALESCE(mt.payment_status,'')) = 'paid' AND COALESCE(mt.balance_due,0) <= 0 THEN 'Paid'
+                                 WHEN DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) = CURDATE() THEN 'Due Today'
+                                 WHEN DATE(COALESCE(mt.credit_due_date, mt.due_date, DATE_ADD(DATE(mt.transaction_date), INTERVAL 30 DAY))) < CURDATE() THEN 'Overdue'
+                                 ELSE 'Current'
+                               END as status
                            FROM merchandise_transactions mt
-                           LEFT JOIN customers c ON mt.customer_id = c.id
-                           {$ar_where}
+                           LEFT JOIN customers c ON mt.credit_customer_id = c.id
+                           {$mt_where}
                            ORDER BY mt.transaction_date DESC";
-                $stmt = $pdo->prepare($sql_ar);
-                $stmt->execute($ar_params);
-                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $stmt_mt = $pdo->prepare($sql_mt);
+                $stmt_mt->execute($mt_params);
+                $all_ar_rows = array_merge($all_ar_rows, $stmt_mt->fetchAll(PDO::FETCH_ASSOC));
 
-                if (empty($rows)) {
-                    // Fallback to credit customers
-                    $sql_ar_cust = "SELECT 
-                                        c.name as customer,
-                                        'Credit Account (AR)' as account_type,
-                                        CONCAT('INV-', LPAD(c.id, 5, '0')) as invoice_no,
-                                        DATE(c.created_at) as transaction_date,
-                                        DATE_ADD(DATE(c.created_at), INTERVAL 30 DAY) as due_date,
-                                        COALESCE(NULLIF(c.current_balance, 0), NULLIF(c.outstanding_balance, 0), c.credit_limit, 0) as outstanding_balance,
-                                        GREATEST(DATEDIFF(CURDATE(), DATE_ADD(DATE(c.created_at), INTERVAL 30 DAY)), 0) as days_overdue,
-                                        CASE
-                                          WHEN COALESCE(c.current_balance, 0) <= 0 AND COALESCE(c.outstanding_balance, 0) <= 0 THEN 'Paid'
-                                          WHEN DATE_ADD(DATE(c.created_at), INTERVAL 30 DAY) = CURDATE() THEN 'Due Today'
-                                          WHEN DATE_ADD(DATE(c.created_at), INTERVAL 30 DAY) < CURDATE() THEN 'Overdue'
-                                          ELSE 'Current'
-                                        END as status
-                                    FROM customers c
-                                    WHERE LOWER(c.type) = 'credit' OR c.current_balance > 0 OR c.outstanding_balance > 0";
-                    $stmt2 = $pdo->query($sql_ar_cust);
-                    $rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+                // ── Source 3: Registered credit-eligible customers (credit_limit > 0 or credit_terms set) ──
+                // Show as registered credit accounts even if current balance = 0
+                $cust_params = [];
+                $cust_where  = " WHERE c.station_id = :cust_sid
+                                 AND (c.credit_limit > 0 OR (c.credit_terms IS NOT NULL AND c.credit_terms != '')) ";
+                $cust_params['cust_sid'] = $station_id;
+                if (!empty($filter_cust)) {
+                    $cust_where .= " AND LOWER(c.name) LIKE LOWER(:cust_name) ";
+                    $cust_params['cust_name'] = '%' . $filter_cust . '%';
                 }
+                $sql_cust = "SELECT
+                                 c.name as customer,
+                                 CONCAT('Credit Account (Limit: ₱', FORMAT(c.credit_limit,2), ')') as account_type,
+                                 CONCAT('CUST-', LPAD(c.id,5,'0')) as invoice_no,
+                                 DATE(c.created_at) as transaction_date,
+                                 NULL as due_date,
+                                 COALESCE(NULLIF(c.outstanding_balance,0), NULLIF(c.current_balance,0), 0) as outstanding_balance,
+                                 0 as days_overdue,
+                                 CASE
+                                   WHEN COALESCE(c.outstanding_balance,0) <= 0 AND COALESCE(c.current_balance,0) <= 0 THEN 'Paid'
+                                   ELSE 'Current'
+                                 END as status
+                             FROM customers c
+                             {$cust_where}
+                             ORDER BY c.name ASC";
+                $stmt_cust = $pdo->prepare($sql_cust);
+                $stmt_cust->execute($cust_params);
+                $cust_rows = $stmt_cust->fetchAll(PDO::FETCH_ASSOC);
+
+                // Deduplicate: only add customer-level record if not already in sources 1+2
+                $seen_invoices = array_map(fn($r) => $r['invoice_no'], $all_ar_rows);
+                foreach ($cust_rows as $cr) {
+                    if (!in_array($cr['invoice_no'], $seen_invoices)) {
+                        $all_ar_rows[] = $cr;
+                    }
+                }
+
+                $rows = $all_ar_rows;
 
                 if (!empty($filter_status)) {
                     $rows = array_filter($rows, function($r) use ($filter_status) {
@@ -1373,6 +2028,8 @@ if (!function_exists('getAdminReportData')) {
                 }
 
                 $data['rows'] = array_values($rows);
+
+
 
             } elseif ($tab === 'payment_collections') {
                 $filter_pm   = trim($filters['payment_method'] ?? '');
@@ -2633,22 +3290,34 @@ if (!function_exists('getAdminReportData')) {
                                 OR LOWER(COALESCE(al.action_type,'')) LIKE '%restore%'
                                 OR LOWER(COALESCE(al.log_type,'')) LIKE '%archive%'
                                 OR LOWER(COALESCE(al.log_type,'')) LIKE '%deactivat%'
+                                OR LOWER(COALESCE(al.action_details,'')) LIKE '%archive%'
+                                OR LOWER(COALESCE(al.action_details,'')) LIKE '%deactivat%'
                               )";
-                        if ($station_id > 0) { $w .= " AND u.station_id = ?"; $p[] = $station_id; }
+                        if ($station_id > 0) { $w .= " AND (u.station_id = ? OR u.station_id IS NULL)"; $p[] = $station_id; }
                         if ($filter_staff > 0) { $w .= " AND al.user_id = ?"; $p[] = $filter_staff; }
                         if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR al.user_id = ?)"; $p[] = $viewer_user_id; }
                         $sql = "SELECT al.created_at AS datetime,
-                            COALESCE(al.entity_type, al.log_type, 'Record') AS entity_type,
-                            COALESCE(NULLIF(al.record_id,''), CONCAT('REC-',al.id)) AS ref_no,
                             CASE
-                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%archive%' THEN 'Archived'
-                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%deactivat%' THEN 'Deactivated'
-                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%reactivat%' OR LOWER(COALESCE(al.action_type,'')) LIKE '%restore%' THEN 'Reactivated'
+                                WHEN LOWER(COALESCE(al.entity_type, al.log_type, '')) LIKE '%customer%' THEN 'Customer'
+                                WHEN LOWER(COALESCE(al.entity_type, al.log_type, '')) LIKE '%user%' THEN 'User Account'
+                                WHEN LOWER(COALESCE(al.entity_type, al.log_type, '')) LIKE '%product%' OR LOWER(COALESCE(al.entity_type, al.log_type, '')) LIKE '%merch%' THEN 'Merchandise'
+                                WHEN LOWER(COALESCE(al.entity_type, al.log_type, '')) LIKE '%service%' THEN 'Service'
+                                ELSE 'Record'
+                            END AS entity_type,
+                            COALESCE(NULLIF(al.entity_id,''), CONCAT('AUD-',al.id)) AS ref_no,
+                            CASE
+                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%restore%' OR LOWER(COALESCE(al.action_type,'')) LIKE '%reactivat%' THEN 'Reactivated'
+                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%deactivat%' OR LOWER(COALESCE(al.action_details,'')) LIKE '%deactivat%' THEN 'Deactivated'
+                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%archive%' OR LOWER(COALESCE(al.action_details,'')) LIKE '%archive%' THEN 'Archived'
                                 ELSE COALESCE(al.action_type, 'Archived')
                             END AS action,
                             COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Admin') AS performed_by,
                             COALESCE(al.action_details, 'Status updated') AS details,
-                            'Archived' AS status
+                            CASE
+                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%restore%' OR LOWER(COALESCE(al.action_type,'')) LIKE '%reactivat%' THEN 'Active'
+                                WHEN LOWER(COALESCE(al.action_type,'')) LIKE '%deactivat%' OR LOWER(COALESCE(al.action_details,'')) LIKE '%deactivat%' THEN 'Deactivated'
+                                ELSE 'Archived'
+                            END AS status
                         FROM audit_logs al
                         LEFT JOIN users u ON u.id = al.user_id
                         $w";
@@ -2658,7 +3327,54 @@ if (!function_exists('getAdminReportData')) {
                     } catch (Exception $e) {}
                 }
 
-                // 2. Users table fallback for deactivated accounts
+                // 2. Activity Logs for Archive/Deactivate
+                if (ard_table_exists($pdo, 'activity_logs')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE DATE(act.created_at) BETWEEN ? AND ?
+                              AND (
+                                LOWER(act.action) LIKE '%archive%'
+                                OR LOWER(act.action) LIKE '%deactivat%'
+                                OR LOWER(act.action) LIKE '%restore%'
+                                OR LOWER(act.action) LIKE '%reactivat%'
+                                OR LOWER(act.details) LIKE '%archive%'
+                                OR LOWER(act.details) LIKE '%deactivat%'
+                              )";
+                        if ($station_id > 0) { $w .= " AND (u.station_id = ? OR u.station_id IS NULL)"; $p[] = $station_id; }
+                        if ($filter_staff > 0) { $w .= " AND act.user_id = ?"; $p[] = $filter_staff; }
+                        if ($has_role_filter) { $w .= " AND (LOWER(COALESCE(u.role,'staff')) IN {$role_filter_roles} OR act.user_id = ?)"; $p[] = $viewer_user_id; }
+                        $sql = "SELECT act.created_at AS datetime,
+                            CASE
+                                WHEN LOWER(act.action) LIKE '%user%' OR LOWER(act.details) LIKE '%user%' THEN 'User Account'
+                                WHEN LOWER(act.action) LIKE '%merchandise%' OR LOWER(act.details) LIKE '%merchandise%' THEN 'Merchandise'
+                                WHEN LOWER(act.action) LIKE '%service%' OR LOWER(act.details) LIKE '%service%' THEN 'Service'
+                                WHEN LOWER(act.action) LIKE '%customer%' OR LOWER(act.details) LIKE '%customer%' THEN 'Customer'
+                                ELSE 'Record'
+                            END AS entity_type,
+                            COALESCE(NULLIF(act.reference,''), CONCAT('ACT-',act.id)) AS ref_no,
+                            CASE
+                                WHEN LOWER(act.action) LIKE '%restore%' OR LOWER(act.action) LIKE '%reactivat%' THEN 'Reactivated'
+                                WHEN LOWER(act.action) LIKE '%deactivat%' OR LOWER(act.details) LIKE '%deactivat%' THEN 'Deactivated'
+                                WHEN LOWER(act.action) LIKE '%archive%' OR LOWER(act.details) LIKE '%archive%' THEN 'Archived'
+                                ELSE act.action
+                            END AS action,
+                            COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))),''), u.username, 'Admin') AS performed_by,
+                            COALESCE(act.details, 'Activity recorded') AS details,
+                            CASE
+                                WHEN LOWER(act.action) LIKE '%restore%' OR LOWER(act.action) LIKE '%reactivat%' THEN 'Active'
+                                WHEN LOWER(act.action) LIKE '%deactivat%' OR LOWER(act.details) LIKE '%deactivat%' THEN 'Deactivated'
+                                ELSE 'Archived'
+                            END AS status
+                        FROM activity_logs act
+                        LEFT JOIN users u ON u.id = act.user_id
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        $rows_act = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        foreach ($rows_act as $r) { $raw[] = $r; }
+                    } catch (Exception $e) {}
+                }
+
+                // 3. Users table fallback for deactivated accounts
                 if (ard_table_exists($pdo, 'users')) {
                     try {
                         $p = [$date_from, $date_to];
@@ -2680,11 +3396,11 @@ if (!function_exists('getAdminReportData')) {
                     } catch (Exception $e) {}
                 }
 
-                // 3. Products table fallback for deactivated/archived products
+                // 4. Products table fallback for deactivated/archived products
                 if (ard_table_exists($pdo, 'products')) {
                     try {
                         $p = [$date_from, $date_to];
-                        $w = "WHERE (LOWER(p.status) IN ('inactive','archived','deactivated') OR p.is_archived = 1) AND DATE(COALESCE(p.updated_at, p.created_at)) BETWEEN ? AND ?";
+                        $w = "WHERE LOWER(p.status) IN ('inactive','archived','deactivated') AND DATE(COALESCE(p.updated_at, p.created_at)) BETWEEN ? AND ?";
                         if ($station_id > 0) { $w .= " AND p.station_id = ?"; $p[] = $station_id; }
                         $sql = "SELECT COALESCE(p.updated_at, p.created_at) AS datetime,
                             'Product' AS entity_type,
@@ -2701,6 +3417,28 @@ if (!function_exists('getAdminReportData')) {
                     } catch (Exception $e) {}
                 }
 
+                // 5. Customers table fallback for archived customer accounts
+                if (ard_table_exists($pdo, 'customers')) {
+                    try {
+                        $p = [$date_from, $date_to];
+                        $w = "WHERE (c.archived_at IS NOT NULL OR LOWER(COALESCE(c.account_status,'')) IN ('archived','inactive','deactivated'))
+                              AND DATE(COALESCE(c.archived_at, c.updated_at, c.created_at)) BETWEEN ? AND ?";
+                        if ($station_id > 0) { $w .= " AND c.station_id = ?"; $p[] = $station_id; }
+                        $sql = "SELECT COALESCE(c.archived_at, c.updated_at, c.created_at) AS datetime,
+                            'Customer' AS entity_type,
+                            CONCAT('CUST-',c.id) AS ref_no,
+                            'Archived' AS action,
+                            'Manager / Admin' AS performed_by,
+                            CONCAT('Customer: ', COALESCE(c.name, CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))), CASE WHEN c.archive_reason IS NOT NULL AND c.archive_reason != '' THEN CONCAT(' | Reason: ', c.archive_reason) ELSE '' END) AS details,
+                            'Archived' AS status
+                        FROM customers c
+                        $w";
+                        $st = $pdo->prepare($sql); $st->execute($p);
+                        $rows_c = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        foreach ($rows_c as $r) { $raw[] = $r; }
+                    } catch (Exception $e) {}
+                }
+
                 // PHP-side filter & sort
                 $filtered = [];
                 foreach ($raw as $r) {
@@ -2712,6 +3450,7 @@ if (!function_exists('getAdminReportData')) {
                         }
                         if ($skip_actor) continue;
                     }
+                    if ($filter_act !== '' && strcasecmp($r['action'], $filter_act) !== 0) continue;
                     if ($filter_srch !== '') {
                         $hay = strtolower($r['ref_no'].' '.$r['entity_type'].' '.$r['action'].' '.$r['performed_by'].' '.$r['details']);
                         if (strpos($hay, strtolower($filter_srch)) === false) continue;

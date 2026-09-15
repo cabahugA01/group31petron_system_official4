@@ -128,7 +128,6 @@ foreach ($mechanics as $m) {
         'first_name'  => $first_name,
         'last_name'   => $last_name,
         'contact_no'  => $contact_no,
-        'specialty'   => $specialty,
         'status'      => $status,
         'date_added'  => $date_added,
         'date_updated'=> $date_updated
@@ -157,16 +156,15 @@ if ($format === 'excel') {
 </head>
 <body>
 <table>
-    <tr><td colspan="8" align="center" class="hdr-title" style="text-align: center; font-size: 16px; font-weight: bold; color: #00264D; border: none; padding: 6px 0;">MECHANICS MANAGEMENT REPORT</td></tr>
-    <tr><td colspan="8" align="center" class="hdr-station" style="text-align: center; font-size: 12px; font-weight: bold; color: #00264D; border: none; padding: 3px 0;">' . htmlspecialchars($station_name) . '</td></tr>
-    <tr><td colspan="8" align="center" class="hdr-date" style="text-align: center; font-size: 11px; color: #475569; border: none; padding: 3px 0 8px 0;">Date: ' . htmlspecialchars($now_formatted) . '</td></tr>
-    <tr><td colspan="8" style="border: none;"></td></tr>
+    <tr><td colspan="7" align="center" class="hdr-title" style="text-align: center; font-size: 16px; font-weight: bold; color: #00264D; border: none; padding: 6px 0;">MECHANICS MANAGEMENT REPORT</td></tr>
+    <tr><td colspan="7" align="center" class="hdr-station" style="text-align: center; font-size: 12px; font-weight: bold; color: #00264D; border: none; padding: 3px 0;">' . htmlspecialchars($station_name) . '</td></tr>
+    <tr><td colspan="7" align="center" class="hdr-date" style="text-align: center; font-size: 11px; color: #475569; border: none; padding: 3px 0 8px 0;">Date: ' . htmlspecialchars($now_formatted) . '</td></tr>
+    <tr><td colspan="7" style="border: none;"></td></tr>
     <tr>
         <th>Mechanic ID</th>
         <th>First Name</th>
         <th>Last Name</th>
         <th>Contact No.</th>
-        <th>Specialty</th>
         <th>Status</th>
         <th>Date Added</th>
         <th>Date Updated</th>
@@ -178,7 +176,6 @@ if ($format === 'excel') {
             <td>' . htmlspecialchars($row['first_name']) . '</td>
             <td>' . htmlspecialchars($row['last_name']) . '</td>
             <td>' . htmlspecialchars($row['contact_no']) . '</td>
-            <td>' . htmlspecialchars($row['specialty']) . '</td>
             <td>' . htmlspecialchars($row['status']) . '</td>
             <td>' . htmlspecialchars($row['date_added']) . '</td>
             <td>' . htmlspecialchars($row['date_updated']) . '</td>
@@ -209,7 +206,6 @@ if ($format === 'csv') {
         'First Name',
         'Last Name',
         'Contact No.',
-        'Specialty',
         'Status',
         'Date Added',
         'Date Updated'
@@ -221,7 +217,6 @@ if ($format === 'csv') {
             $row['first_name'],
             $row['last_name'],
             $row['contact_no'],
-            $row['specialty'],
             $row['status'],
             $row['date_added'],
             $row['date_updated']
@@ -282,14 +277,13 @@ ob_start();
 <table class="data-tbl">
     <thead>
         <tr>
-            <th style="width: 12%;">MECHANIC ID</th>
-            <th style="width: 15%;">FIRST NAME</th>
-            <th style="width: 15%;">LAST NAME</th>
-            <th style="width: 14%;">CONTACT NO.</th>
-            <th style="width: 16%;">SPECIALTY</th>
-            <th style="width: 8%;">STATUS</th>
-            <th style="width: 10%;">DATE ADDED</th>
-            <th style="width: 10%;">DATE UPDATED</th>
+            <th style="width: 14%;">MECHANIC ID</th>
+            <th style="width: 18%;">FIRST NAME</th>
+            <th style="width: 18%;">LAST NAME</th>
+            <th style="width: 16%;">CONTACT NO.</th>
+            <th style="width: 10%;">STATUS</th>
+            <th style="width: 12%;">DATE ADDED</th>
+            <th style="width: 12%;">DATE UPDATED</th>
         </tr>
     </thead>
     <tbody>
@@ -301,7 +295,6 @@ ob_start();
             <td class="left"><strong><?php echo htmlspecialchars($row['first_name']); ?></strong></td>
             <td class="left"><strong><?php echo htmlspecialchars($row['last_name']); ?></strong></td>
             <td><?php echo htmlspecialchars($row['contact_no']); ?></td>
-            <td><?php echo htmlspecialchars($row['specialty']); ?></td>
             <td><span class="<?php echo $is_act ? 'st-act' : 'st-inact'; ?>"><?php echo htmlspecialchars($row['status']); ?></span></td>
             <td><?php echo htmlspecialchars($row['date_added']); ?></td>
             <td><?php echo htmlspecialchars($row['date_updated']); ?></td>
@@ -309,7 +302,7 @@ ob_start();
         <?php endforeach; ?>
         <?php if (empty($mechanic_rows)): ?>
         <tr>
-            <td colspan="8" style="text-align: center; padding: 15px; color: #94a3b8;">No mechanic records found.</td>
+            <td colspan="7" style="text-align: center; padding: 15px; color: #94a3b8;">No mechanic records found.</td>
         </tr>
         <?php endif; ?>
     </tbody>

@@ -77,7 +77,7 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             padding: 16px;
             box-sizing: border-box;
             min-width: 0;  /* prevent grid blowout */
-            overflow: hidden;
+            overflow: visible;
         }
         .closing-card.full-width {
             grid-column: 1 / -1;
@@ -190,6 +190,74 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
             border-top: 2px solid #002F70;
             color: #002F70;
         }
+        /* Volume Sales Summary — use DIV rows to avoid global table CSS conflicts */
+        .vol-summary-wrap {
+            width: 100%;
+            box-sizing: border-box;
+            overflow: visible !important;
+        }
+        .vol-summary-header-row,
+        .vol-summary-data-row,
+        .vol-summary-total-row {
+            display: flex !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            align-items: stretch !important;
+            overflow: visible !important;
+        }
+        .vol-summary-header-row {
+            background: #002F70 !important;
+            border-radius: 6px 6px 0 0;
+        }
+        .vol-summary-data-row {
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .vol-summary-data-row:nth-child(even) {
+            background: #f8fafc !important;
+        }
+        .vol-summary-total-row {
+            background: #e8f0fe !important;
+            border-top: 2px solid #002F70;
+            border-radius: 0 0 6px 6px;
+        }
+        .vol-col-1 {
+            flex: 0 0 38% !important;
+            width: 38% !important;
+            padding: 6px 6px !important;
+            font-size: 11px !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            min-width: 0;
+        }
+        .vol-col-2 {
+            flex: 0 0 31% !important;
+            width: 31% !important;
+            padding: 6px 4px !important;
+            font-size: 11px !important;
+            text-align: right !important;
+            box-sizing: border-box !important;
+            white-space: nowrap !important;
+            min-width: 0;
+        }
+        .vol-col-3 {
+            flex: 0 0 31% !important;
+            width: 31% !important;
+            padding: 6px 4px !important;
+            font-size: 11px !important;
+            text-align: right !important;
+            box-sizing: border-box !important;
+            white-space: nowrap !important;
+            min-width: 0;
+        }
+        .vol-summary-header-row .vol-col-1,
+        .vol-summary-header-row .vol-col-2,
+        .vol-summary-header-row .vol-col-3 {
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            font-size: 11px !important;
+        }
         .table-scroll-wrap {
             width: 100%;
             overflow-x: auto;
@@ -279,32 +347,36 @@ $shift       = $_GET['shift'] ?? 'Second Shift';
                     <div class="closing-card-header">
                         <span><i class="fas fa-filter me-1"></i> Volume Sales Summary</span>
                     </div>
-                    <table class="closing-table">
-                        <thead>
-                            <tr>
-                                <th>Fuel Type</th>
-                                <th style="text-align:right;">Volume Sales (L)</th>
-                                <th style="text-align:right;">Amount (₱)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="volSalesTbody">
-                            <!-- Populated via JS -->
-                        </tbody>
-                    </table>
+                    <div class="vol-summary-wrap">
+                        <!-- Header Row -->
+                        <div class="vol-summary-header-row">
+                            <div class="vol-col-1">Fuel Type</div>
+                            <div class="vol-col-2">Volume (L)</div>
+                            <div class="vol-col-3">Amount (₱)</div>
+                        </div>
+                        <!-- Data Rows populated via JS -->
+                        <div id="volSalesTbody"></div>
+                        <!-- Total Row -->
+                        <div class="vol-summary-total-row" id="volSalesFoot" style="display:none;">
+                            <div class="vol-col-1" style="font-weight:800; font-size:11px; color:#002F70;"><strong>TOTAL</strong></div>
+                            <div class="vol-col-2" style="font-weight:800; font-size:11px; color:#15803d;" id="volSalesTotalLiters"></div>
+                            <div class="vol-col-3" style="font-weight:800; font-size:11px; color:#002F70;" id="volSalesTotalAmt"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Volume & Amount Summary -->
                 <div class="closing-card">
                     <div class="closing-card-header">
-                        <span><i class="fas fa-chart-pie me-1"></i> Volume & Amount Summary</span>
+                        <span><i class="fas fa-chart-pie me-1"></i> Volume &amp; Amount Summary</span>
                     </div>
                     <div class="form-row-custom total-row" style="border:none; margin-top:0; padding-top:0;">
-                        <label style="font-size:16px;">TOTAL LITERS</label>
-                        <input type="text" id="summary_total_liters" readonly value="0.00 L" style="font-size:16px; font-weight:800; color:#15803d; width:220px;">
+                        <label style="font-size:13.5px; font-weight:700;">TOTAL LITERS</label>
+                        <input type="text" id="summary_total_liters" readonly value="0.00 L" style="font-size:15px; font-weight:800; color:#15803d; width:180px;">
                     </div>
                     <div class="form-row-custom total-row" style="margin-top:16px;">
-                        <label style="font-size:16px;">TOTAL AMOUNT</label>
-                        <input type="text" id="summary_total_amount" readonly value="₱0.00" style="font-size:18px; font-weight:800; color:#002F70; width:220px; background:#e8f0fe;">
+                        <label style="font-size:13.5px; font-weight:700;">TOTAL AMOUNT</label>
+                        <input type="text" id="summary_total_amount" readonly value="₱0.00" style="font-size:16px; font-weight:800; color:#002F70; width:180px; background:#e8f0fe;">
                     </div>
                 </div>
 
@@ -570,7 +642,7 @@ async function fetchSummary() {
                 tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#64748b; font-style:italic;">No meter readings encoded for this date. Default fuel types loaded.</td></tr>`;
             }
 
-            // B. Volume Sales Summary Table
+            // B. Volume Sales Summary — DIV rows (immune to global table CSS overrides)
             const byFuel = result.by_fuel || {};
             const volTbody = document.getElementById('volSalesTbody');
             volTbody.innerHTML = '';
@@ -582,14 +654,29 @@ async function fetchSummary() {
                 const amt = byFuel[fKey].amount || 0;
                 sumVol += vol;
                 sumAmt += amt;
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-weight:700;">${fKey}</td>
-                    <td style="text-align:right; font-weight:700; color:#15803d;">${formatNum(vol)} L</td>
-                    <td style="text-align:right; font-weight:800; color:#002F70;">₱${formatNum(amt)}</td>
+                const row = document.createElement('div');
+                row.className = 'vol-summary-data-row';
+                row.innerHTML = `
+                    <div class="vol-col-1" style="font-weight:700; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${fKey}</div>
+                    <div class="vol-col-2" style="font-weight:700; color:#15803d; white-space:nowrap;">${formatNum(vol)} L</div>
+                    <div class="vol-col-3" style="font-weight:800; color:#002F70; white-space:nowrap;">&#x20b1;${formatNum(amt)}</div>
                 `;
-                volTbody.appendChild(tr);
+                volTbody.appendChild(row);
             });
+
+            // Show totals footer in Volume Sales Summary (div-based row, needs display:flex)
+            const volFoot = document.getElementById('volSalesFoot');
+            const volFootL = document.getElementById('volSalesTotalLiters');
+            const volFootA = document.getElementById('volSalesTotalAmt');
+            if (volFoot) {
+                if (sumVol > 0 || sumAmt > 0) {
+                    if (volFootL) volFootL.textContent = formatNum(sumVol) + ' L';
+                    if (volFootA) volFootA.textContent = '\u20b1' + formatNum(sumAmt);
+                    volFoot.style.display = 'flex';
+                } else {
+                    volFoot.style.display = 'none';
+                }
+            }
 
             // C. Volume & Amount Summary Totals
             const totalFuelSales = result.totals.total_fuel_sales || sumAmt;
@@ -703,6 +790,11 @@ async function saveClosingData() {
         const result = await response.json();
 
         if (result.success) {
+            try {
+                sessionStorage.removeItem('petron_fuel_readings_submitted');
+                sessionStorage.removeItem('petron_fuel_reading_shift');
+                sessionStorage.removeItem('petron_fuel_reading_date');
+            } catch(e) {}
             const targetUrl = result.report_url || 'staff_transactions_hub.php?section=fuel&closing_saved=1';
             alert('<i class="fas fa-check-circle"></i> Fuel Sales Closing saved successfully.');
             window.location.href = targetUrl;

@@ -2041,22 +2041,27 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
     }
     .notification-bell .badge { 
         position: absolute; 
-        top: -8px; 
-        right: -8px; 
-        background: #dc3545 !important; 
+        top: -5px; 
+        right: -7px; 
+        background: #dc2626 !important; 
         color: white !important; 
-        border-radius: 50%; 
-        width: 20px; 
-        height: 20px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        font-size: 10px; 
-        font-weight: bold; 
-        min-width: 18px; 
+        border-radius: 9999px !important; 
+        width: auto !important; 
+        height: 18px !important; 
+        min-width: 18px !important; 
+        padding: 2px 5px !important; 
+        box-sizing: border-box !important; 
+        display: inline-flex !important; 
+        align-items: center !important; 
+        justify-content: center !important; 
+        font-size: 10.5px !important; 
+        font-weight: 700 !important; 
+        line-height: 1 !important; 
+        letter-spacing: normal !important; 
+        white-space: nowrap !important; 
         text-align: center; 
-        border: 2px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        border: 2px solid var(--header-bg, #ffffff) !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
         z-index: 1001;
     }
     
@@ -2869,18 +2874,25 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
     
     .notification-bell .badge {
         position: absolute;
-        top: -2px;
-        right: -2px;
-        background: #E30613;
-        color: white;
-        font-size: 10px;
-        font-weight: bold;
-        padding: 2px 6px;
-        border-radius: 10px;
-        min-width: 16px;
+        top: -5px;
+        right: -7px;
+        background: #dc2626 !important;
+        color: white !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        padding: 2px 5px !important;
+        border-radius: 9999px !important;
+        min-width: 18px !important;
+        height: 18px !important;
+        width: auto !important;
+        box-sizing: border-box !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         text-align: center;
-        border: 2px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        border: 2px solid var(--header-bg, #ffffff) !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
         pointer-events: none;
         z-index: 1001;
     }
@@ -2969,18 +2981,25 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
     
     .notification-bell .badge {
         position: absolute;
-        top: -2px;
-        right: -2px;
-        background: #E30613;
-        color: white;
-        font-size: 10px;
-        font-weight: bold;
-        padding: 2px 6px;
-        border-radius: 10px;
-        min-width: 16px;
+        top: -5px;
+        right: -7px;
+        background: #dc2626 !important;
+        color: white !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        padding: 2px 5px !important;
+        border-radius: 9999px !important;
+        min-width: 18px !important;
+        height: 18px !important;
+        width: auto !important;
+        box-sizing: border-box !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         text-align: center;
-        border: 2px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        border: 2px solid var(--header-bg, #ffffff) !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
         pointer-events: none;
         z-index: 1001;
     }
@@ -3120,11 +3139,57 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
       </style>
 
 <style id="globalRedBadgeStyle">
-/* === GLOBAL ENFORCEMENT: NOTIFICATION COUNTER BADGES MUST BE RED (#dc2626 / #E30613) === */
+/* === GLOBAL ENFORCEMENT: NOTIFICATION COUNTER BADGES (CLEAR, CRISP & AUTO-EXPANDING) === */
+.notification-bell {
+    position: relative !important;
+    overflow: visible !important;
+}
+
 #notificationBadge,
+.notification-bell #notificationBadge,
+.notification-bell .badge {
+    position: absolute !important;
+    top: -5px !important;
+    right: -7px !important;
+    background-color: #dc2626 !important; /* Petron Vivid Red */
+    color: #ffffff !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    padding: 2px 5px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    width: auto !important; /* Allows badge to expand cleanly for 2 digits (e.g. 19) or 99+ */
+    border-radius: 9999px !important; /* Perfect circle for 1 digit, smooth pill for 2+ digits */
+    border: 2px solid var(--header-bg, #ffffff) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25) !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+    z-index: 1001 !important;
+}
+
+#notificationBadge[style*="display: none"],
+.notification-bell #notificationBadge[style*="display: none"],
+.notification-bell .badge[style*="display: none"] {
+    display: none !important;
+}
+
+body.dark-theme #notificationBadge,
+body.dark-theme .notification-bell #notificationBadge,
+body.dark-theme .notification-bell .badge {
+    border-color: var(--header-bg, #1a1f2e) !important;
+}
+
 .notif-badge,
 .cal-badge {
-    background-color: #dc2626 !important; /* Petron / System Vivid Red */
+    background-color: #dc2626 !important;
     color: #ffffff !important;
     font-weight: 700 !important;
 }
@@ -4528,7 +4593,7 @@ require_once __DIR__ . '/rbac_menu.php';
             <?php if(in_array($role, ['staff','admin','manager','superadmin','developer']) && $show_notifications_widget): ?>
             <div class="notification-bell" id="notificationBell" onclick="petronToggleNotif(event)" style="z-index: 2147483645 !important; pointer-events: auto !important; position: relative !important; cursor: pointer !important;">
                 <i class="fas fa-bell" style="pointer-events: none !important;"></i>
-                <span class="badge" id="notificationBadge" data-server-count="<?php echo (int)$header_unread_count; ?>" style="display: <?php echo $header_unread_count > 0 ? 'flex' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>
+                <span class="badge" id="notificationBadge" data-server-count="<?php echo (int)$header_unread_count; ?>" style="display: <?php echo $header_unread_count > 0 ? 'inline-flex' : 'none'; ?>; pointer-events: none !important;"><?php echo $header_unread_count > 99 ? '99+' : (int)$header_unread_count; ?></span>
 
                 <div class="notif-dropdown" id="notificationDropdown">
                     <div class="notif-dropdown-header">
@@ -6054,7 +6119,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (badge) {
                     if (count > 0) {
                         badge.textContent = count > 99 ? '99+' : count;
-                        badge.style.display = 'block';
+                        badge.style.display = 'inline-flex';
                         badge.style.background = '#dc2626';
                     } else {
                         badge.style.display = 'none';
@@ -6279,7 +6344,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (badge) {
                     if (count > 0) {
                         badge.textContent = count > 99 ? '99+' : count;
-                        badge.style.display = 'block';
+                        badge.style.display = 'inline-flex';
                     } else {
                         badge.style.display = 'none';
                     }

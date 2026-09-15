@@ -728,7 +728,7 @@ overflow: hidden;
                 } elseif ($vs === 'adjusted' || $js === 'adjusted') {
                     $statusLabel = 'Adjusted';
                     $statusIcon  = 'fa-sliders-h';
-                    $statusBadge = 'badge-amber';
+                    $statusBadge = 'badge-gray';
                 } elseif ($vs === 'adjustment_requested' || $vs === 'adjustment requested' || $js === 'adjustment_requested') {
                     $statusLabel = 'Adjustment Requested';
                     $statusIcon  = 'fa-clock';
@@ -1082,7 +1082,7 @@ function renderAdminTxnModal(data, d) {
     const st = (d.status || '').toLowerCase();
     let bannerBg='#f0fdf4', bannerClr='#166534', bannerIcon='fa-check-circle';
     if (st==='voided')   { bannerBg='#fef2f2'; bannerClr='#dc2626'; bannerIcon='fa-ban'; }
-    if (st==='adjusted') { bannerBg='#faf5ff'; bannerClr='#6b21a8'; bannerIcon='fa-edit'; }
+    if (st==='adjusted') { bannerBg='#f1f5f9'; bannerClr='#475569'; bannerIcon='fa-sliders-h'; }
     html += `<div style="background:${bannerBg};border:1px solid ${bannerClr}33;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
         <i class="fas ${bannerIcon}" style="color:${bannerClr};font-size:18px;"></i>
         <div>

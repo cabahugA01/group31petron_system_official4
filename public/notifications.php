@@ -937,8 +937,8 @@ function handleFeedItemClick(el, notifId, redirectUrl, nData) {
         'fuel_transaction'  : 'admin_fuel_management.php',
         'fuel_management'   : 'admin_fuel_management.php',
         'inventory'         : 'admin_stock_in.php',
-        'transaction'       : 'admin_transactions_oversight.php',
-        'job_order'         : 'admin_transactions_oversight.php',
+        'transaction'       : 'manager_validated_transactions.php',
+        'job_order'         : 'manager_validated_transactions.php',
         'delivery'          : 'admin_deliveries_oversight.php',
         'general'           : 'admin_fuel_management.php'
     };

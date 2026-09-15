@@ -516,17 +516,42 @@ if ($station_id) {
     }
 }
 
-// Fetch fuel types from database (not hardcoded)
+// Fetch fuel types from database (strictly synced from fuel_inventory, fuel_types & inventory_products)
 $db_fuel_types = [];
 try {
-    // Try inventory_products first (category = Fuel)
-    $stmt = $pdo->prepare("SELECT DISTINCT product_name AS name FROM inventory_products WHERE LOWER(category) = 'fuel' ORDER BY product_name");
-    $stmt->execute();
-    $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
-} catch (Exception $e) {}
+    if (!empty($station_id)) {
+        if (function_exists('ensure_fuel_inventory_synced')) {
+            ensure_fuel_inventory_synced($pdo, (int)$station_id);
+        }
+        if (function_exists('ensure_station_inventory_synced')) {
+            ensure_station_inventory_synced($pdo, (int)$station_id);
+        }
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT TRIM(name) AS name FROM (
+                SELECT fuel_type AS name FROM fuel_inventory WHERE station_id = ? AND fuel_type IS NOT NULL AND fuel_type != '' AND LOWER(COALESCE(status,'active')) != 'deleted'
+                UNION
+                SELECT name FROM fuel_types WHERE name IS NOT NULL AND name != ''
+                UNION
+                SELECT product_name AS name FROM inventory_products WHERE station_id = ? AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') AND LOWER(COALESCE(status,'active')) NOT IN ('deleted','archived')
+            ) all_fuels
+            WHERE name IS NOT NULL AND TRIM(name) != ''
+            ORDER BY name
+        ");
+        $stmt->execute([$station_id, $station_id]);
+        $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+} catch (Exception $e) {
+    error_log("Fuel Management fuel types fetch error: " . $e->getMessage());
+}
 if (empty($db_fuel_types)) {
     try {
-        // Fallback to fuel_types table
+        $stmt = $pdo->prepare("SELECT DISTINCT fuel_type AS name FROM fuel_inventory WHERE fuel_type IS NOT NULL AND fuel_type != '' ORDER BY fuel_type");
+        $stmt->execute();
+        $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Exception $e) {}
+}
+if (empty($db_fuel_types)) {
+    try {
         $stmt = $pdo->prepare("SELECT name FROM fuel_types ORDER BY name");
         $stmt->execute();
         $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);

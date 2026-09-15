@@ -487,6 +487,47 @@ button.am-combo-clear:hover i {
 
 
 
+/* Custom Right-Side Toast Banner */
+#petron-custom-toast-container {
+    position: fixed;
+    top: 84px;
+    right: 24px;
+    z-index: 2147483647;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(420px, calc(100vw - 36px));
+    pointer-events: none;
+}
+.petron-custom-toast {
+    position: relative;
+    width: 100%;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 14px 34px rgba(0,0,0,.16), 0 4px 10px rgba(0,0,0,.06);
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    box-sizing: border-box;
+    animation: petronSlideRight .32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.petron-custom-toast.toast-success {
+    border: 1px solid #86efac;
+    border-left: 5px solid #16a34a;
+}
+.petron-custom-toast.toast-error {
+    border: 1px solid #fca5a5;
+    border-left: 5px solid #dc2626;
+}
+@keyframes petronSlideRight {
+    from { opacity: 0; transform: translateX(50px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
 /* Footer and toggle scroll button styles are provided by partials/footer.php */
 </style>
 
@@ -1561,40 +1602,35 @@ function showPageFlash(type, msg, persist = false) {
         } catch(e) {}
     }
     
-    // Prefer shared top-right toast system
-    if (typeof window.showToast === 'function') {
-        window.showToast(msg, type, 5000, type === 'success' ? 'Success' : 'Notice');
-    } else if (typeof window.showPetronFlash === 'function') {
-        window.showPetronFlash(msg, type, 5000);
-    } else {
-        // Fallback top-right toast banner
-        let container = document.getElementById('petron-toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'petron-toast-container';
-            container.style.cssText = 'position:fixed;top:84px;right:22px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;width:min(390px,calc(100vw - 32px));pointer-events:none;';
-            document.body.appendChild(container);
-        }
-        container.style.display = 'flex';
-        const toast = document.createElement('div');
-        const isSuccess = type === 'success';
-        toast.className = 'petron-toast toast-' + type;
-        toast.style.cssText = 'position:relative;width:100%;padding:16px 20px;border-radius:10px;border:1px solid ' + (isSuccess ? '#bbf7d0' : '#fecaca') + ';background:' + (isSuccess ? '#ffffff' : '#ffffff') + ';color:#0f172a;font:600 15px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 12px 28px rgba(15,23,42,.14);pointer-events:auto;display:flex;align-items:flex-start;gap:14px;border-left:4px solid ' + (isSuccess ? '#16a34a' : '#dc2626') + ';animation:slideInRight .3s ease;';
-        toast.innerHTML = `
-            <i class="fas fa-${isSuccess ? 'check-circle' : 'exclamation-circle'}" style="color:${isSuccess ? '#16a34a' : '#dc2626'};font-size:20px;margin-top:2px;"></i>
-            <div style="flex:1;">
-                <strong style="display:block;font-size:15px;color:#0f172a;margin-bottom:2px;">${isSuccess ? 'Success' : 'Notice'}</strong>
-                <span style="font-size:14px;color:#475569;font-weight:500;">${msg}</span>
-            </div>
-        `;
-        container.appendChild(toast);
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateX(40px)';
-            toast.style.transition = 'all .35s ease';
-            setTimeout(() => toast.remove(), 400);
-        }, 4500);
+    // Dedicated right-side toast container
+    let container = document.getElementById('petron-custom-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'petron-custom-toast-container';
+        document.body.appendChild(container);
     }
+    container.style.display = 'flex';
+
+    const isSuccess = (type === 'success' || type === 'ok');
+    const toast = document.createElement('div');
+    toast.className = 'petron-custom-toast ' + (isSuccess ? 'toast-success' : 'toast-error');
+    
+    toast.innerHTML = `
+        <i class="fas fa-${isSuccess ? 'check-circle' : 'exclamation-circle'}" style="color:${isSuccess ? '#16a34a' : '#dc2626'};font-size:22px;margin-top:2px;flex-shrink:0;"></i>
+        <div style="flex:1;min-width:0;">
+            <strong style="display:block;font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">${isSuccess ? 'Success' : 'Notice'}</strong>
+            <span style="font-size:13.5px;color:#334155;font-weight:500;word-break:break-word;line-height:1.4;display:block;">${msg}</span>
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;padding:0 4px;margin-left:6px;line-height:1;transition:color .2s;" onmouseover="this.style.color='#0f172a'" onmouseout="this.style.color='#94a3b8'">&times;</button>
+    `;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(40px)';
+        toast.style.transition = 'all .35s ease';
+        setTimeout(() => toast.remove(), 400);
+    }, 6000);
 }
 
 // Automatically check and display persisted flash messages on page load
@@ -1607,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (parsed && parsed.msg) {
                 setTimeout(() => {
                     showPageFlash(parsed.type || 'success', parsed.msg);
-                }, 100);
+                }, 200);
             }
         } catch(e) {}
     }
@@ -1656,20 +1692,23 @@ async function submitAddStation(e) {
         if (data.ok) {
             // Inject into STATION_DATA so Create Admin modal picks it up immediately
             if (data.station_id && data.station_name) {
-                STATION_DATA.push({ id: data.station_id, name: data.station_name });
+                STATION_DATA.push({ id: Number(data.station_id), name: data.station_name });
                 STATION_DATA.sort((a, b) => a.name.localeCompare(b.name));
             }
             closeModal('addStationModal');
-            const msg = data.message || 'Station created successfully.';
+            const msg = data.message || `Station '${stationName}' created successfully and is now available for admin assignment.`;
             showPageFlash('success', msg, true);
-            setTimeout(() => location.reload(), 600);
+            // Wait 1.8 seconds so the user can clearly see and read the right-side success banner before reload
+            setTimeout(() => location.reload(), 1800);
         } else {
             alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Failed to create station.');
             alertEl.style.display = 'flex';
+            showPageFlash('error', data.error || 'Failed to create station.');
         }
     } catch (err) {
         alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error. Please try again.';
         alertEl.style.display = 'flex';
+        showPageFlash('error', 'Network error. Please try again.');
     }
 
     btn.disabled = false;

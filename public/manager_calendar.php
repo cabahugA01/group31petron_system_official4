@@ -285,220 +285,73 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_event') {
     exit;
 }
 
-// Get summary stats for panels
-$summary_stats = [
-    'today_events' => 0,
-    'today_shifts' => 0,
-    'today_deliveries' => 0,
-    'today_job_orders' => 0,
-    'week_pending' => 0,
-    'week_in_progress' => 0,
-    'week_completed' => 0,
-    'upcoming_count' => 0,
-    'conflicts' => [],
-    'pending_validations' => 0,
-    'overdue_payments' => 0,
-    'low_stock_items' => 0,
-    'staff_workload' => [],
-    'tomorrow_deliveries' => [],
-    'pending_job_orders' => [],
-    'upcoming_pms' => [],
-    'today_deliveries_list' => [],
-    'all_mechanics' => []
-];
+// ─── Left Sidebar Operational Data Preparation ──────────────────────────────
+// Only operational activities actually scheduled for Today, This Week, and Upcoming
+$today_str      = date('Y-m-d');
+$tomorrow_str   = date('Y-m-d', strtotime('+1 day'));
+$week_start_str = date('Y-m-d', strtotime('monday this week'));
+$week_end_str   = date('Y-m-d', strtotime('sunday this week'));
+$upcoming_limit = date('Y-m-d', strtotime('+30 days'));
 
-try {
-    $today_date = date('Y-m-d');
-    $tomorrow_date = date('Y-m-d', strtotime('+1 day'));
-    $week_start = date('Y-m-d', strtotime('monday this week'));
-    $week_end = date('Y-m-d', strtotime('sunday this week'));
-    $upcoming_end = date('Y-m-d', strtotime('+3 days'));
-    
-    // Today's events count
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events WHERE station_id = ? AND event_date = ?");
-    $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_events'] = (int)$stmt->fetchColumn();
-    
-    // Today's shifts
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_schedules ss 
-        JOIN users u ON ss.user_id = u.id 
-        WHERE ss.scheduled_date = ? AND u.station_id = ?");
-    $stmt->execute([$today_date, $station_id]);
-    $summary_stats['today_shifts'] = (int)$stmt->fetchColumn();
-    
-    // Today's deliveries count
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) = ?");
-    $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_deliveries'] = (int)$stmt->fetchColumn();
-    
-    // Today's job orders count
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND DATE(transaction_date) = ? AND (transaction_type IN ('job_order', 'combined') OR (job_order_service IS NOT NULL AND job_order_service != ''))");
-    $stmt->execute([$station_id, $today_date]);
-    $summary_stats['today_job_orders'] = (int)$stmt->fetchColumn();
-    
-    // Today's deliveries list
-    try {
-        $stmt = $pdo->prepare("SELECT d.id, d.supplier, d.product, d.status, DATE(d.delivery_date) AS del_date, u.name AS staff_name
-            FROM deliveries_oversight d JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id = ? AND DATE(d.delivery_date) = ? ORDER BY d.id DESC LIMIT 5");
-        $stmt->execute([$station_id, $today_date]);
-        $summary_stats['today_deliveries_list'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
+$sidebar_range_start = min($today_str, $week_start_str);
+$sidebar_range_end   = max($week_end_str, $upcoming_limit);
 
-    // Tomorrow's deliveries list
-    try {
-        $stmt = $pdo->prepare("SELECT d.id, d.supplier, d.product, d.status, DATE(d.delivery_date) AS del_date, u.name AS staff_name
-            FROM deliveries_oversight d JOIN users u ON d.encoded_by = u.id
-            WHERE d.station_id = ? AND DATE(d.delivery_date) = ? ORDER BY d.id DESC LIMIT 5");
-        $stmt->execute([$station_id, $tomorrow_date]);
-        $summary_stats['tomorrow_deliveries'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        // Also check fuel deliveries for tomorrow
-        $stmt2 = $pdo->prepare("SELECT id, fuel_type AS product, supplier, delivery_date, status
-            FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = ? LIMIT 3");
-        $stmt2->execute([$station_id, $tomorrow_date]);
-        foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $fd) {
-            $fd['supplier'] = $fd['supplier'] ?? 'Petron';
-            $summary_stats['tomorrow_deliveries'][] = $fd;
-        }
-    } catch (Exception $e) {}
-    
-    // Pending Job Orders list
-    try {
-        $stmt = $pdo->prepare("SELECT mt.id, mt.job_order_service AS service_type, mt.customer_name, 
-            mt.validation_status AS status, mt.job_order_vehicle_plate AS plate_number, 
-            u.name AS staff_name, DATE(mt.transaction_date) AS jo_date
-            FROM merchandise_transactions mt LEFT JOIN users u ON mt.staff_id = u.id
-            WHERE mt.station_id = ? AND (mt.transaction_type IN ('job_order', 'combined') OR (mt.job_order_service IS NOT NULL AND mt.job_order_service != ''))
-              AND mt.validation_status = 'Pending'
-            ORDER BY mt.transaction_date DESC LIMIT 5");
-        $stmt->execute([$station_id]);
-        $summary_stats['pending_job_orders'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-    
-    // Upcoming PMS (Preventive Maintenance) - from job_orders with service_type LIKE PMS
-    try {
-        $stmt = $pdo->prepare("SELECT jo.id, jo.service_type, jo.customer_name, jo.plate_number, 
-            jo.status, DATE(jo.created_at) AS jo_date, u.name AS staff_name
-            FROM job_orders jo JOIN users u ON jo.created_by = u.id
-            WHERE jo.station_id = ? AND (LOWER(jo.service_type) LIKE '%pms%' OR LOWER(jo.service_type) LIKE '%preventive%' OR LOWER(jo.service_type) LIKE '%maintenance%')
-            AND DATE(jo.created_at) >= ?
-            ORDER BY jo.created_at ASC LIMIT 5");
-        $stmt->execute([$station_id, $today_date]);
-        $summary_stats['upcoming_pms'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-    
-    // All mechanics for assign/filter
-    try {
-        $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','mechanic') AND status = 'Active' ORDER BY name");
-        $stmt->execute([$station_id]);
-        $summary_stats['all_mechanics'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-    
-    // Week status counts (combining all sources)
-    $stmt = $pdo->prepare("SELECT status FROM staff_calendar_events WHERE station_id = ? AND event_date BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $week_start, $week_end]);
-    $all_statuses = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    
-    $stmt2 = $pdo->prepare("SELECT status FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) BETWEEN ? AND ?");
-    $stmt2->execute([$station_id, $week_start, $week_end]);
-    $all_statuses = array_merge($all_statuses, $stmt2->fetchAll(PDO::FETCH_COLUMN));
-    
-    $stmt3 = $pdo->prepare("SELECT status FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
-    $stmt3->execute([$station_id, $week_start, $week_end]);
-    $all_statuses = array_merge($all_statuses, $stmt3->fetchAll(PDO::FETCH_COLUMN));
-    
-    foreach ($all_statuses as $st_val) {
-        $st = strtolower(trim($st_val ?? ''));
-        if (in_array($st, ['pending', 'pending validation', 'draft', 'reviewed', 'in progress'])) {
-            $summary_stats['week_pending']++;
-        } elseif (in_array($st, ['approved', 'verified', 'processing'])) {
-            $summary_stats['week_in_progress']++;
-        } elseif (in_array($st, ['completed', 'complete', 'stock-in complete', 'delivered'])) {
-            $summary_stats['week_completed']++;
+// Fetch scheduled operational events (Job Orders, Deliveries, Stock-In, Fuel Price, Shift Reports, Approvals, Calibrations)
+$sidebar_ops = calendar_fetch_all_station_events($pdo, (int)$station_id, $sidebar_range_start, $sidebar_range_end, (int)$user_id, 'manager');
+
+// 1. TODAY'S EVENTS
+$today_events_list = $sidebar_ops[$today_str] ?? [];
+usort($today_events_list, function($a, $b) {
+    return strcmp($a['start_time'] ?? '00:00:00', $b['start_time'] ?? '00:00:00');
+});
+
+// 2. THIS WEEK STATUS SUMMARY (Pending, Approved, Completed)
+$week_status_summary = ['Pending' => 0, 'Approved' => 0, 'Completed' => 0];
+foreach ($sidebar_ops as $d => $evts) {
+    if ($d >= $week_start_str && $d <= $week_end_str) {
+        foreach ($evts as $e) {
+            $st = strtolower($e['status'] ?? 'pending');
+            if (in_array($st, ['completed', 'verified', 'official', 'locked', 'stock-in complete'])) {
+                $week_status_summary['Completed']++;
+            } elseif (in_array($st, ['approved', 'in progress', 'effective'])) {
+                $week_status_summary['Approved']++;
+            } else {
+                $week_status_summary['Pending']++;
+            }
         }
     }
-    
-    // Upcoming events (next 3 days across all sources)
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM staff_calendar_events WHERE station_id = ? AND event_date BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $today_date, $upcoming_end]);
-    $u1 = (int)$stmt->fetchColumn();
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND DATE(delivery_date) BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $today_date, $upcoming_end]);
-    $u2 = (int)$stmt->fetchColumn();
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?");
-    $stmt->execute([$station_id, $today_date, $upcoming_end]);
-    $u3 = (int)$stmt->fetchColumn();
-    $summary_stats['upcoming_count'] = $u1 + $u2 + $u3;
-    
-    // MANAGER SPECIFIC: Pending validations count
-    try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions WHERE station_id = ? AND validation_status = 'Pending'");
-        $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
-        
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM deliveries_oversight WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR manager_id IS NULL)");
-        $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
+}
 
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM job_orders WHERE station_id = ? AND (status = 'Pending' OR status = 'Reviewed')");
-        $stmt->execute([$station_id]);
-        $summary_stats['pending_validations'] += (int)$stmt->fetchColumn();
-    } catch (Exception $e) {}
-    
-    // MANAGER SPECIFIC: Overdue payments count
-    try {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM merchandise_transactions
-            WHERE station_id = ? AND COALESCE(balance_due, 0) > 0 AND due_date < CURDATE()
-            AND LOWER(COALESCE(payment_status, '')) <> 'paid'");
-        $stmt->execute([$station_id]);
-        $summary_stats['overdue_payments'] = (int)$stmt->fetchColumn();
-    } catch (Exception $e) {}
-    
-    // MANAGER SPECIFIC: Low stock items
-    try {
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM inventory_products ip
-            LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-            WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-              AND ip.status = 'Active'
-              AND COALESCE(si.stock_level, ip.stock, 0) <= COALESCE(si.reorder_level, ip.min_stock, 10)
-        ");
-        $stmt->execute([$station_id]);
-        $summary_stats['low_stock_items'] = (int)$stmt->fetchColumn();
-    } catch (Exception $e) {}
-    
-    // MANAGER SPECIFIC: Staff workload today (events per staff)
-    try {
-        $stmt = $pdo->prepare("SELECT u.id, u.name, COUNT(sce.id) as event_count
-            FROM users u
-            LEFT JOIN staff_calendar_events sce ON u.id = sce.staff_encoder_id AND sce.event_date = ?
-            WHERE u.station_id = ? AND u.role IN ('staff','cashier','pump_attendant') AND u.status = 'Active'
-            GROUP BY u.id, u.name
-            ORDER BY event_count DESC");
-        $stmt->execute([$today_date, $station_id]);
-        $summary_stats['staff_workload'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {}
-    
-    // Check for schedule conflicts
-    $stmt = $pdo->prepare("SELECT e1.event_date, e1.start_time, e1.end_time, e1.work_description,
-            e2.start_time as conflict_start, e2.end_time as conflict_end, e2.work_description as conflict_desc,
-            u.name as staff_name
-        FROM staff_calendar_events e1
-        JOIN staff_calendar_events e2 ON e1.event_date = e2.event_date AND e1.id < e2.id
-        JOIN users u ON e1.staff_encoder_id = u.id
-        WHERE e1.station_id = ? AND e2.station_id = ?
-        AND e1.start_time IS NOT NULL AND e2.start_time IS NOT NULL
-        AND (
-            (e1.start_time < e2.end_time AND e1.end_time > e2.start_time)
-            OR (e2.start_time < e1.end_time AND e2.end_time > e1.start_time)
-        )
-        AND e1.status != 'cancelled' AND e2.status != 'cancelled'
-        AND e1.staff_encoder_id = e2.staff_encoder_id
-        LIMIT 10");
-    $stmt->execute([$station_id, $station_id]);
-    $summary_stats['conflicts'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 3. UPCOMING (Next scheduled operational activities after today)
+$upcoming_events_list = [];
+foreach ($sidebar_ops as $d => $evts) {
+    if ($d > $today_str) {
+        foreach ($evts as $e) {
+            $e['scheduled_day'] = $d;
+            $upcoming_events_list[] = $e;
+        }
+    }
+}
+usort($upcoming_events_list, function($a, $b) {
+    $da = ($a['scheduled_day'] ?? '') . ' ' . ($a['start_time'] ?? '00:00:00');
+    $db = ($b['scheduled_day'] ?? '') . ' ' . ($b['start_time'] ?? '00:00:00');
+    return strcmp($da, $db);
+});
+$upcoming_display_list = array_slice($upcoming_events_list, 0, 8);
+
+// Staff / Mechanics list for filter dropdown
+$all_mechanics = [];
+try {
+    $stmt = $pdo->prepare("SELECT id, name FROM users WHERE station_id = ? AND role IN ('staff','cashier','pump_attendant','mechanic') AND status = 'Active' ORDER BY name");
+    $stmt->execute([$station_id]);
+    $all_mechanics = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
+
+$summary_stats = [
+    'all_mechanics' => $all_mechanics,
+    'conflicts'     => [],
+];
+
 
 // Month navigation
 $today = new DateTime();
@@ -600,7 +453,7 @@ try {
         switch($type_key) {
             case 'job_order':
                 if ($role === 'admin') return 'admin_all_transactions.php?search=JO-' . $id_num;
-                if ($role === 'manager') return 'manager_job_orders.php';
+                if ($role === 'manager') return 'manager_validated_transactions.php';
                 return 'staff_job_orders.php';
             case 'merchandise_delivery':
             case 'fuel_delivery':
@@ -638,21 +491,6 @@ try {
     // Comprehensive operational events loading (Job Orders, Retail Sales, Fuel Transactions, Closings, Void/Adj Requests, Deliveries, Calibrations, Labor, Alerts)
     $month_events = calendar_fetch_all_station_events($pdo, (int)$station_id, $view_start, $view_end, (int)$user_id, 'manager');
 
-    // Daily closing & sales reconciliation reminder for today
-    $month_events[$today_str][] = [
-        'id' => 'report_fuel_sales_closing',
-        'numeric_id' => 0,
-        'type_name' => 'Report Deadline',
-        'type_key' => 'report_schedule',
-        'icon_class' => 'fas fa-file-invoice-dollar',
-        'staff_name' => 'Manager Schedule',
-        'staff_encoder_id' => $user_id,
-        'work_description' => 'Daily Fuel Sales & Shift Reconciliation Submission',
-        'status' => 'pending',
-        'color' => '#10b981',
-        'target_url' => 'reports/fuel_sales_closing.php',
-        'auto_synced' => true
-    ];
 
 include __DIR__ . '/../partials/header.php';
 ?>
@@ -702,15 +540,51 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-menu-btn:hover { background: #f1f3f4; }
 .cal-month-title { font-size: 22px; font-weight: 400; color: #3c4043; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.cal-view-btn { background: #fff !important; border: 1px solid #dadce0; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; color: #3c4043 !important; display: flex; align-items: center; gap: 6px; position: relative; text-decoration: none; }
-.cal-view-btn:hover { background: #f1f3f4 !important; }
+.cal-view-btn { 
+    background: white !important; 
+    border: 1px solid #dadce0 !important; 
+    padding: 8px 16px !important; 
+    border-radius: 4px !important; 
+    cursor: pointer !important; 
+    font-size: 14px !important; 
+    color: #3c4043 !important; 
+    display: flex !important; 
+    align-items: center !important; 
+    gap: 6px !important; 
+    position: relative !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+}
+.cal-view-btn:hover { 
+    background: #f1f3f4 !important; 
+    color: #3c4043 !important;
+}
+.cal-view-btn:focus { 
+    outline: none !important; 
+    background: #f1f3f4 !important; 
+    color: #3c4043 !important;
+    box-shadow: none !important;
+}
+.cal-view-btn:active { 
+    background: #f1f3f4 !important;
+    color: #3c4043 !important;
+    box-shadow: none !important;
+}
+.cal-view-btn i {
+    font-style: normal;
+    font-family: "Font Awesome 6 Free", "Font Awesome 5 Free";
+    font-weight: 900;
+    display: inline-block;
+}
 
 /* View dropdown */
-.cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.2); z-index: 100; display: none; }
+.cal-view-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.15); z-index: 100; display: none; min-width: 140px; overflow: hidden; }
 .cal-view-dropdown.show { display: block; }
-.cal-view-option { padding: 12px 16px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; justify-content: space-between; }
-.cal-view-option:hover { background: #f1f3f4; }
-.cal-view-option.active { background: #e8f0fe; }
+.cal-view-option { padding: 10px 16px; cursor: pointer; font-size: 14px; color: #3c4043; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s ease; }
+.cal-view-option:hover { background: #1967d2 !important; color: #fff !important; }
+.cal-view-option:hover .shortcut { color: rgba(255, 255, 255, 0.85) !important; }
+.cal-view-option.active { background: #1967d2 !important; color: #fff !important; font-weight: 600; }
+.cal-view-option.active .shortcut { color: rgba(255, 255, 255, 0.85) !important; }
 .cal-view-option .shortcut { font-size: 12px; color: #5f6368; }
 .cal-icon-btn { background: none; border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: #5f6368; font-size: 18px; }
 .cal-icon-btn:hover { background: #f1f3f4; }
@@ -731,11 +605,32 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 .cal-day.today .cal-day-num { background: #1a73e8; color: #fff; border-radius: 50%; font-weight: 600; }
 .cal-day.other-month .cal-day-num { color: #9aa0a6; }
 
-.cal-events { padding: 0 4px; }
-.cal-event { margin-bottom: 2px; padding: 2px 6px; border-radius: 3px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; border-left: 3px solid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #3c4043; }
-.cal-event:hover { filter: brightness(.95); }
-.cal-event-time { font-weight: 500; }
-.cal-event-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.cal-events { display: flex; flex-direction: column; gap: 3px; width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden; padding: 0 2px; }
+.cal-event { 
+    width: 100%; 
+    max-width: 100%; 
+    box-sizing: border-box; 
+    margin-bottom: 2px; 
+    padding: 3px 6px; 
+    border-radius: 4px; 
+    font-size: 11px; 
+    cursor: pointer; 
+    display: block; 
+    border: 1px solid; 
+    white-space: normal !important; 
+    word-break: break-word !important; 
+    overflow: hidden !important; 
+    text-overflow: clip !important; 
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03); 
+    transition: transform 0.12s ease, box-shadow 0.12s ease; 
+    color: #1e293b;
+}
+.cal-event:hover { 
+    filter: brightness(.95); 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+}
+.cal-event-time { font-weight: 700; font-size: 10px; margin-right: 4px; display: inline; }
+.cal-event-text { word-break: break-word; display: inline; }
 .cal-more { font-size: 11px; color: #5f6368; padding: 2px 6px; cursor: pointer; font-weight: 500; }
 .cal-more:hover { background: #f1f3f4; border-radius: 3px; }
 
@@ -748,207 +643,100 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
 <div class="cal-layout">
     <!-- Sidebar -->
     <div class="cal-sidebar">
-        <!-- Search Sidebar Panel -->
-        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
-            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-search"></i> SEARCH CALENDAR</div>
-            <input type="text" id="calendarSearchInput" placeholder="Customer, Plate, JO#, Mechanic..." 
-                   onkeyup="filterCalendarEvents()" 
-                   style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid #dadce0; border-radius: 4px; outline: none; margin-bottom: 8px;">
-            <div style="font-size: 10px; color: #70757a;">Search by: Customer | Plate | JO# | Mechanic</div>
-        </div>
+        <!-- Summary Panels: Today's Events, This Week, Upcoming -->
+        <div style="padding: 12px 12px 20px;">
+            <!-- 1. TODAY'S EVENTS -->
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fas fa-calendar-day" style="color: #002F70; margin-right: 4px;"></i> TODAY'S EVENTS
+                    </div>
+                    <span style="font-size: 10px; font-weight: 700; background: #f1f5f9; color: #1e293b; padding: 2px 7px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                        <?= count($today_events_list) ?> <?= count($today_events_list) === 1 ? 'Event' : 'Events' ?>
+                    </span>
+                </div>
 
-        <!-- Filters Sidebar Panel -->
-        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
-            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px;"><i class="fas fa-filter"></i> FILTERS</div>
-            <div style="display: grid; gap: 6px;">
-                <select id="filterStatus" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
-                    <option value="">All Statuses</option>
-                    <option value="pending">Pending / Unvalidated</option>
-                    <option value="approved">Approved / In Progress</option>
-                    <option value="completed">Completed / Verified</option>
-                </select>
-                
-                <select id="filterMechanic" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
-                    <option value="">All Staff / Mechanics</option>
-                    <?php foreach ($summary_stats['all_mechanics'] as $mech): ?>
-                    <option value="<?= htmlspecialchars($mech['id']) ?>"><?= htmlspecialchars($mech['name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-
-                <select id="filterEventType" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
-                    <option value="">All Event Types</option>
-                    <option value="job_order"><i class="fas fa-circle text-success"></i> Job Orders</option>
-                    <option value="customer_appointment"><i class="fas fa-circle text-primary"></i> Customer Appointments</option>
-                    <option value="pms"><i class="fas fa-circle" style="color:#f97316;"></i> Preventive Maintenance (PMS)</option>
-                    <option value="merchandise_delivery"><i class="fas fa-circle text-warning"></i> Merchandise Deliveries</option>
-                    <option value="fuel_delivery"><i class="fas fa-circle" style="color:#b45309;"></i> Fuel Deliveries</option>
-                </select>
-
-                <input type="date" id="filterDate" onchange="filterCalendarEvents()" style="width: 100%; padding: 5px; font-size: 11px; border: 1px solid #dadce0; border-radius: 4px;">
-            </div>
-        </div>
-
-        <!-- Events Color Legend (Clickable to Filter) -->
-        <div style="padding: 12px; border-bottom: 1px solid #dadce0;">
-            <div style="font-size: 12px; font-weight: 600; color: #3c4043; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                <span><i class="fas fa-palette"></i> EVENT TYPES</span>
-                <span onclick="filterByLegendType('')" style="font-size: 10px; color: #1a73e8; cursor: pointer; font-weight: 500;" title="Clear filter">Show All</span>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #3c4043;">
-                <div onclick="filterByLegendType('job_order')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #33b679; font-size: 14px;"><i class="fas fa-circle text-success"></i></span> <span style="font-weight: 500;">Job Orders</span></div>
-                <div onclick="filterByLegendType('customer_appointment')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #039be5; font-size: 14px;"><i class="fas fa-circle text-primary"></i></span> <span style="font-weight: 500;">Customer Appointments</span></div>
-                <div onclick="filterByLegendType('pms')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #f6bf26; font-size: 14px;"><i class="fas fa-circle" style="color:#f97316;"></i></span> <span style="font-weight: 500;">Preventive Maintenance</span></div>
-                <div onclick="filterByLegendType('merchandise_delivery')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #e67c73; font-size: 14px;"><i class="fas fa-circle text-warning"></i></span> <span style="font-weight: 500;">Merchandise Deliveries</span></div>
-                <div onclick="filterByLegendType('fuel_delivery')" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 6px; border-radius: 4px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'"><span style="color: #795548; font-size: 14px;"><i class="fas fa-circle" style="color:#b45309;"></i></span> <span style="font-weight: 500;">Fuel Deliveries</span></div>
-            </div>
-        </div>
-
-        <!-- Summary Panels -->
-        <div style="padding: 0 12px 20px; border-bottom: 1px solid #dadce0;">
-            <!-- Manager Validation Tasks -->
-            <div style="background: #fef7e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #ea8600; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-exclamation-triangle"></i> VALIDATION TASKS</div>
-                <div style="font-size: 24px; font-weight: 600; color: #ea8600;"><?= $summary_stats['pending_validations'] ?></div>
-                <div style="font-size: 10px; color: #5f6368;">awaiting your review</div>
-                <?php if ($summary_stats['pending_validations'] > 0): ?>
-                <a href="../public/manager_fuel_transaction_validation.php" style="display: block; margin-top: 8px; padding: 6px 12px; background: #ea8600; color: #fff; border-radius: 4px; font-size: 11px; text-align: center; text-decoration: none;">
-                    Review Now
-                </a>
-                <?php endif; ?>
-            </div>
-
-            <!-- Pending Job Orders Quick List -->
-            <div style="background: #e6f4ea; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #137333; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-wrench"></i> PENDING JOB ORDERS (<?= count($summary_stats['pending_job_orders']) ?>)</div>
-                <?php if (empty($summary_stats['pending_job_orders'])): ?>
-                    <div style="font-size: 11px; color: #5f6368;">No pending job orders</div>
+                <?php if (empty($today_events_list)): ?>
+                    <div style="font-size: 11px; color: #64748b; font-style: italic; padding: 6px 2px;">
+                        • No scheduled events today
+                    </div>
                 <?php else: ?>
-                    <div style="max-height: 120px; overflow-y: auto;">
-                        <?php foreach($summary_stats['pending_job_orders'] as $pjo): ?>
-                        <div style="font-size: 11px; border-bottom: 1px solid #ceead6; padding: 4px 0;">
-                            <div style="font-weight: 600; color: #137333;"><?= htmlspecialchars($pjo['service_type']) ?> - JO#<?= $pjo['id'] ?></div>
-                            <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($pjo['customer_name']) ?> (<?= htmlspecialchars($pjo['plate_number'] ?? 'N/A') ?>)</div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+                        <?php foreach ($today_events_list as $te):
+                            $t_time = (!empty($te['start_time']) && $te['start_time'] !== '00:00:00')
+                                ? date('g:i A', strtotime($te['start_time']))
+                                : '';
+                            $t_title = $te['calendar_title'] ?? ($te['work_description'] ?? $te['type_name']);
+                            $te_id = $te['id'] ?? '';
+                            $te_type = $te['type_key'] ?? '';
+                        ?>
+                        <div onclick="clickEvent('<?= htmlspecialchars($te_id) ?>', '<?= htmlspecialchars($te_type) ?>', '<?= htmlspecialchars($te['target_url'] ?? '#') ?>')"
+                             style="font-size: 11px; line-height: 1.4; color: #1e293b; cursor: pointer; padding: 4px 6px; border-radius: 4px; border: 1px solid #f1f5f9; transition: all 0.15s ease;"
+                             onmouseover="this.style.background='#f8fafc'; this.style.borderColor='#cbd5e1';"
+                             onmouseout="this.style.background='transparent'; this.style.borderColor='#f1f5f9';">
+                            <span style="color: #002F70; font-weight: 700;">•</span>
+                            <?php if ($t_time): ?>
+                                <span style="font-weight: 600; color: #475569;"><?= $t_time ?></span> &nbsp;
+                            <?php endif; ?>
+                            <span><?= htmlspecialchars($t_title) ?></span>
                         </div>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
             </div>
 
-            <!-- Tomorrow's Deliveries Quick List -->
-            <div style="background: #fef7e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #b06000; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-truck"></i> TOMORROW'S DELIVERIES (<?= count($summary_stats['tomorrow_deliveries']) ?>)</div>
-                <?php if (empty($summary_stats['tomorrow_deliveries'])): ?>
-                    <div style="font-size: 11px; color: #5f6368;">No deliveries tomorrow</div>
+            <!-- 2. THIS WEEK -->
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                <div style="font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                    <i class="fas fa-calendar-week" style="color: #002F70; margin-right: 4px;"></i> THIS WEEK
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                        <span style="color: #475569; font-weight: 500;">Pending</span>
+                        <span style="font-weight: 700; color: #1e293b;"><?= $week_status_summary['Pending'] ?></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                        <span style="color: #475569; font-weight: 500;">Approved</span>
+                        <span style="font-weight: 700; color: #1e293b;"><?= $week_status_summary['Approved'] ?></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                        <span style="color: #475569; font-weight: 500;">Completed</span>
+                        <span style="font-weight: 700; color: #1e293b;"><?= $week_status_summary['Completed'] ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. UPCOMING -->
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                <div style="font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                    <i class="fas fa-forward" style="color: #002F70; margin-right: 4px;"></i> UPCOMING
+                </div>
+
+                <?php if (empty($upcoming_display_list)): ?>
+                    <div style="font-size: 11px; color: #64748b; font-style: italic; padding: 6px 2px;">
+                        • No upcoming events scheduled
+                    </div>
                 <?php else: ?>
-                    <div style="max-height: 120px; overflow-y: auto;">
-                        <?php foreach($summary_stats['tomorrow_deliveries'] as $tdel): ?>
-                        <div style="font-size: 11px; border-bottom: 1px solid #feefc3; padding: 4px 0;">
-                            <div style="font-weight: 600; color: #b06000;"><?= htmlspecialchars($tdel['supplier'] ?? 'Supplier') ?></div>
-                            <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($tdel['product']) ?></div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;">
+                        <?php foreach ($upcoming_display_list as $ue):
+                            $u_day = $ue['scheduled_day'];
+                            $date_label = ($u_day === $tomorrow_str) ? 'Tomorrow' : date('M j', strtotime($u_day));
+                            $u_title = $ue['calendar_title'] ?? ($ue['work_description'] ?? $ue['type_name']);
+                            $ue_id = $ue['id'] ?? '';
+                            $ue_type = $ue['type_key'] ?? '';
+                        ?>
+                        <div onclick="clickEvent('<?= htmlspecialchars($ue_id) ?>', '<?= htmlspecialchars($ue_type) ?>', '<?= htmlspecialchars($ue['target_url'] ?? '#') ?>')"
+                             style="font-size: 11px; line-height: 1.4; color: #1e293b; cursor: pointer; padding: 4px 6px; border-radius: 4px; border: 1px solid #f1f5f9; transition: all 0.15s ease;"
+                             onmouseover="this.style.background='#f8fafc'; this.style.borderColor='#cbd5e1';"
+                             onmouseout="this.style.background='transparent'; this.style.borderColor='#f1f5f9';">
+                            <span style="color: #002F70; font-weight: 700;">•</span>
+                            <span style="font-weight: 600; color: #475569;"><?= $date_label ?></span> –
+                            <span><?= htmlspecialchars($u_title) ?></span>
                         </div>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
             </div>
-
-            <!-- Upcoming PMS Panel -->
-            <?php if (!empty($summary_stats['upcoming_pms'])): ?>
-            <div style="background: #e8f0fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #1a73e8; font-weight: 600; margin-bottom: 6px;"><i class="fas fa-car-side"></i> UPCOMING PMS (<?= count($summary_stats['upcoming_pms']) ?>)</div>
-                <div style="max-height: 120px; overflow-y: auto;">
-                    <?php foreach($summary_stats['upcoming_pms'] as $pms): ?>
-                    <div style="font-size: 11px; border-bottom: 1px solid #d2e3fc; padding: 4px 0;">
-                        <div style="font-weight: 600; color: #1a73e8;"><?= htmlspecialchars($pms['customer_name']) ?> (<?= htmlspecialchars($pms['plate_number'] ?? 'N/A') ?>)</div>
-                        <div style="color: #5f6368; font-size: 10px;"><?= htmlspecialchars($pms['service_type']) ?> - <?= $pms['jo_date'] ?></div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-            
-            <!-- Manager Action Items -->
-            <div style="background: #fce8e6; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #d93025; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-circle"></i> ACTION REQUIRED</div>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 18px; font-weight: 600; color: #d93025;"><?= $summary_stats['overdue_payments'] ?></div>
-                        <div style="font-size: 9px; color: #5f6368;">Overdue Payments</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 18px; font-weight: 600; color: #d93025;"><?= $summary_stats['low_stock_items'] ?></div>
-                        <div style="font-size: 9px; color: #5f6368;">Low Stock Items</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Today's Station Events -->
-            <div style="background: #e8f0fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #1a73e8; font-weight: 600; margin-bottom: 8px;">TODAY'S STATION EVENTS</div>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_job_orders'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Job Orders</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_deliveries'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Deliveries</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 20px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['today_events'] ?></div>
-                        <div style="font-size: 10px; color: #5f6368;">Other</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Staff Workload Today -->
-            <?php if (!empty($summary_stats['staff_workload'])): ?>
-            <div style="background: #f1f3f4; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #5f6368; font-weight: 600; margin-bottom: 8px;"><i class="fas fa-users"></i> STAFF WORKLOAD (TODAY)</div>
-                <div style="max-height: 150px; overflow-y: auto;">
-                    <?php foreach(array_slice($summary_stats['staff_workload'], 0, 5) as $staff_work): ?>
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #e0e0e0;">
-                        <div style="font-size: 11px; color: #3c4043; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            <?= htmlspecialchars($staff_work['name']) ?>
-                        </div>
-                        <div style="font-size: 11px; font-weight: 600; color: <?= $staff_work['event_count'] > 3 ? '#d93025' : ($staff_work['event_count'] > 1 ? '#ea8600' : '#188038') ?>; margin-left: 8px;">
-                            <?= $staff_work['event_count'] ?> tasks
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- This Week Status -->
-            <div style="background: #e8f5e9; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="font-size: 12px; color: #188038; font-weight: 600; margin-bottom: 8px;">THIS WEEK STATUS</div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">Pending</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #f9ab00;"><?= $summary_stats['week_pending'] ?></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #5f6368;">Approved</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #1a73e8;"><?= $summary_stats['week_in_progress'] ?></span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="font-size: 11px; color: #5f6368;">Completed</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #188038;"><?= $summary_stats['week_completed'] ?></span>
-                </div>
-            </div>
-
-            <?php if (count($summary_stats['conflicts']) > 0): ?>
-            <!-- Conflicts Warning -->
-            <div style="background: #fce8e6; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                    <i class="fas fa-exclamation-triangle" style="color: #d93025;"></i>
-                    <span style="font-size: 12px; color: #d93025; font-weight: 600;">SCHEDULE CONFLICTS</span>
-                </div>
-                <div style="font-size: 11px; color: #5f6368;"><?= count($summary_stats['conflicts']) ?> overlapping event(s) detected for staff.</div>
-                <button onclick="showConflicts()" style="margin-top: 8px; padding: 6px 12px; background: #d93025; color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%;">
-                    Review Conflicts
-                </button>
-            </div>
-            <?php endif; ?>
         </div>
     </div>
 
@@ -1050,15 +838,18 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                             $displayed = 0;
                             foreach($day_events as $event):
                                 if ($displayed >= $display_limit) break;
-                                $event_color = $event['color'] ?? '#757575';
+                                $tile_bg   = $event['bg_color']   ?? '#f1f5f9';
+                                $tile_text = $event['text_color'] ?? '#1e293b';
                                 $status = strtolower($event['status'] ?? 'pending');
                                 $time_str = '';
                                 if (!empty($event['start_time']) && $event['start_time'] != '00:00:00') {
                                     $time_str = date('g:ia', strtotime($event['start_time'])) . ' ';
                                 }
-                                $event_id = $event['id'] ?? '';
+                                $tile_border = $event['border_color'] ?? '#e2e8f0';
+                                $event_id   = $event['id'] ?? '';
                                 $event_type = $event['type_key'] ?? '';
-                                $staff_id = $event['staff_encoder_id'] ?? '';
+                                $staff_id   = $event['staff_encoder_id'] ?? '';
+                                $tile_label = $event['calendar_title'] ?? ($event['work_description'] ?? ($event['type_name'] ?? 'Event'));
                                 $displayed++;
                             ?>
                             <div class="cal-event" 
@@ -1066,15 +857,13 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                                  data-type="<?= htmlspecialchars($event_type) ?>"
                                  data-status="<?= htmlspecialchars($status) ?>"
                                  data-date="<?= $date ?>"
-                                 style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
-                                 title="<?= htmlspecialchars($event['staff_name'] ?? '') ?> - <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>"
+                                 style="background:<?= $tile_bg ?>; color:<?= $tile_text ?>; border-color:<?= $tile_border ?>;"
+                                 title="<?= htmlspecialchars($tile_label) ?>"
                                  onclick="event.stopPropagation(); clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?>
                                 <span class="cal-event-time"><?= $time_str ?></span>
                                 <?php endif; ?>
-                                <span class="cal-event-text">
-                                    <?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?>
-                                </span>
+                                <span class="cal-event-text"><?= htmlspecialchars($tile_label) ?></span>
                             </div>
                             <?php endforeach; ?>
                             <?php if (count($day_events) > $display_limit): ?>
@@ -1111,22 +900,25 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                         <div class="cal-day-num"><?= $week_date->format('j') ?></div>
                         <div class="cal-events">
                             <?php foreach($day_events as $event):
-                                $event_color = $event['color'] ?? '#757575';
-                                $status = strtolower($event['status'] ?? 'pending');
-                                $time_str = !empty($event['start_time']) && $event['start_time'] != '00:00:00' ? date('g:ia', strtotime($event['start_time'])) . ' ' : '';
-                                $event_id = $event['id'] ?? '';
-                                $event_type = $event['type_key'] ?? '';
-                                $staff_id = $event['staff_encoder_id'] ?? '';
+                                $tile_bg     = $event['bg_color']     ?? '#f1f5f9';
+                                $tile_text   = $event['text_color']   ?? '#1e293b';
+                                $tile_border = $event['border_color'] ?? '#e2e8f0';
+                                $status      = strtolower($event['status'] ?? 'pending');
+                                $time_str    = !empty($event['start_time']) && $event['start_time'] != '00:00:00' ? date('g:ia', strtotime($event['start_time'])) . ' ' : '';
+                                $event_id    = $event['id'] ?? '';
+                                $event_type  = $event['type_key'] ?? '';
+                                $staff_id    = $event['staff_encoder_id'] ?? '';
+                                $tile_label  = $event['calendar_title'] ?? ($event['work_description'] ?? ($event['type_name'] ?? 'Event'));
                             ?>
                             <div class="cal-event" 
                                  data-staff="<?= $staff_id ?>"
                                  data-type="<?= htmlspecialchars($event_type) ?>"
                                  data-status="<?= htmlspecialchars($status) ?>"
                                  data-date="<?= $date ?>"
-                                 style="background: <?= $event_color ?>22; border-left-color: <?= $event_color ?>;" 
+                                 style="background:<?= $tile_bg ?>; color:<?= $tile_text ?>; border-color:<?= $tile_border ?>;"
                                  onclick="event.stopPropagation(); clickEvent('<?= htmlspecialchars($event_id) ?>', '<?= htmlspecialchars($event_type) ?>', '<?= htmlspecialchars($event['target_url'] ?? '#') ?>')">
                                 <?php if ($time_str): ?><span class="cal-event-time"><?= $time_str ?></span><?php endif; ?>
-                                <span class="cal-event-text"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></span>
+                                <span class="cal-event-text"><?= htmlspecialchars($tile_label) ?></span>
                             </div>
                             <?php endforeach; ?>
                         </div>
@@ -1140,7 +932,6 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                 <?php elseif ($current_view === 'day'): ?>
                 <!-- Day View -->
                 <div style="padding: 20px;">
-                    <h2 style="margin-bottom: 20px; color: #3c4043;"><?= $today->format('l, F j, Y') ?></h2>
                     <?php 
                     $day_events = $month_events[$today_str] ?? [];
                     if (empty($day_events)):
@@ -1152,22 +943,25 @@ i.fas, i.far, i.fab, i.fa, [class*="fa-"] {
                     <?php else: ?>
                     <div style="max-width: 800px;">
                         <?php foreach($day_events as $event):
-                            $event_color = $event['color'] ?? '#757575';
+                            $tile_bg    = $event['bg_color']   ?? '#f1f5f9';
+                            $tile_text  = $event['text_color'] ?? '#1e293b';
+                            $tile_border = $event['border_color'] ?? '#e2e8f0';
                             $time_range = '';
                             if (!empty($event['start_time']) && $event['start_time'] != '00:00:00') {
                                 $time_range = date('g:i A', strtotime($event['start_time']));
                                 if (!empty($event['end_time']) && $event['end_time'] != '00:00:00') {
-                                    $time_range .= ' - ' . date('g:i A', strtotime($event['end_time']));
+                                    $time_range .= ' – ' . date('g:i A', strtotime($event['end_time']));
                                 }
                             }
+                            $tile_label = $event['calendar_title'] ?? ($event['work_description'] ?? ($event['type_name'] ?? 'Event'));
                         ?>
-                        <div style="border-left: 4px solid <?= $event_color ?>; background: <?= $event_color ?>11; padding: 16px; margin-bottom: 12px; border-radius: 4px; cursor: pointer;"
+                        <div style="background:<?= $tile_bg ?>; border:1px solid <?= $tile_border ?>; padding: 14px 16px; margin-bottom: 10px; border-radius: 6px; cursor: pointer;"
                              onclick="clickEvent('<?= htmlspecialchars($event['id'] ?? '') ?>', '<?= htmlspecialchars($event['type_key'] ?? '') ?>')">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <div style="font-weight: 600; color: #3c4043;"><?= htmlspecialchars($event['work_description'] ?? $event['type_name']) ?></div>
-                                <div style="color: #5f6368; font-size: 12px;"><?= $time_range ?></div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                                <div style="font-weight: 600; color:<?= $tile_text ?>; font-size: 13px;"><?= htmlspecialchars($tile_label) ?></div>
+                                <div style="color: #64748b; font-size: 11px; margin-left: 12px; white-space: nowrap;"><?= $time_range ?></div>
                             </div>
-                            <div style="color: #5f6368; font-size: 14px;">
+                            <div style="color: #475569; font-size: 12px;">
                                 <i class="fas fa-user"></i> <?= htmlspecialchars($event['staff_name'] ?? 'Unknown') ?> 
                                 <span style="margin-left: 16px;"><i class="fas fa-tag"></i> <?= htmlspecialchars($event['type_name']) ?></span>
                                 <span style="margin-left: 16px;"><i class="fas fa-circle" style="font-size: 8px;"></i> <?= ucfirst($event['status'] ?? 'pending') ?></span>
@@ -1419,297 +1213,95 @@ function clickEvent(eventId, eventType, targetUrl) {
 }
 
 function showManagerDetailsModal(evt) {
-    const modal = document.getElementById('detailsModal');
-    const title = document.getElementById('detailsTitle');
-    const body = document.getElementById('detailsBody');
+    const modal   = document.getElementById('detailsModal');
+    const title   = document.getElementById('detailsTitle');
+    const body    = document.getElementById('detailsBody');
     const actions = document.getElementById('detailsActions');
-    
-    let typeName = evt.type_name || 'Event Details';
-    title.textContent = 'Manage ' + typeName;
-    
-    let status = evt.status || 'pending';
-    let badgeColor = '#ea8600'; // Orange
-    if (status === 'completed' || status === 'approved' || status === 'verified') badgeColor = '#188038'; // Green
-    if (status === 'cancelled' || status === 'rejected') badgeColor = '#d93025'; // Red
-    
-    let html = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Event Date</span>
-            <span style="font-weight:500;">${evt.event_date || evt.scheduled_date}</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Status</span>
-            <span style="background:${badgeColor}22; color:${badgeColor}; padding:4px 8px; border-radius:4px; font-weight:600; font-size:11px; text-transform:uppercase;">${status}</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a;">Staff / Encoder</span>
-            <span style="font-weight:500;">${evt.staff_name || 'System Auto-schedule'}</span>
-        </div>
-        <div style="margin-bottom:16px; border-top:1px solid #dadce0; padding-top:16px;">
-            <span style="font-weight:600; font-size:12px; text-transform:uppercase; color:#70757a; display:block; margin-bottom:4px;">Description</span>
-            <div style="background:#f1f3f4; padding:12px; border-radius:4px; font-size:13px;">${evt.work_description || 'No description provided.'}</div>
-        </div>
-    `;
 
-    // Type specific info & adjustments
-    const numericId = evt.numeric_id || (evt.id.toString().match(/\d+$/) ? evt.id.toString().match(/\d+$/)[0] : evt.id);
-    
-    if (evt.type_key === 'job_order') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Service:</span>
-                    <span style="font-weight:600; color:#0f172a;">${evt.service_type || 'N/A'}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Customer:</span>
-                    <span>${evt.customer_name || 'N/A'}</span>
-                </div>
-                ${evt.vehicle_plate ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Vehicle Plate:</span>
-                    <span style="font-family:monospace; font-weight:700; background:#f1f5f9; padding:2px 6px; border-radius:4px;">${evt.vehicle_plate}</span>
-                </div>` : ''}
-                ${evt.total_amount ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
-                    <span style="font-weight:700; color:#15803d; font-size:14px;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'merchandise_sale' || evt.type_key === 'customer_transaction') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Customer:</span>
-                    <span>${evt.customer_name || 'Walk-in'}</span>
-                </div>
-                ${evt.product ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Product / SKU:</span>
-                    <span style="max-width:60%; text-align:right;">${evt.product}</span>
-                </div>` : ''}
-                ${evt.total_amount ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
-                    <span style="font-weight:700; color:#0284c7; font-size:14px;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'fuel_sale' || evt.type_key === 'meter_reading') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Fuel Product:</span>
-                    <span style="font-weight:600;">${evt.fuel_type || 'Fuel'}</span>
-                </div>
-                ${evt.liters ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Volume Sold:</span>
-                    <span>${parseFloat(evt.liters).toFixed(2)} Liters</span>
-                </div>` : ''}
-                ${evt.total_amount ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Total Amount:</span>
-                    <span style="font-weight:700; color:#d97706; font-size:14px;">₱${parseFloat(evt.total_amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'sales_closing' || evt.type_key === 'payment_collection') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                ${evt.shift ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Shift:</span>
-                    <span style="font-weight:600;">${evt.shift}</span>
-                </div>` : ''}
-                ${evt.gross_sales ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Gross Sales:</span>
-                    <span style="font-weight:700; color:#059669; font-size:14px;">₱${parseFloat(evt.gross_sales).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'manager_approval') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Request Type:</span>
-                    <span style="font-weight:700; color:#dc2626;">${evt.request_type || 'Approval'}</span>
-                </div>
-                ${evt.transaction_id ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Transaction Ref:</span>
-                    <span style="font-family:monospace; font-weight:700;">#${evt.transaction_id}</span>
-                </div>` : ''}
-                ${evt.request_reason ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Reason:</span>
-                    <span>${evt.request_reason}</span>
-                </div>` : ''}
-                ${evt.correction_field ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Correction Field:</span>
-                    <span>${evt.correction_field} &rarr; ${evt.requested_value || ''}</span>
-                </div>` : ''}
-                ${evt.remarks ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Remarks:</span>
-                    <span>${evt.remarks}</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Supplier:</span>
-                    <span>${evt.supplier || 'Petron Supplier'}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Product:</span>
-                    <span>${evt.product || 'Fuel / Goods'}</span>
-                </div>
-                ${evt.liters ? `
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Liters:</span>
-                    <span style="font-weight:700;">${parseFloat(evt.liters).toFixed(2)} L</span>
-                </div>` : ''}
-            </div>
-        `;
-    } else if (evt.type_key === 'fuel_calibration') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Pump / Tank:</span>
-                    <span>${evt.pump_number || 'Pump'}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Fuel Type:</span>
-                    <span>${evt.fuel_type || 'N/A'}</span>
-                </div>
-            </div>
-        `;
-    } else if (evt.type_key === 'labor_session') {
-        html += `
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #dadce0;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                    <span style="font-weight:600; font-size:12px; color:#70757a;">Hours Worked:</span>
-                    <span style="font-weight:700; color:#7c3aed;">${evt.hours_worked || '0'} hrs</span>
-                </div>
-            </div>
-        `;
+    const typeName = evt.type_name || 'Event Details';
+    title.textContent = typeName;
+
+    const status       = (evt.status || 'pending').toLowerCase();
+    const statusClean  = evt.status_clean || (status.charAt(0).toUpperCase() + status.slice(1));
+    const evtDate      = evt.event_date || evt.scheduled_date || '';
+    const timeStr      = (evt.start_time && evt.start_time !== '00:00:00')
+        ? new Date('1970-01-01T' + evt.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+
+    // Helper: row
+    const row = (label, value) => value
+        ? `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:12px;">
+               <span style="font-size:11px;font-weight:600;text-transform:uppercase;color:#64748b;white-space:nowrap;">${label}</span>
+               <span style="font-weight:500;color:#1e293b;text-align:right;max-width:65%;">${value}</span>
+           </div>` : '';
+
+    let html = '';
+
+    // Header block: date + time + status
+    html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:14px;">`;
+    html += row('Date', evtDate + (timeStr ? ' &nbsp;' + timeStr : ''));
+    html += row('Status', `<span style="background:#f1f5f9;color:#1e293b;border:1px solid #e2e8f0;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;">${statusClean}</span>`);
+    if (evt.staff_name) html += row('Responsible', evt.staff_name);
+    html += `</div>`;
+
+    // Description block
+    const desc = evt.work_description || evt.type_name || '';
+    if (desc) {
+        html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#1e293b;">${desc}</div>`;
     }
 
+    // Type-specific details
+    html += `<div style="border-top:1px solid #e2e8f0;padding-top:12px;">`;
+
+    if (evt.type_key === 'fuel_price') {
+        html += row('Fuel Product', evt.fuel_label || 'Fuel');
+        html += row('New Price', evt.price_per_liter ? '₱' + parseFloat(evt.price_per_liter).toFixed(2) + '/L' : '');
+
+    } else if (evt.type_key === 'job_order') {
+        html += row('JO Reference', evt.jo_number || '');
+        html += row('Service', evt.service_type || '');
+        html += row('Customer', evt.customer_name || '');
+        html += row('Vehicle Plate', evt.vehicle_plate || '');
+        html += row('Mechanic', evt.mechanic_name || evt.staff_name || '');
+        html += row('Total Amount', evt.total_amount ? '₱' + parseFloat(evt.total_amount).toLocaleString(undefined,{minimumFractionDigits:2}) : '');
+
+    } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
+        html += row('PO / Ref', evt.delivery_ref || evt.po_reference || '');
+        html += row('Supplier', evt.supplier || '');
+        html += row('Product', evt.product || evt.fuel_type || '');
+        if (evt.liters) html += row('Fuel Volume', parseFloat(evt.liters).toFixed(2) + ' L');
+        if (evt.expected_qty) html += row('Expected Qty', evt.expected_qty + (evt.unit ? ' ' + evt.unit : ''));
+        if (evt.actual_qty) html += row('Actual Qty', evt.actual_qty + (evt.unit ? ' ' + evt.unit : ''));
+        html += row('Delivery Status', evt.receiving_status || statusClean);
+
+    } else if (evt.type_key === 'sales_closing') {
+        html += row('Shift', evt.shift || evt.shift_name || '');
+        html += row('Closing Time', evt.closing_time || '');
+        html += row('Gross Sales', evt.gross_sales ? '₱' + parseFloat(evt.gross_sales).toLocaleString(undefined,{minimumFractionDigits:2}) : '');
+        html += row('Total Liters', evt.total_liters ? parseFloat(evt.total_liters).toFixed(2) + ' L' : '');
+
+    } else if (evt.type_key === 'manager_approval') {
+        html += row('Request Type', evt.request_type || '');
+        html += row('Transaction Ref', evt.transaction_id ? '#' + evt.transaction_id : '');
+        html += row('Reason', evt.request_reason || '');
+        if (evt.correction_field) html += row('Correction', evt.correction_field + ' → ' + (evt.requested_value || ''));
+        html += row('Remarks', evt.remarks || '');
+
+    } else if (evt.type_key === 'fuel_calibration') {
+        html += row('Pump / Tank', evt.pump_number ? 'Pump ' + evt.pump_number : '');
+        html += row('Fuel Type', evt.fuel_type || '');
+        html += row('Calibration Volume', evt.calibration_liters ? parseFloat(evt.calibration_liters).toFixed(2) + ' L' : '');
+    }
+
+    html += `</div>`;
     body.innerHTML = html;
 
-    // ─── ACTION BUTTONS ─────────────────────────────────────────────
-    const isAutoSynced = evt.auto_synced || false;
-
-    // Build the reschedule date picker inline
-    const reschedulePicker = `
-        <div id="reschedulePanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
-            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;"><i class="fas fa-pencil-alt"></i> New Date:</label>
-            <input type="date" id="rescheduleDate" value="${evt.event_date || ''}" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
-            <button onclick="submitReschedule('${numericId}', '${evt.type_key || ''}')" style="width:100%; padding:8px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                Confirm Reschedule
-            </button>
-        </div>
-    `;
-
-    // Build assign/reassign staff picker
-    const reassignPanel = `
-        <div id="reassignPanel" style="display:none; margin-top:12px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #dadce0;">
-            <label style="font-size:12px; font-weight:600; color:#3c4043; display:block; margin-bottom:6px;"><i class="fas fa-user"></i> Select Mechanic / Staff:</label>
-            <select id="reassignSelectNew" style="width:100%; padding:8px; border:1px solid #dadce0; border-radius:4px; font-size:13px; margin-bottom:8px;">
-                <option value="">-- Select --</option>
-                ${Object.keys(activeStaffList).map(id => `<option value="${id}" ${evt.staff_encoder_id == id ? 'selected' : ''}>${activeStaffList[id].name}</option>`).join('')}
-            </select>
-            <button onclick="submitReassignNew('${numericId}', '${evt.type_key || ''}')" style="width:100%; padding:8px; border:none; background:#1a73e8; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                Confirm Assignment
-            </button>
-        </div>
-    `;
-
-    // Insert panels into body
-    body.innerHTML += reschedulePicker + reassignPanel;
-
-    let actionButtons = `
-        <button type="button" onclick="closeDetailsModal()" style="padding:10px 16px; border:1px solid #dadce0; background:#fff; color:#3c4043; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-            <i class="fas fa-times"></i> Close
-        </button>
-    `;
-
-    // View — link to source record
-    let viewUrl = evt.target_url || '#';
-    if (viewUrl === '#' || !viewUrl) {
-        if (evt.type_key === 'job_order') viewUrl = `manager_validated_transactions.php?type=job_order&search=${numericId}`;
-        else if (evt.type_key === 'merchandise_sale' || evt.type_key === 'customer_transaction') viewUrl = `manager_validated_transactions.php?type=merchandise&search=${numericId}`;
-        else if (evt.type_key === 'fuel_sale' || evt.type_key === 'meter_reading') viewUrl = `manager_fuel_sales.php`;
-        else if (evt.type_key === 'sales_closing' || evt.type_key === 'payment_collection') viewUrl = `reports/fuel_sales_closing.php`;
-        else if (evt.type_key === 'manager_approval') viewUrl = `manager_validated_transactions.php`;
-        else if (evt.type_key === 'merchandise_delivery') viewUrl = `manager_deliveries.php?id=${numericId}`;
-        else if (evt.type_key === 'fuel_delivery') viewUrl = `manager_fuel_delivery.php?id=${numericId}`;
-        else if (evt.type_key === 'restock_reminder') viewUrl = `manager_inventory_overview.php`;
-    }
-
-    if (viewUrl && viewUrl !== '#') {
-        actionButtons += `
-            <a href="${viewUrl}" target="_blank" style="padding:10px 16px; border:none; background:#002F70; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                <i class="fas fa-external-link-alt"></i> View Full Details
-            </a>
-        `;
-    }
-
-    // <i class="fas fa-pencil-alt"></i> Reschedule — toggle panel
-    if (!isAutoSynced || evt.type_key === 'staff_shift' || evt.type_key === 'job_order') {
-        actionButtons += `
-            <button type="button" onclick="document.getElementById('reschedulePanel').style.display = document.getElementById('reschedulePanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #ea8600; background:#fff; color:#ea8600; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-pencil-alt"></i> Reschedule
-            </button>
-        `;
-    }
-
-    // <i class="fas fa-user"></i> Assign/Reassign Mechanic
-    if (evt.type_key === 'job_order' || evt.type_key === 'staff_shift' || evt.type_key === 'merchandise_delivery') {
-        actionButtons += `
-            <button type="button" onclick="document.getElementById('reassignPanel').style.display = document.getElementById('reassignPanel').style.display === 'none' ? 'block' : 'none';" style="padding:10px 16px; border:1px solid #8e24aa; background:#fff; color:#8e24aa; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-user"></i> Assign/Reassign
-            </button>
-        `;
-    }
-
-    // Validation decisions
-    if (evt.type_key === 'job_order') {
-        actionButtons += `
-            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-check"></i> Approve
-            </button>
-            <button type="button" onclick="submitManagerAction('job_order', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-times"></i> Reject
-            </button>
-        `;
-    } else if (evt.type_key === 'merchandise_delivery' || evt.type_key === 'fuel_delivery') {
-        actionButtons += `
-            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'approve')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-check"></i> Approve
-            </button>
-            <button type="button" onclick="submitManagerAction('delivery', '${numericId}', 'reject')" style="padding:10px 16px; border:none; background:#d93025; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-times"></i> Reject
-            </button>
-        `;
-    } else if (evt.type_key === 'fuel_calibration') {
-        actionButtons += `
-            <button type="button" onclick="submitManagerAction('fuel_calibration', '${numericId}', 'validate')" style="padding:10px 16px; border:none; background:#188038; color:#fff; border-radius:4px; font-size:13px; cursor:pointer; font-weight:500;">
-                <i class="fas fa-check"></i> Validate
-            </button>
-        `;
-    }
-
-    actions.innerHTML = actionButtons;
+    // ─── ACTION BUTTONS: ONLY Close button as requested ────────────────────
+    actions.innerHTML = `
+        <button type="button" onclick="closeDetailsModal()" style="padding:9px 24px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
+            Close
+        </button>`;
     modal.style.display = 'flex';
 }
-
 function submitManagerAction(evtType, numericId, subAction) {
     let reason = '';
     if (subAction === 'reject' || subAction === 'return') {
@@ -1842,8 +1434,8 @@ function showDayOverviewModal(date, events) {
                 <div style="width:56px; height:56px; background:#f1f5f9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:12px;">
                     <i class="far fa-calendar-check" style="font-size:26px; color:#0284c7;"></i>
                 </div>
-                <div style="font-weight:700; font-size:14px; color:#1e293b; margin-bottom:4px;">No activities recorded on this date</div>
-                <div style="font-size:12px; color:#64748b; margin-bottom:18px;">There are no transactions, job orders, or scheduled events on this day.</div>
+                <div style="font-weight:700; font-size:14px; color:#1e293b; margin-bottom:4px;">No scheduled events on this date</div>
+                <div style="font-size:12px; color:#64748b; margin-bottom:18px;">There are no operational events scheduled for this day.</div>
                 <button type="button" onclick="closeDayOverviewModal(); showEventModal('${date}');" style="padding:8px 16px; background:#002F70; color:#fff; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
                     <i class="fas fa-plus"></i> Schedule Event on this Day
                 </button>
@@ -1851,30 +1443,24 @@ function showDayOverviewModal(date, events) {
         `;
     } else {
         listEl.innerHTML = events.map(evt => {
-            const color = evt.color || '#0284c7';
-            const st = (evt.status || 'pending').toUpperCase();
-            let badgeBg = '#fef3c7', badgeColor = '#b45309';
-            if (st === 'COMPLETED' || st === 'VERIFIED' || st === 'APPROVED' || st === 'OFFICIAL') { badgeBg = '#dcfce7'; badgeColor = '#15803d'; }
-            else if (st === 'CANCELLED' || st === 'REJECTED' || st === 'VOIDED') { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
-            else if (st === 'ADJUSTED') { badgeBg = '#e0e7ff'; badgeColor = '#4338ca'; }
-            
+            const st = (evt.status_clean || evt.status || 'Scheduled').toUpperCase();
             let timeStr = '';
             if (evt.start_time && evt.start_time !== '00:00:00') {
-                timeStr = evt.start_time.substring(0, 5) + (evt.end_time && evt.end_time !== '00:00:00' ? ' - ' + evt.end_time.substring(0, 5) : '');
+                timeStr = evt.start_time.substring(0, 5) + (evt.end_time && evt.end_time !== '00:00:00' ? ' – ' + evt.end_time.substring(0, 5) : '');
             }
-
             const iconClass = evt.icon_class || 'fas fa-calendar-alt';
+            const label = evt.calendar_title || evt.work_description || evt.type_name || 'Event';
 
             return `
-                <div style="background:#fff; border:1px solid #e2e8f0; border-left:4px solid ${color}; border-radius:8px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer; transition:background 0.15s ease;" onclick="closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');">
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer; transition:background 0.15s ease;" onclick="closeDayOverviewModal(); clickEvent('${evt.id}', '${evt.type_key || ''}', '${evt.target_url || '#'}');">
                     <div style="flex:1; min-width:0;">
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
-                            <i class="${iconClass}" style="color:${color}; font-size:13px;"></i>
-                            <span style="font-weight:700; font-size:13px; color:#0f172a;">${evt.work_description || evt.type_name}</span>
-                            <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px;">${st}</span>
+                            <i class="${iconClass}" style="color:#64748b; font-size:13px;"></i>
+                            <span style="font-weight:700; font-size:13px; color:#1e293b;">${label}</span>
+                            <span style="background:#f1f5f9; color:#1e293b; border:1px solid #e2e8f0; font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px;">${st}</span>
                         </div>
                         <div style="font-size:11.5px; color:#64748b; display:flex; gap:14px; flex-wrap:wrap;">
-                            ${timeStr ? `<span><i class="far fa-clock" style="color:#0284c7;"></i> ${timeStr}</span>` : ''}
+                            ${timeStr ? `<span><i class="far fa-clock" style="color:#64748b;"></i> ${timeStr}</span>` : ''}
                             <span><i class="far fa-user" style="color:#64748b;"></i> ${evt.staff_name || 'Staff'}</span>
                             <span><i class="fas fa-tag" style="color:#64748b;"></i> ${evt.type_name || 'Event'}</span>
                         </div>
@@ -2229,23 +1815,17 @@ function handleEventTypeChange() {
 </script>
 
 <!-- Day Overview Modal -->
-<div id="dayOverviewModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+<div id="dayOverviewModal" onclick="if(event.target===this)closeDayOverviewModal()" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
     <div style="background: #fff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); width: 92%; max-width: 540px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;">
-        <div style="padding: 18px 22px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
-            <div>
-                <h2 id="dayOverviewTitle" style="margin: 0; font-size: 18px; color: #002F70; font-weight: 700;">Day Schedule</h2>
-                <div id="dayOverviewSubtitle" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
-            </div>
-            <button onclick="closeDayOverviewModal()" style="background: none; border: none; font-size: 24px; color: #64748b; cursor: pointer; line-height: 1;">&times;</button>
+        <div style="padding: 18px 22px; border-bottom: 1px solid #dadce0; background: #f8fafc;">
+            <h2 id="dayOverviewTitle" style="margin: 0; font-size: 18px; color: #002F70; font-weight: 700;">Day Schedule</h2>
+            <div id="dayOverviewSubtitle" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
         </div>
         <div id="dayOverviewList" style="padding: 20px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
             <!-- Filled dynamically -->
         </div>
-        <div style="padding: 14px 22px; border-top: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
-            <button type="button" id="dayOverviewAddBtn" style="padding: 9px 16px; border: none; background: #002F70; color: #fff; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                <i class="fas fa-plus"></i> Add Event on this Day
-            </button>
-            <button type="button" onclick="closeDayOverviewModal()" style="padding: 9px 16px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
+        <div style="padding: 14px 22px; border-top: 1px solid #dadce0; display: flex; justify-content: flex-end; align-items: center; background: #f8fafc;">
+            <button type="button" onclick="closeDayOverviewModal()" style="padding: 9px 20px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
                 Close
             </button>
         </div>
@@ -2253,18 +1833,17 @@ function handleEventTypeChange() {
 </div>
 
 <!-- Details Modal -->
-<div id="detailsModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+<div id="detailsModal" onclick="if(event.target===this)closeDetailsModal()" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
     <div style="background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
-        <div style="padding: 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center;">
-            <h2 id="detailsTitle" style="margin: 0; font-size: 20px; color: #3c4043; font-weight: 500;">Event Details</h2>
-            <button onclick="closeDetailsModal()" style="background: none; border: none; font-size: 24px; color: #5f6368; cursor: pointer; line-height: 1;">&times;</button>
+        <div style="padding: 20px 24px; border-bottom: 1px solid #dadce0;">
+            <h2 id="detailsTitle" style="margin: 0; font-size: 18px; color: #1e293b; font-weight: 700;">Event Details</h2>
         </div>
         <div style="padding: 24px;">
             <div id="detailsBody" style="font-size: 14px; color: #3c4043; line-height: 1.6;">
                 <!-- Filled dynamically via JS -->
             </div>
             <div id="detailsActions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #dadce0; margin-top: 20px;">
-                <!-- Filled dynamically via JS -->
+                <!-- Only Close button rendered via JS -->
             </div>
         </div>
     </div>

@@ -88,7 +88,8 @@ try {
                        NULLIF(CONCAT(TRIM(COALESCE(u.first_name, '')), ' ', TRIM(COALESCE(u.last_name, ''))), ' '),
                        u.username,
                        'Unknown'
-                   ) as manager_name
+                   ) as manager_name,
+                   u.role as manager_role
             FROM fuel_adjustments fa
             LEFT JOIN users u ON fa.user_id = u.id
             WHERE " . implode(" AND ", $where) . "
@@ -98,6 +99,96 @@ try {
     $adjustments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Fetch adjustments error: " . $e->getMessage());
+}
+
+// Preload users map for role resolution
+$users_map = [];
+try {
+    $u_stmt = $pdo->query("SELECT id, username, first_name, last_name, role FROM users");
+    while ($u_row = $u_stmt->fetch(PDO::FETCH_ASSOC)) {
+        $full = trim(($u_row['first_name'] ?? '') . ' ' . ($u_row['last_name'] ?? ''));
+        $users_map['id_' . $u_row['id']] = $u_row;
+        if ($full !== '') {
+            $users_map['name_' . strtolower($full)] = $u_row;
+        }
+        if (!empty($u_row['username'])) {
+            $users_map['user_' . strtolower($u_row['username'])] = $u_row;
+        }
+        if (!empty($u_row['first_name'])) {
+            $users_map['first_' . strtolower(trim($u_row['first_name']))] = $u_row;
+        }
+    }
+} catch (Exception $e) {}
+
+// Preload transaction attendants map
+$tx_attendants = [];
+try {
+    $tx_stmt = $pdo->query("SELECT ft.transaction_id, ft.staff_id, u.first_name, u.last_name, u.role 
+                            FROM fuel_transactions ft 
+                            LEFT JOIN users u ON ft.staff_id = u.id");
+    while ($tx_row = $tx_stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (!empty($tx_row['transaction_id'])) {
+            $tx_attendants[$tx_row['transaction_id']] = $tx_row;
+        }
+    }
+} catch (Exception $e) {}
+
+// Helper to resolve staff name and role
+function resolve_staff_info($notes_data, $adj, $tx_attendants, $users_map) {
+    $staff_raw = !empty($notes_data['staff_name']) ? trim($notes_data['staff_name']) : '';
+    $tx_id_raw = !empty($notes_data['transaction_id']) ? trim($notes_data['transaction_id']) : '';
+
+    $staff_name = '';
+    $staff_role = '';
+
+    if ($staff_raw !== '' && $staff_raw !== '—' && $staff_raw !== '-' && $staff_raw !== '\u2014') {
+        $staff_name = $staff_raw;
+    } elseif (!empty($tx_id_raw) && !empty($tx_attendants[$tx_id_raw])) {
+        $att = $tx_attendants[$tx_id_raw];
+        $att_name = trim(($att['first_name'] ?? '') . ' ' . ($att['last_name'] ?? ''));
+        if ($att_name !== '') {
+            $staff_name = $att_name;
+            $staff_role = $att['role'] ?? 'staff';
+        }
+    }
+
+    if ($staff_name === '' || $staff_name === '—' || $staff_name === '-') {
+        if (!empty($notes_data['encoded_by'])) {
+            $staff_name = $notes_data['encoded_by'];
+        } elseif (!empty($adj['manager_name']) && $adj['manager_name'] !== 'Unknown') {
+            $staff_name = $adj['manager_name'];
+            $staff_role = $adj['manager_role'] ?? '';
+        } else {
+            $staff_name = 'Station Staff';
+            $staff_role = 'staff';
+        }
+    }
+
+    if (empty($staff_role)) {
+        $lower_name = strtolower(trim($staff_name));
+        if (isset($users_map['name_' . $lower_name])) {
+            $staff_role = $users_map['name_' . $lower_name]['role'];
+        } elseif (isset($users_map['user_' . $lower_name])) {
+            $staff_role = $users_map['user_' . $lower_name]['role'];
+        } elseif (isset($users_map['first_' . $lower_name])) {
+            $staff_role = $users_map['first_' . $lower_name]['role'];
+        } else {
+            $staff_role = 'staff';
+        }
+    }
+
+    return [$staff_name, $staff_role];
+}
+
+function render_user_role_badge($role) {
+    $role_clean = strtolower(trim($role ?? 'staff'));
+    if (in_array($role_clean, ['superadmin', 'admin'])) {
+        return '<span style="display:inline-flex; align-items:center; gap:3px; margin-top:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;"><i class="fas fa-shield-alt" style="font-size:9px;"></i> Admin</span>';
+    } elseif (in_array($role_clean, ['manager', 'supervisor'])) {
+        return '<span style="display:inline-flex; align-items:center; gap:3px; margin-top:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fas fa-user-tie" style="font-size:9px;"></i> Manager</span>';
+    } else {
+        return '<span style="display:inline-flex; align-items:center; gap:3px; margin-top:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;"><i class="fas fa-user" style="font-size:9px;"></i> Staff</span>';
+    }
 }
 
 // Compute Summary Metrics
@@ -172,7 +263,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             $txn_no = !empty($notes_data['transaction_id']) ? $notes_data['transaction_id'] : ('FTX-' . sprintf('%04d', $adj['id']));
             $fuel_line = !empty($notes_data['fuel_line']) ? $notes_data['fuel_line'] : (!empty($adj['ugt_no']) ? ($adj['ugt_no'] . ' (' . ($adj['fuel_type'] ?: 'Fuel Tank') . ')') : (($adj['fuel_type'] ?: 'Fuel') . ' Line 1'));
             $shift_name = !empty($notes_data['shift']) ? $notes_data['shift'] : (!empty($notes_data['shift_name']) ? $notes_data['shift_name'] : 'First Shift (06:00 - 14:00)');
-            $staff_name = !empty($notes_data['staff_name']) ? $notes_data['staff_name'] : (!empty($notes_data['encoded_by']) ? $notes_data['encoded_by'] : ($adj['manager_name'] ?: 'Station Staff'));
+            list($staff_name, $staff_role) = resolve_staff_info($notes_data, $adj, $tx_attendants, $users_map);
 
             $prev_cal = (isset($notes_data['prev_calibration']) && $notes_data['prev_calibration'] !== '') ? (float)$notes_data['prev_calibration'] : (float)($adj['previous_value'] ?? 0);
             $new_cal = (isset($notes_data['new_calibration']) && $notes_data['new_calibration'] !== '') ? (float)$notes_data['new_calibration'] : (float)($adj['new_value'] ?? 0);
@@ -185,12 +276,12 @@ if (in_array($export, ['excel', 'pdf'])) {
                 $fuel_line,
                 $adj['fuel_type'],
                 $shift_name,
-                $staff_name,
+                $staff_name . (!empty($staff_role) ? ' (' . ucfirst($staff_role) . ')' : ''),
                 number_format($prev_cal, 2),
                 number_format($new_cal, 2),
                 ($diff >= 0 ? '+' : '') . number_format($diff, 2),
                 $reason_text,
-                $adj['manager_name'],
+                $adj['manager_name'] . (!empty($adj['manager_role']) ? ' (' . ucfirst($adj['manager_role']) . ')' : ''),
                 date('M d, Y h:i A', strtotime($adj['created_at']))
             ];
         }
@@ -753,7 +844,7 @@ table.afto-tbl.report-table.no-min-width.print-table {
                                 $txn_no = !empty($notes_data['transaction_id']) ? $notes_data['transaction_id'] : ('FTX-' . sprintf('%04d', $adj['id']));
                                 $fuel_line = !empty($notes_data['fuel_line']) ? $notes_data['fuel_line'] : (!empty($adj['ugt_no']) ? ($adj['ugt_no'] . ' (' . ($adj['fuel_type'] ?: 'Fuel Tank') . ')') : (($adj['fuel_type'] ?: 'Fuel') . ' Line 1'));
                                 $shift_name = !empty($notes_data['shift']) ? $notes_data['shift'] : (!empty($notes_data['shift_name']) ? $notes_data['shift_name'] : 'First Shift (06:00 - 14:00)');
-                                $staff_name = !empty($notes_data['staff_name']) ? $notes_data['staff_name'] : (!empty($notes_data['encoded_by']) ? $notes_data['encoded_by'] : ($adj['manager_name'] ?: 'Station Staff'));
+                                list($staff_name, $staff_role) = resolve_staff_info($notes_data, $adj, $tx_attendants, $users_map);
 
                                 $prev_cal = (isset($notes_data['prev_calibration']) && $notes_data['prev_calibration'] !== '') ? (float)$notes_data['prev_calibration'] : (float)($adj['previous_value'] ?? 0);
                                 $new_cal = (isset($notes_data['new_calibration']) && $notes_data['new_calibration'] !== '') ? (float)$notes_data['new_calibration'] : (float)($adj['new_value'] ?? 0);
@@ -765,11 +856,17 @@ table.afto-tbl.report-table.no-min-width.print-table {
                                     <td><?= htmlspecialchars($fuel_line) ?></td>
                                     <td><?= htmlspecialchars($adj['fuel_type']) ?></td>
                                     <td><?= htmlspecialchars($shift_name) ?></td>
-                                    <td><?= htmlspecialchars($staff_name) ?></td>
+                                    <td>
+                                        <div style="font-weight: 600; color: #1e293b;"><?= htmlspecialchars($staff_name) ?></div>
+                                        <?= render_user_role_badge($staff_role) ?>
+                                    </td>
                                     <td style="text-align:right; font-weight: 600;"><?= number_format($prev_cal, 2) ?></td>
                                     <td style="text-align:right; font-weight: 700; color: #002F70;"><?= number_format($new_cal, 2) ?></td>
                                     <td><?= htmlspecialchars($reason_text) ?></td>
-                                    <td><?= htmlspecialchars($adj['manager_name']) ?></td>
+                                    <td>
+                                        <div style="font-weight: 600; color: #1e293b;"><?= htmlspecialchars($adj['manager_name']) ?></div>
+                                        <?= render_user_role_badge($adj['manager_role'] ?? 'manager') ?>
+                                    </td>
                                     <td>
                                         <div style="font-weight: 600;"><?= date('M d, Y', strtotime($adj['created_at'])) ?></div>
                                         <div style="font-size: 11px; color: #64748b; font-weight: 600;"><?= date('h:i A', strtotime($adj['created_at'])) ?></div>
@@ -789,7 +886,9 @@ table.afto-tbl.report-table.no-min-width.print-table {
                                             'diff' => number_format($new_cal - $prev_cal, 2),
                                             'reason' => $reason_text,
                                             'staff_name' => $staff_name,
+                                            'staff_role' => ucfirst($staff_role),
                                             'manager_name' => $adj['manager_name'],
+                                            'manager_role' => ucfirst($adj['manager_role'] ?? 'manager'),
                                             'date_time' => date('M d, Y h:i A', strtotime($adj['created_at']))
                                         ])) ?>)"><i class="fas fa-eye"></i> View</button>
                                     </td>
@@ -1044,11 +1143,22 @@ table.afto-tbl.report-table.no-min-width.print-table {
 </div>
 
 <script>
+function getRoleBadgeJs(role) {
+    var r = (role || 'staff').toLowerCase();
+    if (r === 'admin' || r === 'superadmin') {
+        return ' <span style="display:inline-flex; align-items:center; gap:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;"><i class="fas fa-shield-alt" style="font-size:9px;"></i> Admin</span>';
+    } else if (r === 'manager' || r === 'supervisor') {
+        return ' <span style="display:inline-flex; align-items:center; gap:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;"><i class="fas fa-user-tie" style="font-size:9px;"></i> Manager</span>';
+    } else {
+        return ' <span style="display:inline-flex; align-items:center; gap:3px; padding:1px 6px; border-radius:4px; font-size:10.5px; font-weight:700; text-transform:uppercase; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;"><i class="fas fa-user" style="font-size:9px;"></i> Staff</span>';
+    }
+}
+
 function viewTxDetails(d) {
     document.getElementById('tx_val_txn_no').textContent = d.transaction_id;
     document.getElementById('tx_val_fuel_line').textContent = d.fuel_line;
     document.getElementById('tx_val_fuel_type').textContent = d.fuel_type;
-    document.getElementById('tx_val_staff').textContent = d.staff_name;
+    document.getElementById('tx_val_staff').innerHTML = '<span>' + (d.staff_name || '—') + '</span>' + (d.staff_role ? getRoleBadgeJs(d.staff_role) : '');
     document.getElementById('tx_val_prev_beg').textContent = d.prev_beginning;
     document.getElementById('tx_val_new_beg').textContent = d.new_beginning;
     document.getElementById('tx_val_prev_end').textContent = d.prev_ending;
@@ -1061,7 +1171,7 @@ function viewTxDetails(d) {
     diffEl.textContent = (diffVal >= 0 ? '+' : '') + d.diff;
     diffEl.className = 'details-val badge-diff ' + (diffVal > 0 ? 'plus' : (diffVal < 0 ? 'minus' : 'zero'));
     
-    document.getElementById('tx_val_manager').textContent = d.manager_name;
+    document.getElementById('tx_val_manager').innerHTML = '<span>' + (d.manager_name || '—') + '</span>' + (d.manager_role ? getRoleBadgeJs(d.manager_role) : '');
     document.getElementById('tx_val_reason').textContent = d.reason;
     document.getElementById('tx_val_date').textContent = d.date_time;
     

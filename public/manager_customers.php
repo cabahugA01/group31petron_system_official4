@@ -640,7 +640,7 @@ button.remove-v-btn i {
     <div class="cust-toolbar">
         <div class="cust-field">
             <label>Search</label>
-            <input type="search" id="filterSearch" placeholder="Customer Name / ID / Contact / Plate" oninput="queueLoad()">
+            <input type="search" id="filterSearch" placeholder="Customer Name / ID / Contact / Plate" value="<?= htmlspecialchars($_GET['search'] ?? $_GET['q'] ?? '') ?>" oninput="queueLoad()">
         </div>
         <div class="cust-field">
             <label>Status</label>
@@ -2624,6 +2624,14 @@ function submitReviewAction(type) {
 
 // Initial Load (No auto-refresh)
 document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchVal = urlParams.get('search') || urlParams.get('q');
+        if (searchVal) {
+            const searchInput = document.getElementById('filterSearch');
+            if (searchInput) searchInput.value = searchVal;
+        }
+    } catch (e) {}
     loadManagerCustomers();
 });
 </script>

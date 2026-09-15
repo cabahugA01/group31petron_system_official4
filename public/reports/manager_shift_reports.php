@@ -325,7 +325,20 @@ function srManagerMerchValidWhere(string $alias = 'mt'): string {
 }
 
 function srManagerFuelValidWhere(string $alias = 'ft'): string {
-    return "LOWER(COALESCE($alias.status, '')) NOT IN ('voided','rejected','cancelled','canceled')";
+    return "LOWER(COALESCE($alias.status, '')) IN ('verified','approved','validated')
+        AND EXISTS (
+            SELECT 1 FROM fuel_sales_closing fsc
+            WHERE fsc.station_id = $alias.station_id
+              AND fsc.report_date = DATE($alias.transaction_date)
+              AND (
+                  fsc.shift_period = $alias.shift_period
+                  OR fsc.shift = $alias.shift_name
+                  OR fsc.shift = $alias.shift_period
+                  OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE($alias.shift_period, '')), '%')
+                  OR $alias.shift_period IS NULL OR $alias.shift_period = ''
+              )
+              AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+        )";
 }
 
 function srManagerJobValidWhere(string $alias = 'jo'): string {

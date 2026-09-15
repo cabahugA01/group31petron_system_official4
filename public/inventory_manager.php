@@ -27,9 +27,9 @@ try {
                            COALESCE(fi.price_per_liter, ip.unit_cost) as price,
                            COALESCE(fi.current_level, ip.stock) as stock_level,
                            COALESCE(fi.capacity, 20000.00) as capacity
-                           FROM inventory_products ip 
-                           LEFT JOIN fuel_inventory fi ON ip.product_name = fi.fuel_type AND fi.station_id = ?
-                           WHERE ip.category = 'Fuel' ORDER BY ip.product_name");
+                           FROM fuel_inventory fi
+                           JOIN inventory_products ip ON ip.product_name = fi.fuel_type
+                           WHERE fi.station_id = ? AND LOWER(COALESCE(ip.category,'')) = 'fuel' ORDER BY ip.product_name");
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -39,13 +39,13 @@ try {
     }
     
     // Get merchandise inventory from database - fully database-driven
-    $stmt = $pdo->prepare("SELECT id, product_name as name, category as category_name, 
-                           unit_price as price,
-                           unit_cost as cost,
-                           unit_price, sku, stock as stock_level,
-                           10 as reorder_level,
-                           null as inventory_id
-                           FROM inventory_products WHERE LOWER(COALESCE(category,'')) NOT IN ('fuel', 'fuel products') ORDER BY category, product_name");
+    $stmt = $pdo->prepare("SELECT ip.id, ip.product_name as name, ip.category as category_name, 
+                           COALESCE(si.price, ip.unit_price, 0) as price,
+                           COALESCE(ip.unit_cost, 0) as cost,
+                           COALESCE(si.price, ip.unit_price, 0) as unit_price, ip.sku, COALESCE(si.stock_level, ip.stock, 0) as stock_level,
+                           COALESCE(si.reorder_level, ip.min_stock, 10) as reorder_level,
+                           si.id as inventory_id
+                           FROM station_inventory si JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products') ORDER BY ip.category, ip.product_name");
     $stmt->execute();
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

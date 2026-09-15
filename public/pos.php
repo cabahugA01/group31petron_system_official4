@@ -285,12 +285,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        // Get product details from inventory_products
                        $stmt = $pdo->prepare("
                            SELECT ip.product_name as name, ip.category as category_name, 
-                                  ip.unit_cost as price, ip.size
-                           FROM inventory_products ip 
-                           WHERE ip.product_name = (SELECT name FROM products WHERE id = ? LIMIT 1)
+                                  COALESCE(si.price, ip.unit_cost, 0) as price, ip.size
+                           FROM station_inventory si
+                           JOIN inventory_products ip ON ip.id = si.product_id
+                           WHERE si.station_id = ?
+                             AND ip.product_name = (SELECT name FROM products WHERE id = ? LIMIT 1)
                            LIMIT 1
                        ");
-                       $stmt->execute([$product_id]);
+                       $stmt->execute([$station_id, $product_id]);
                        $product = $stmt->fetch(PDO::FETCH_ASSOC);
                        
                        if (!$product) {
@@ -466,11 +468,11 @@ $inventoryTypeOptions = [];
 try {
     // Load all products from inventory_products and group by category
     $stmt = $pdo->prepare("
-        SELECT ip.product_name as name, ip.category as category_name, ip.size, ip.unit_cost as price,
+        SELECT ip.product_name as name, ip.category as category_name, ip.size, COALESCE(si.price, ip.unit_cost, 0) as price,
                si.stock_level, si.unit, si.status as inventory_status
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON ip.product_name = si.product_name AND si.station_id = ?
-        WHERE ip.category IS NOT NULL AND ip.product_name IS NOT NULL
+        FROM station_inventory si
+        JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ? AND ip.category IS NOT NULL AND ip.product_name IS NOT NULL
         ORDER BY ip.category, ip.product_name
     ");
     $stmt->execute([$station_id]);

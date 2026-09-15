@@ -159,7 +159,9 @@ if (!function_exists('getStatusLabel')) {
         if ($s === 'verified' || $s === 'approved' || $s === 'validated') return 'Verified';
         if ($s === 'adjusted') return 'Adjusted';
         if ($s === 'rejected') return 'Rejected';
-        return ucfirst($status);
+        if ($s === 'readings_submitted' || $s === 'submitted') return 'Readings Submitted';
+        if ($s === 'closing_completed') return 'Closing Completed';
+        return ucwords(str_replace('_', ' ', $status));
     }
 }
 
@@ -435,9 +437,9 @@ $params = [$station_id];
 
 // Search filter
 if ($search_query !== '') {
-    $where[] = "(LOWER(ft.transaction_id) LIKE ? OR LOWER(ft.fuel_type) LIKE ? OR LOWER(fp.pump_number) LIKE ? OR LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ? OR LOWER(ft.notes) LIKE ? OR LOWER(ft.reject_reason) LIKE ?)";
+    $where[] = "(LOWER(ft.transaction_id) LIKE ? OR LOWER(ft.fuel_type) LIKE ? OR LOWER(fp.pump_number) LIKE ? OR LOWER(staff.username) LIKE ? OR LOWER(staff.first_name) LIKE ? OR LOWER(staff.last_name) LIKE ? OR LOWER(CONCAT(COALESCE(staff.first_name, ''), ' ', COALESCE(staff.last_name, ''))) LIKE ? OR LOWER(staff.name) LIKE ? OR LOWER(ft.notes) LIKE ? OR LOWER(ft.reject_reason) LIKE ?)";
     $like_val = '%' . strtolower($search_query) . '%';
-    $params = array_merge($params, [$like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val]);
+    $params = array_merge($params, [$like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val, $like_val]);
 }
 
 // Status filter: Pending by default so completed ones disappear automatically!
@@ -772,16 +774,16 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .mcr-fg input:focus, .mcr-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
 
 /* Table design */
-.mcr-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100%; }
+.mcr-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden !important; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
 .mcr-table-hd { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; }
-.mcr-table-title { font-size: 16px; font-weight: 800; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
-.mcr-tbl-wrap { width: 100%; overflow-x: auto; }
-.mcr-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.mcr-table-title { font-size: 16.5px; font-weight: 800; color: #00264D; text-transform: uppercase; letter-spacing: .3px; margin: 0; }
+.mcr-tbl-wrap { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; box-sizing: border-box !important; }
+.mcr-tbl { width: 100% !important; max-width: 100% !important; min-width: 0 !important; table-layout: fixed !important; border-collapse: collapse !important; font-size: 13.5px; }
 .mcr-tbl thead tr { background: #002F70; }
-.mcr-tbl thead th { padding: 12px 10px; text-align: left; font-size: 12px; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.mcr-tbl thead th { padding: 12px 6px !important; text-align: left; font-size: 12.5px !important; font-weight: 800 !important; color: #fff; text-transform: uppercase; letter-spacing: .3px; white-space: normal !important; line-height: 1.25 !important; word-break: break-word !important; vertical-align: middle !important; box-sizing: border-box !important; }
 .mcr-tbl tbody tr { border-bottom: 1px solid #f1f5f9; }
 .mcr-tbl tbody tr:hover td { background: #eff6ff; }
-.mcr-tbl tbody td { padding: 12px 10px; color: #334155; vertical-align: middle; background: #fff; font-size: 13.5px; }
+.mcr-tbl tbody td { padding: 9px 6px !important; color: #1e293b !important; vertical-align: middle; background: #fff; font-size: 13px !important; font-weight: 600; line-height: 1.3 !important; white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; word-wrap: break-word !important; box-sizing: border-box !important; overflow: hidden !important; }
 
 /* Buttons */
 .ato-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 18px; border-radius: 7px; font-size: 14px; font-weight: 700; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all .15s; height: 42px; white-space: nowrap; background: white !important; }
@@ -799,7 +801,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .ato-btn-reset:hover { background: #f1f5f9 !important; }
 
 /* Row Actions */
-.act-btn { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 700; border: 1.5px solid transparent; cursor: pointer; height: 32px; text-decoration: none; text-transform: uppercase; background: #ffffff !important; transition: all 0.15s; width: 100%; box-sizing: border-box; }
+.act-btn { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px !important; border-radius: 6px; font-size: 12px !important; font-weight: 800 !important; border: 1.5px solid transparent; cursor: pointer; height: 30px !important; text-decoration: none; text-transform: uppercase; background: #ffffff !important; transition: all 0.15s; width: 100%; box-sizing: border-box; }
 .act-btn-verify { border-color: #16a34a !important; color: #16a34a !important; background: #ffffff !important; }
 .act-btn-verify:hover { background: #16a34a !important; color: #ffffff !important; }
 .act-btn-edit { border-color: #0284c7 !important; color: #0284c7 !important; background: #ffffff !important; }
@@ -808,10 +810,10 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .act-btn-reject:hover { background: #dc2626 !important; color: #ffffff !important; }
 .act-btn-view { border-color: #475569 !important; color: #475569 !important; background: #ffffff !important; }
 .act-btn-view:hover { background: #475569 !important; color: #ffffff !important; }
-.act-btn:disabled, .act-btn.disabled { opacity: 0.5; cursor: not-allowed; border-color: #cbd5e1 !important; color: #94a3b8 !important; background: #f1f5f9 !important; }
+.act-btn:disabled, .act-btn.disabled { opacity: 0.6; cursor: not-allowed; border-color: #cbd5e1 !important; color: #64748b !important; background: #f8fafc !important; }
 
 /* Status badges */
-.badge-st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; background: none !important; padding: 0; border-radius: 0; }
+.badge-st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px !important; font-weight: 800 !important; text-transform: uppercase; letter-spacing: 0.3px; background: none !important; padding: 0; border-radius: 0; white-space: normal !important; line-height: 1.2 !important; word-break: break-word !important; }
 .badge-st::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .badge-st.bg-amber { color: #b45309; }
 .badge-st.bg-amber::before { background: #d97706; }
@@ -1012,20 +1014,33 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             <h3 class="mcr-table-title"><i class="fas fa-table"></i> Shift-Based Readings & Calibration Logs</h3>
         </div>
         <div class="mcr-tbl-wrap">
-            <table class="mcr-tbl">
+            <table class="mcr-tbl" style="width:100% !important;max-width:100% !important;min-width:0 !important;table-layout:fixed !important;border-collapse:collapse !important;">
+                <colgroup>
+                    <col style="width: 8%;">    <!-- Date -->
+                    <col style="width: 5.5%;">  <!-- Shift -->
+                    <col style="width: 9.5%;">  <!-- Pump / Nozzle -->
+                    <col style="width: 7.5%;">  <!-- Fuel Type -->
+                    <col style="width: 16.5%;"> <!-- Staff -->
+                    <col style="width: 8.5%;">  <!-- Beginning -->
+                    <col style="width: 7.5%;">  <!-- Ending -->
+                    <col style="width: 8%;">    <!-- Staff Cal -->
+                    <col style="width: 8.5%;">  <!-- Mgr Cal -->
+                    <col style="width: 9.5%;">  <!-- Status -->
+                    <col style="width: 11%;">   <!-- Actions -->
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Shift</th>
-                        <th>Pump / Nozzle</th>
-                        <th>Fuel Type</th>
-                        <th>Staff</th>
+                        <th style="text-align:left;">Date</th>
+                        <th style="text-align:left;">Shift</th>
+                        <th style="text-align:left;">Pump / Nozzle</th>
+                        <th style="text-align:left;">Fuel Type</th>
+                        <th style="text-align:left;">Staff</th>
                         <th style="text-align:right;">Beginning</th>
                         <th style="text-align:right;">Ending</th>
-                        <th style="text-align:right;">Staff Calibration</th>
-                        <th style="text-align:right;">Manager Calibration</th>
+                        <th style="text-align:right;">Staff Cal. (L)</th>
+                        <th style="text-align:right;">Manager Cal. (L)</th>
                         <th style="text-align:center;">Status</th>
-                        <th style="text-align:center; width: 220px;">Actions</th>
+                        <th style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1053,29 +1068,28 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                             $pump_lbl = $r['pump_number'] ?: $r['fuel_type'];
                         ?>
                             <tr>
-                                <td><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
-                                <td><strong><?= htmlspecialchars($shift_lbl) ?></strong></td>
+                                <td style="font-weight:700; color:#1e293b; font-size:13px; white-space:nowrap;"><?= date('M d, Y', strtotime($r['transaction_date'])) ?></td>
+                                <td><strong style="color:#002F70; font-size:13px; white-space:nowrap;"><?= htmlspecialchars($shift_lbl) ?></strong></td>
                                 <td>
-                                    <span style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#002F70;">
-                                        <i class="fas fa-gas-pump" style="color:#0284c7; font-size:12px;"></i>
+                                    <span style="font-weight:800; color:#002F70; font-size:13px; display:block; word-break:break-word;">
                                         <?= htmlspecialchars($pump_lbl) ?>
                                     </span>
                                 </td>
                                 <td>
-                                    <span style="font-weight:600; color:#334155;">
+                                    <span style="font-weight:700; color:#334155; font-size:13px; display:block;">
                                         <?= htmlspecialchars(normalizeFuelType($r['fuel_type'])) ?>
                                     </span>
                                 </td>
-                                <td><?= htmlspecialchars($r['staff_name']) ?></td>
-                                <td style="text-align:right; font-family: monospace;"><?= number_format($r['previous_reading'], 2) ?></td>
-                                <td style="text-align:right; font-family: monospace; font-weight: 600;"><?= number_format($r['present_reading'], 2) ?></td>
-                                <td style="text-align:right; font-family: monospace; color: #475569;"><?= number_format($r['staff_calibration'], 2) ?> L</td>
-                                <td style="text-align:right; font-family: monospace; font-weight: bold;"><?= number_format($r['calibration'], 2) ?> L</td>
+                                <td style="font-weight:700; color:#0f172a; font-size:13px; line-height:1.25; word-break:normal; overflow-wrap:break-word; word-wrap:break-word;"><?= htmlspecialchars($r['staff_name']) ?></td>
+                                <td style="text-align:right; font-family: monospace; font-size:13.5px; font-weight:700; color:#334155; white-space:nowrap;"><?= number_format($r['previous_reading'], 2) ?></td>
+                                <td style="text-align:right; font-family: monospace; font-size:13.5px; font-weight:800; color:#002F70; white-space:nowrap;"><?= number_format($r['present_reading'], 2) ?></td>
+                                <td style="text-align:right; font-family: monospace; font-size:13px; font-weight:700; color:#475569; white-space:nowrap;"><?= number_format($r['staff_calibration'], 2) ?> L</td>
+                                <td style="text-align:right; font-family: monospace; font-size:13px; font-weight:800; color:#0f172a; white-space:nowrap;"><?= number_format($r['calibration'], 2) ?> L</td>
                                 <td style="text-align:center;">
-                                    <span class="badge-st <?= getStatusBadgeClass($r['status']) ?>"><?= getStatusLabel($r['status']) ?></span>
+                                    <span class="badge-st <?= getStatusBadgeClass($r['status']) ?>" style="font-size:12px !important; font-weight:800;"><?= getStatusLabel($r['status']) ?></span>
                                 </td>
-                                <td style="text-align:center; padding: 8px 10px; vertical-align:middle;">
-                                    <div style="display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:90px;">
+                                <td style="text-align:center; padding: 6px 4px !important; vertical-align:middle;">
+                                    <div style="display:flex; flex-direction:column; gap:4px; align-items:stretch; width:100%; min-width:0;">
                                     <?php if ($is_pending_action): ?>
                                         <?php if ($preceding_ok): ?>
                                             <!-- Verify -->
@@ -1103,7 +1117,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                                                 $prec_lbl = $preceding ? (formatShiftLabel($preceding['shift_key']) . ' on ' . $preceding['date']) : 'Shift 1';
                                             ?>
                                             <button class="act-btn disabled" disabled title="Waiting for preceding shift (<?= $prec_lbl ?>) validation"><i class="fas fa-lock"></i> Locked</button>
-                                            <span style="font-size:9px; color:#dc2626; text-align:center; display:block;">⚠️ Check preceding shift</span>
+                                            <span style="font-size:11px; font-weight:700; color:#dc2626; text-align:center; display:block; margin-top:2px;">Check preceding shift</span>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         <button class="act-btn act-btn-view" onclick="openViewModal(<?= htmlspecialchars(json_encode([
@@ -1132,14 +1146,14 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
             </table>
         </div>
         <!-- Calibration Review Pagination Footer -->
-        <div id="mcrPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div id="mcrPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
             <div style="display:flex; align-items:center;">
-                <span id="mcrShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing <?= empty($records) ? '0' : '1–'.min(10, count($records)) ?> of <?= count($records) ?> entries</span>
+                <span id="mcrShowingEntriesText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing <?= empty($records) ? '0' : '1–'.min(10, count($records)) ?> of <?= count($records) ?> entries</span>
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
-                    <select id="mcrPerPage" onchange="mcrChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                    <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+                    <select id="mcrPerPage" onchange="mcrChangePerPage()" style="padding:5px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
                         <option value="10" selected>10</option>
                         <option value="20">20</option>
                         <option value="50">50</option>
@@ -1148,13 +1162,13 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
                     <button id="mcrPrevBtn" onclick="mcrGoPage(mcrState.page - 1)" 
-                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
                             onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <span id="mcrPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of <?= max(1, ceil(count($records) / 10)) ?></span>
+                    <span id="mcrPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 4px;">Page 1 of <?= max(1, ceil(count($records) / 10)) ?></span>
                     <button id="mcrNextBtn" onclick="mcrGoPage(mcrState.page + 1)" 
-                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($records) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($records) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($records) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($records) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
                             onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
                         <i class="fas fa-chevron-right"></i>
                     </button>

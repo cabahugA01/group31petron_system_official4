@@ -152,7 +152,9 @@ if ($station_id > 0) {
 $active_filters = [];
 if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_fuel_type'])) $active_filters['fuel_type'] = $_GET['filter_fuel_type'];
-    if (!empty($_GET['filter_pump_id']))   $active_filters['pump_id']   = (int)$_GET['filter_pump_id'];
+    if (!empty($_GET['filter_ugt']))       $active_filters['ugt']       = $_GET['filter_ugt'];
+    // Legacy pump_id support (for backward compat)
+    if (!empty($_GET['filter_pump_id']) && (int)$_GET['filter_pump_id'] > 0) $active_filters['pump_id'] = (int)$_GET['filter_pump_id'];
     if (!empty($_GET['filter_shift']))     $active_filters['shift']     = $_GET['filter_shift'];
 } elseif ($active_tab === 'daily_merch_service') {
     if (!empty($_GET['filter_pm']))     $active_filters['payment_method']  = $_GET['filter_pm'];
@@ -178,23 +180,36 @@ if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
     if (!empty($_GET['filter_adj_type'])) $active_filters['adj_type'] = $_GET['filter_adj_type'];
     if (!empty($_GET['filter_batch']))    $active_filters['batch_id'] = $_GET['filter_batch'];
+    if (!empty($_GET['filter_product']))  $active_filters['product']  = $_GET['filter_product'];
 } elseif ($active_tab === 'expired_damaged') {
     if (!empty($_GET['filter_batch']))    $active_filters['batch_id'] = $_GET['filter_batch'];
     if (!empty($_GET['filter_product']))  $active_filters['product']  = $_GET['filter_product'];
     if (!empty($_GET['filter_adj_type'])) $active_filters['adj_type'] = $_GET['filter_adj_type'];
 } elseif ($active_tab === 'job_order') {
     if (!empty($_GET['filter_status']))         $active_filters['status']         = $_GET['filter_status'];
+    elseif (!empty($_GET['status']))            $active_filters['status']         = $_GET['status'];
     if (!empty($_GET['filter_mech']))           $active_filters['mechanic']       = $_GET['filter_mech'];
+    elseif (!empty($_GET['mechanic']))          $active_filters['mechanic']       = $_GET['mechanic'];
     if (!empty($_GET['filter_service_cat']))   $active_filters['service_cat']   = $_GET['filter_service_cat'];
+    elseif (!empty($_GET['service_cat']))       $active_filters['service_cat']   = $_GET['service_cat'];
     if (!empty($_GET['filter_cust']))           $active_filters['customer']       = $_GET['filter_cust'];
+    elseif (!empty($_GET['filter_customer']))   $active_filters['customer']       = $_GET['filter_customer'];
+    elseif (!empty($_GET['customer']))          $active_filters['customer']       = $_GET['customer'];
     if (!empty($_GET['filter_plate']))          $active_filters['plate']          = $_GET['filter_plate'];
+    elseif (!empty($_GET['plate']))             $active_filters['plate']          = $_GET['plate'];
     if (!empty($_GET['filter_payment_status'])) $active_filters['payment_status'] = $_GET['filter_payment_status'];
+    elseif (!empty($_GET['payment_status']))    $active_filters['payment_status'] = $_GET['payment_status'];
     if (!empty($_GET['filter_search']))         $active_filters['search']         = $_GET['filter_search'];
+    elseif (!empty($_GET['search']))            $active_filters['search']         = $_GET['search'];
 } elseif ($active_tab === 'mechanic_performance') {
     if (!empty($_GET['filter_mech']))         $active_filters['mechanic']     = $_GET['filter_mech'];
+    elseif (!empty($_GET['mechanic']))        $active_filters['mechanic']     = $_GET['mechanic'];
     if (!empty($_GET['filter_service_cat'])) $active_filters['service_cat'] = $_GET['filter_service_cat'];
+    elseif (!empty($_GET['service_cat']))     $active_filters['service_cat'] = $_GET['service_cat'];
     if (!empty($_GET['filter_status']))       $active_filters['status']      = $_GET['filter_status'];
+    elseif (!empty($_GET['status']))          $active_filters['status']      = $_GET['status'];
     if (!empty($_GET['filter_search']))       $active_filters['search']      = $_GET['filter_search'];
+    elseif (!empty($_GET['search']))          $active_filters['search']      = $_GET['search'];
 } elseif ($active_tab === 'purchase_order') {
     if (!empty($_GET['filter_po_status'])) $active_filters['po_status'] = $_GET['filter_po_status'];
     if (!empty($_GET['filter_cat']))       $active_filters['category']  = $_GET['filter_cat'];
@@ -242,6 +257,7 @@ if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
     if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 } elseif ($active_tab === 'archived_deactivated') {
+    if (!empty($_GET['filter_action']))   $active_filters['action']   = $_GET['filter_action'];
     if (!empty($_GET['filter_search']))   $active_filters['search']   = $_GET['filter_search'];
 }
 
@@ -497,7 +513,6 @@ table.rpt-table {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    table-layout: auto !important;
     border-collapse: collapse !important;
     margin-bottom: 0 !important;
 }
@@ -511,17 +526,18 @@ table.rpt-table th {
     color: #00264D !important;
     font-weight: 800 !important;
     text-transform: uppercase !important;
-    padding: 10px 6px !important;
+    padding: 9px 5px !important;
     border-bottom: 2.5px solid #00264D !important;
-    font-size: 13px !important;
+    font-size: 12px !important;
     letter-spacing: 0.2px !important;
     white-space: normal !important;
-    word-break: normal !important;
-    overflow-wrap: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
     vertical-align: middle !important;
     line-height: 1.25 !important;
     min-width: 0 !important;
     text-align: left !important;
+    box-sizing: border-box !important;
 }
 
 .rpt-table tbody td,
@@ -529,16 +545,19 @@ table.rpt-table th {
 .rpt-content table td,
 .rpt-printable-area table td,
 table.rpt-table td {
-    padding: 10px 6px !important;
+    padding: 8px 5px !important;
     border-bottom: 1px solid #e2e8f0 !important;
     color: #0f172a !important;
-    font-size: 13.5px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
     vertical-align: middle !important;
-    line-height: 1.35 !important;
-    white-space: nowrap !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
     min-width: 0 !important;
     text-align: left !important;
+    box-sizing: border-box !important;
 }
 
 /* ── Column Alignment Engine: Bootstrap utility + inline style overrides ── */
@@ -651,6 +670,60 @@ tr.grand-total td {
     box-sizing: border-box !important;
 }
 
+/* Fixed Table Layout for Multi-Column Reports (100% width, No Horizontal Scroll, Full Right-Side Visibility) */
+.rpt-table-fixed,
+table.rpt-table.rpt-table-fixed,
+.rpt-content table.rpt-table-fixed,
+.rpt-printable-area table.rpt-table-fixed,
+.rpt-content table.rpt-table.rpt-table-fixed,
+.rpt-printable-area table.rpt-table.rpt-table-fixed {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.rpt-table-fixed th,
+.rpt-table-fixed td,
+.rpt-content table.rpt-table-fixed th,
+.rpt-content table.rpt-table-fixed td,
+.rpt-printable-area table.rpt-table-fixed th,
+.rpt-printable-area table.rpt-table-fixed td,
+.rpt-content table.rpt-table.rpt-table-fixed th,
+.rpt-content table.rpt-table.rpt-table-fixed td,
+.rpt-printable-area table.rpt-table.rpt-table-fixed th,
+.rpt-printable-area table.rpt-table.rpt-table-fixed td,
+table.rpt-table.rpt-table-fixed th,
+table.rpt-table.rpt-table-fixed td {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    box-sizing: border-box !important;
+}
+
+.rpt-table-fixed td code,
+.rpt-table-fixed th code,
+.rpt-content table.rpt-table-fixed td code,
+.rpt-printable-area table.rpt-table-fixed td code,
+table.rpt-table.rpt-table-fixed td code {
+    white-space: normal !important;
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
+    display: inline-block !important;
+    max-width: 100% !important;
+}
+
+.rpt-table-fixed .badge,
+.rpt-content table.rpt-table-fixed .badge,
+.rpt-printable-area table.rpt-table-fixed .badge,
+table.rpt-table.rpt-table-fixed .badge {
+    white-space: normal !important;
+    display: inline-block !important;
+    text-align: center !important;
+    max-width: 100% !important;
+    word-break: break-word !important;
+}
+
 /* Print Styles - direct native in-page print */
 @media print {
     @page { size: A4 landscape; margin: 0.4in 0.5in; }
@@ -715,7 +788,7 @@ tr.grand-total td {
                     $fuel_types_list = $report_data['fuel_types'] ?? [];
                     $pump_list       = $report_data['pump_list'] ?? [];
                     $sel_ft  = htmlspecialchars($active_filters['fuel_type'] ?? '');
-                    $sel_pid = (int)($active_filters['pump_id'] ?? 0);
+                    $sel_ugt = htmlspecialchars($active_filters['ugt'] ?? '');
                     ?>
                     <?php if (!empty($fuel_types_list)): ?>
                     <label class="ms-2"><i class="fas fa-gas-pump me-1"></i> Fuel Type</label>
@@ -729,10 +802,10 @@ tr.grand-total td {
 
                     <?php if (!empty($pump_list)): ?>
                     <label class="ms-1"><i class="fas fa-tachometer-alt me-1"></i> UGT/Pump</label>
-                    <select name="filter_pump_id" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                    <select name="filter_ugt" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All UGTs</option>
                         <?php foreach ($pump_list as $p): ?>
-                            <option value="<?= (int)$p['pump_id'] ?>" <?= ($sel_pid === (int)$p['pump_id']) ? 'selected' : '' ?>><?= htmlspecialchars($p['label']) ?></option>
+                            <option value="<?= htmlspecialchars($p['pump_id']) ?>" <?= ($sel_ugt === htmlspecialchars($p['pump_id'])) ? 'selected' : '' ?>><?= htmlspecialchars($p['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php endif; ?>
@@ -845,7 +918,7 @@ tr.grand-total td {
                     $sel_ft  = htmlspecialchars($active_filters['fuel_type'] ?? '');
                     $sel_ugt = htmlspecialchars($active_filters['ugt'] ?? '');
                     $fuel_types_list = $report_data['fuel_types'] ?? [];
-                    $ugt_list        = $report_data['ugt_list'] ?? [];
+                    $ugt_list        = $report_data['ugts'] ?? ($report_data['ugt_list'] ?? []);
                     ?>
                     <?php if (!empty($fuel_types_list)): ?>
                     <label class="ms-1"><i class="fas fa-gas-pump me-1"></i> Fuel Type</label>
@@ -862,7 +935,8 @@ tr.grand-total td {
                     <select name="filter_ugt" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Tanks</option>
                         <?php foreach ($ugt_list as $u): ?>
-                            <option value="<?= htmlspecialchars($u['name']) ?>" <?= $sel_ugt === htmlspecialchars($u['name']) ? 'selected' : '' ?>><?= htmlspecialchars($u['name']) ?></option>
+                            <?php $uval = is_array($u) ? ($u['name'] ?? $u['ugt_no'] ?? '') : (string)$u; ?>
+                            <option value="<?= htmlspecialchars($uval) ?>" <?= $sel_ugt === htmlspecialchars($uval) ? 'selected' : '' ?>><?= htmlspecialchars($uval) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php endif; ?>
@@ -900,6 +974,7 @@ tr.grand-total td {
                     $sel_status = htmlspecialchars($active_filters['status'] ?? '');
                     $sel_atype  = htmlspecialchars($active_filters['adj_type'] ?? '');
                     $sel_batch  = htmlspecialchars($active_filters['batch_id'] ?? '');
+                    $sel_prod   = htmlspecialchars($active_filters['product'] ?? '');
                     ?>
                     <label class="ms-1"><i class="fas fa-info-circle me-1"></i> Status</label>
                     <select name="filter_status" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
@@ -912,15 +987,41 @@ tr.grand-total td {
                     <label class="ms-1"><i class="fas fa-sliders-h me-1"></i> Adjustment Type</label>
                     <select name="filter_adj_type" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Types</option>
+                        <option value="Physical Count" <?= $sel_atype === 'Physical Count' ? 'selected' : '' ?>>Physical Count / Tank Dip</option>
+                        <option value="Transaction Adjustment" <?= $sel_atype === 'Transaction Adjustment' ? 'selected' : '' ?>>Transaction Adjustment</option>
+                        <option value="Stock-In Adjustment" <?= $sel_atype === 'Stock-In Adjustment' ? 'selected' : '' ?>>Stock-In Adjustment</option>
+                        <option value="Calibration" <?= $sel_atype === 'Calibration' ? 'selected' : '' ?>>Calibration</option>
                         <option value="Expired Product" <?= $sel_atype === 'Expired Product' ? 'selected' : '' ?>>Expired Product</option>
                         <option value="Damaged Product" <?= $sel_atype === 'Damaged Product' ? 'selected' : '' ?>>Damaged Product</option>
-                        <option value="Physical Count" <?= $sel_atype === 'Physical Count' ? 'selected' : '' ?>>Physical Count</option>
                         <option value="Encoding Correction" <?= $sel_atype === 'Encoding Correction' ? 'selected' : '' ?>>Encoding Correction</option>
                         <option value="Stock Correction" <?= $sel_atype === 'Stock Correction' ? 'selected' : '' ?>>Stock Correction</option>
                     </select>
 
-                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch ID</label>
-                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch ID..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch / Ref</label>
+                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch/UGT/Ref..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:115px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-box me-1"></i> Product</label>
+                    <input type="text" name="filter_product" value="<?= $sel_prod ?>" placeholder="Product..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+
+                <?php elseif ($active_tab === 'expired_damaged'): ?>
+                    <?php
+                    $sel_batch = htmlspecialchars($active_filters['batch_id'] ?? '');
+                    $sel_prod  = htmlspecialchars($active_filters['product'] ?? '');
+                    $sel_atype = htmlspecialchars($active_filters['adj_type'] ?? '');
+                    ?>
+                    <label class="ms-1"><i class="fas fa-box me-1"></i> Product</label>
+                    <input type="text" name="filter_product" value="<?= $sel_prod ?>" placeholder="Product Name..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:125px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch / Ref</label>
+                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch/DR..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-filter me-1"></i> Type</label>
+                    <select name="filter_adj_type" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Types</option>
+                        <option value="Expired" <?= $sel_atype === 'Expired' ? 'selected' : '' ?>>Expired</option>
+                        <option value="Damaged" <?= $sel_atype === 'Damaged' ? 'selected' : '' ?>>Damaged / Defect</option>
+                        <option value="Spillage" <?= $sel_atype === 'Spillage' ? 'selected' : '' ?>>Spillage / Loss</option>
+                    </select>
 
                 <?php elseif ($active_tab === 'job_order'): ?>
                     <?php
@@ -949,7 +1050,7 @@ tr.grand-total td {
                     <select name="filter_mech" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Mechanics</option>
                         <?php foreach ($mechs_list as $m): 
-                            $m_name = (string)($m['name'] ?? $m['mechanic_name'] ?? '');
+                            $m_name = (string)($m['full_name'] ?? $m['name'] ?? $m['mechanic_name'] ?? '');
                             if ($m_name === '') continue;
                         ?>
                             <option value="<?= htmlspecialchars($m_name) ?>" <?= $sel_mech === htmlspecialchars($m_name) ? 'selected' : '' ?>><?= htmlspecialchars($m_name) ?></option>
@@ -961,6 +1062,47 @@ tr.grand-total td {
 
                     <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>
                     <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="JO No./Customer..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:130px;color:#334155;">
+
+                <?php elseif ($active_tab === 'mechanic_performance'): ?>
+                    <?php
+                    $sel_mech   = htmlspecialchars($active_filters['mechanic'] ?? '');
+                    $sel_scat   = htmlspecialchars($active_filters['service_cat'] ?? '');
+                    $sel_status = htmlspecialchars($active_filters['status'] ?? '');
+                    $sel_search = htmlspecialchars($active_filters['search'] ?? '');
+                    $mechs_list = $report_data['mechanics'] ?? [];
+                    $scats_list = $report_data['service_categories'] ?? [];
+                    ?>
+                    <label class="ms-1"><i class="fas fa-wrench me-1"></i> Mechanic</label>
+                    <select name="filter_mech" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Mechanics</option>
+                        <?php foreach ($mechs_list as $m): 
+                            $m_name = (string)($m['full_name'] ?? $m['name'] ?? $m['mechanic_name'] ?? '');
+                            if ($m_name === '') continue;
+                        ?>
+                            <option value="<?= htmlspecialchars($m_name) ?>" <?= $sel_mech === htmlspecialchars($m_name) ? 'selected' : '' ?>><?= htmlspecialchars($m_name) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <label class="ms-1"><i class="fas fa-tags me-1"></i> Service Category</label>
+                    <select name="filter_service_cat" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Categories</option>
+                        <?php foreach ($scats_list as $sc): ?>
+                            <option value="<?= htmlspecialchars($sc['name']) ?>" <?= $sel_scat === htmlspecialchars($sc['name']) ? 'selected' : '' ?>><?= htmlspecialchars($sc['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <label class="ms-1"><i class="fas fa-info-circle me-1"></i> Status</label>
+                    <select name="filter_status" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Statuses</option>
+                        <option value="Completed" <?= $sel_status === 'Completed' ? 'selected' : '' ?>>Completed</option>
+                        <option value="Released" <?= $sel_status === 'Released' ? 'selected' : '' ?>>Released</option>
+                        <option value="In Progress" <?= $sel_status === 'In Progress' ? 'selected' : '' ?>>In Progress</option>
+                        <option value="Pending" <?= $sel_status === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                        <option value="Cancelled" <?= $sel_status === 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                    </select>
+
+                    <label class="ms-1"><i class="fas fa-search me-1"></i> Search</label>
+                    <input type="text" name="filter_search" value="<?= $sel_search ?>" placeholder="Search mechanic..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:130px;color:#334155;">
 
                 <?php elseif ($active_tab === 'purchase_order'): ?>
                     <?php

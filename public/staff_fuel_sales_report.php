@@ -5,7 +5,6 @@
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-require_login();
 }
 require_once __DIR__ . '/db_connect.php';
 
@@ -44,7 +43,7 @@ $stmt_cl = $pdo->prepare("
     ORDER BY id DESC LIMIT 1
 ");
 $stmt_cl->execute([$station_id, $report_date, $shift, $shift, $shift_key]);
-$closing = $stmt_cl->fetch(PDO::FETCH_ASSOC) ?: [];
+$raw_closing = $stmt_cl->fetch(PDO::FETCH_ASSOC) ?: [];
 
 // Fetch Meter Readings / Transactions for Date and Shift
 $stmt_readings = $pdo->prepare("
@@ -60,6 +59,19 @@ $stmt_readings = $pdo->prepare("
 ");
 $stmt_readings->execute([$station_id, $report_date, $report_date, $shift, $shift_key, $shift]);
 $readings = $stmt_readings->fetchAll(PDO::FETCH_ASSOC);
+
+$closing_status_upper = strtoupper(trim($raw_closing['status'] ?? ''));
+$is_closing_verified  = in_array($closing_status_upper, ['VERIFIED', 'APPROVED', 'VALIDATED']);
+$is_pending_mgr       = ($closing_status_upper === 'CLOSING_COMPLETED');
+$is_unclosed          = empty($raw_closing) || ($closing_status_upper === 'READINGS_SUBMITTED') || ($closing_status_upper === 'DRAFT');
+
+if (!$is_closing_verified) {
+    // If closing has not been verified/approved by Manager or Admin, do not treat readings or closing figures as finalized report sales
+    $readings = [];
+    $closing  = [];
+} else {
+    $closing = $raw_closing;
+}
 
 // Fetch Tank Inventories
 $stmt_tanks = $pdo->prepare("
@@ -265,8 +277,38 @@ $encoder_name = trim($encoder['full_name'] ?? '') ?: ($_SESSION['full_name'] ?? 
             <div><strong>Report Date:</strong> <?= htmlspecialchars($report_date) ?></div>
             <div><strong>Shift:</strong> <?= htmlspecialchars($closing['shift'] ?? 'General') ?></div>
             <div><strong>Encoded By:</strong> <?= htmlspecialchars($encoder_name) ?></div>
-            <div><strong>Status:</strong> <?= strtoupper(htmlspecialchars($closing['status'] ?? 'Draft')) ?></div>
+            <div>
+                <strong>Status:</strong> 
+                <?php if ($is_closing_verified): ?>
+                    <span style="color:#15803d; font-weight:700;"><i class="fas fa-check-circle"></i> <?= strtoupper(htmlspecialchars($closing['status'])) ?></span>
+                <?php elseif ($is_pending_mgr): ?>
+                    <span style="color:#b45309; font-weight:700;"><i class="fas fa-clock"></i> PENDING MANAGER APPROVAL</span>
+                <?php else: ?>
+                    <span style="color:#64748b; font-weight:700;"><i class="fas fa-circle-exclamation"></i> <?= strtoupper(htmlspecialchars($closing['status'] ?? 'DRAFT / UNCLOSED')) ?></span>
+                <?php endif; ?>
+            </div>
         </div>
+
+        <?php if ($is_unclosed): ?>
+        <div class="no-print" style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="display:flex; align-items:center; gap:10px; color:#1e40af; font-size:13px;">
+                <i class="fas fa-info-circle" style="font-size:20px; color:#3b82f6;"></i>
+                <div>
+                    <strong>Notice:</strong> Fuel Sales Closing has not been completed yet for this shift. Sales figures will not appear in official reports until Fuel Sales Closing is submitted.
+                </div>
+            </div>
+            <a href="staff_fuel_sales_closing.php?date=<?= urlencode($report_date) ?>&shift=<?= urlencode($shift) ?>" style="background:#002F70; color:#fff; padding:6px 14px; border-radius:6px; font-weight:700; font-size:12px; text-decoration:none; white-space:nowrap;">
+                <i class="fas fa-calculator me-1"></i> Go to Closing
+            </a>
+        </div>
+        <?php elseif ($is_pending_mgr): ?>
+        <div class="no-print" style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#92400e; font-size:13px;">
+            <i class="fas fa-clock" style="font-size:20px; color:#f59e0b;"></i>
+            <div>
+                <strong>Pending Manager Approval:</strong> This closing was submitted by staff and is currently awaiting Manager Validation. Once approved by the Manager, official sales figures will be fully reflected here.
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- 1. Meter Reading Table -->
         <div class="section-title"><i class="fas fa-tachometer-alt"></i> 1. Meter Reading Details</div>

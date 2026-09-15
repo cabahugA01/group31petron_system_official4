@@ -187,29 +187,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $sStmt = $pdo->prepare("
                     INSERT INTO job_order_service_types
-                        (service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, reviewed_by, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2), 'approved', ?, ?, 1, NOW(), NOW())
+                        (station_id, service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, reviewed_by, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2 WHERE j2.station_id = ?), 'approved', ?, ?, 1, NOW(), NOW())
                 ");
                 $sStmt->execute([
+                    $stationId,
                     $serviceKey,
                     $serviceName,
                     $requestData['service_category'] ?? $requestData['category'] ?? 'Others',
                     $suggestedPrice,
                     $requestData['estimated_duration'] ?? null,
+                    $stationId,
                     $me['id'],
                     $me['id']
                 ]);
                 $newId = $pdo->lastInsertId();
 
+            } elseif ($reqType === 'inspection_item') {
+                $itemName = trim($requestData['item_name'] ?? '');
+                $description = trim($requestData['description'] ?? '');
+                $cat = trim($requestData['category'] ?? 'General');
+                $isActive = isset($requestData['is_active']) ? (int)$requestData['is_active'] : 1;
+
+                $dup = $pdo->prepare("SELECT id FROM vehicle_inspection_items WHERE station_id = ? AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))");
+                $dup->execute([$stationId, $itemName]);
+                $existingId = $dup->fetchColumn();
+
+                if ($existingId) {
+                    $newId = (int)$existingId;
+                } else {
+                    $iStmt = $pdo->prepare("
+                        INSERT INTO vehicle_inspection_items
+                            (station_id, item_name, description, category, is_active, created_by, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    ");
+                    $iStmt->execute([
+                        $stationId ?: null,
+                        $itemName,
+                        $description ?: null,
+                        $cat ?: 'General',
+                        $isActive,
+                        $me['id']
+                    ]);
+                    $newId = (int)$pdo->lastInsertId();
+                }
             } elseif ($reqType === 'vehicle_type') {
                 $vehicleName = trim(($requestData['vehicle_brand'] ?? '') . ' ' . ($requestData['vehicle_model'] ?? ''));
 
                 $vStmt = $pdo->prepare("
                     INSERT INTO vehicle_types
-                        (category, vehicle_name, status, submitted_by, reviewed_by, is_active, created_at, updated_at)
-                    VALUES (?, ?, 'approved', ?, ?, 1, NOW(), NOW())
+                        (station_id, category, vehicle_name, status, submitted_by, reviewed_by, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, 'approved', ?, ?, 1, NOW(), NOW())
                 ");
                 $vStmt->execute([
+                    $stationId ?: null,
                     $requestData['vehicle_type'] ?? 'Sedan',
                     $vehicleName,
                     $me['id'],
@@ -264,6 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requestedItem = '';
             if ($reqType === 'product') $requestedItem = $requestData['product_name'] ?? '';
             elseif ($reqType === 'service_type') $requestedItem = $requestData['service_name'] ?? '';
+            elseif ($reqType === 'inspection_item') $requestedItem = $requestData['item_name'] ?? '';
             else $requestedItem = ($requestData['vehicle_brand'] ?? '') . ' ' . ($requestData['vehicle_model'] ?? '');
 
             $requesterName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));

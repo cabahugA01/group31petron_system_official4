@@ -133,7 +133,7 @@ if ($action === 'create') {
 
         // Notify Managers
         try {
-            $managers = $pdo->query("SELECT id FROM users WHERE role IN ('manager', 'admin', 'superadmin')")->fetchAll(PDO::FETCH_COLUMN);
+            $managers = $pdo->query("SELECT id FROM users WHERE role IN ('manager', 'admin') AND station_id = {$station_id}")->fetchAll(PDO::FETCH_COLUMN);
             $nStmt = $pdo->prepare("
                 INSERT INTO notifications (user_id, type, title, message, event_type, severity, redirect_url, created_at)
                 VALUES (?, 'warning', 'Pending Stock Adjustment', ?, 'inventory_adjustment', 'medium', 'manager_inventory_merchandise.php?tab=adjustments', NOW())

@@ -40,10 +40,21 @@ try {
 $today        = date('Y-m-d');
 $date_start   = trim($_GET['date_start'] ?? $_GET['biz_date'] ?? $today);
 $date_end     = trim($_GET['date_end']   ?? $_GET['biz_date'] ?? $today);
+$biz_date     = $date_start;
 $filter_shift = trim($_GET['shift']      ?? '');  // '' = all, 'first', 'second', etc.
 
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_start)) $date_start = $today;
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_end))   $date_end   = $today;
+$biz_date = $date_start;
+
+// ── Known shift periods configured in station ─────────────────────────────────
+$known_shifts = [];
+try {
+    $stSp = $pdo->query("SELECT shift_key, shift_name FROM shift_periods WHERE is_active = 1 ORDER BY sort_order");
+    while ($rSp = $stSp->fetch(PDO::FETCH_ASSOC)) {
+        $known_shifts[strtolower($rSp['shift_key'])] = $rSp['shift_name'];
+    }
+} catch (Exception $e) {}
 
 // ── Build shift WHERE clauses ─────────────────────────────────────────────────
 $shift_where_ft   = '';   // fuel_transactions
@@ -104,13 +115,52 @@ try {
     $shift_sessions = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {}
 
-// Primary session for header display
+// Primary session & accurate shift header display
 $primary_session  = $shift_sessions[0] ?? null;
-$display_shift    = $primary_session['shift_name']  ?? ($filter_shift !== '' ? ucfirst($filter_shift).' Shift' : 'All Shifts');
-$display_staff    = $primary_session['staff_name']  ?? '—';
-$display_time_in  = $primary_session ? date('h:i A', strtotime($primary_session['start_time'])) : '—';
-$display_time_out = ($primary_session && $primary_session['end_time'])
-                  ? date('h:i A', strtotime($primary_session['end_time'])) : '—';
+if ($filter_shift !== '' && isset($known_shifts[strtolower($filter_shift)])) {
+    $display_shift = $known_shifts[strtolower($filter_shift)];
+} else {
+    $display_shift = $primary_session['shift_name'] ?? ($filter_shift !== '' ? ucfirst($filter_shift).' Shift' : 'All Shifts');
+}
+
+$display_staff = trim($primary_session['staff_name'] ?? '');
+if (empty($display_staff) || in_array($display_staff, ['—', '-', 'N/A'], true)) {
+    $display_staff = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+    if (empty($display_staff)) {
+        $display_staff = trim($me['name'] ?? $me['username'] ?? 'Staff');
+    }
+}
+
+// Compute accurate Time In and Time Out across all shift sessions
+$display_time_in  = '—';
+$display_time_out = '—';
+if (!empty($shift_sessions)) {
+    $earliest_start = $shift_sessions[0]['start_time'] ?? null;
+    if ($earliest_start) {
+        $display_time_in = date('h:i A', strtotime($earliest_start));
+    }
+    $has_ongoing = false;
+    $latest_end  = null;
+    foreach ($shift_sessions as $sess) {
+        if (empty($sess['end_time'])) {
+            $has_ongoing = true;
+        } else {
+            if ($latest_end === null || strtotime($sess['end_time']) > strtotime($latest_end)) {
+                $latest_end = $sess['end_time'];
+            }
+        }
+    }
+    if ($has_ongoing) {
+        $display_time_out = 'Ongoing';
+    } elseif ($latest_end) {
+        $display_time_out = date('h:i A', strtotime($latest_end));
+    }
+}
+
+// ── Shared Payment Summary & AR Collections ────────────────────────────────────
+$payment_summary = []; // payment_method => amount
+$credit_sales    = 0;
+$fleet_sales     = 0;
 
 // ── Fuel Sales ────────────────────────────────────────────────────────────────
 $fuel_sales_total = 0;
@@ -134,22 +184,41 @@ try {
             'amount'    => (float)$r['amount'],
         ];
     }
+
+    // Incorporate fuel payment methods into payment summary & AR
+    $stmtFP = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash') as payment_method,
+                SUM(COALESCE(ft.total_amount,0)) as total_amount
+         FROM fuel_transactions ft
+         WHERE ft.station_id=:station_id AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN :dstart AND :dend
+           AND LOWER(COALESCE(ft.status,'')) NOT IN ('voided','rejected','cancelled','canceled')
+           {$shift_where_ft}
+         GROUP BY COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash')"
+    );
+    $stmtFP->execute($shift_params_ft);
+    $fuel_pm_rows = $stmtFP->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($fuel_pm_rows as $r) {
+        $amt = (float)$r['total_amount'];
+        $pm = trim($r['payment_method'] ?? 'Cash');
+        if (strcasecmp($pm, 'Internal') === 0) $pm = 'Cash'; // Station nozzle readings turn into cash turnover
+        $payment_summary[$pm] = ($payment_summary[$pm] ?? 0) + $amt;
+        if (stripos($pm, 'credit') !== false) $credit_sales += $amt;
+        if (stripos($pm, 'fleet') !== false)  $fleet_sales  += $amt;
+    }
 } catch (Exception $e) {}
 
 // ── Merchandise Transactions ───────────────────────────────────────────────────
+// Only count Official and Adjusted — exclude Voided, Rejected, Cancelled
 $merch_sales_total = 0;
 $merch_tx_count   = 0;
 $merch_items_sold  = 0;
-$payment_summary   = []; // payment_method => amount
-$credit_sales      = 0;
-$fleet_sales       = 0;
 try {
     $stmt = $pdo->prepare(
         "SELECT mt.payment_method, mt.total_amount, mt.fleet_card_number, mt.credit_account_number,
                 mt.credit_company_name, mt.fleet_company_name
          FROM merchandise_transactions mt
          WHERE mt.station_id=:station_id AND DATE(mt.transaction_date) BETWEEN :dstart AND :dend
-           AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('voided','rejected','cancelled','canceled')
+           AND LOWER(COALESCE(mt.validation_status,'')) IN ('official','adjusted','validated','approved','completed')
            {$shift_where_mt}"
     );
     $stmt->execute($shift_params_mt);
@@ -168,28 +237,43 @@ try {
         }
     }
 
-    // Items sold
+    // Items sold: join on both mt.id and mt.transaction_id
     $stmtI = $pdo->prepare(
         "SELECT SUM(mti.quantity) AS items
          FROM merchandise_transaction_items mti
-         JOIN merchandise_transactions mt ON mt.transaction_id = mti.transaction_id
+         JOIN merchandise_transactions mt ON (mt.id = mti.transaction_id OR mt.transaction_id = mti.transaction_id)
          WHERE mt.station_id=:station_id AND DATE(mt.transaction_date) BETWEEN :dstart AND :dend
-           AND LOWER(COALESCE(mt.validation_status,'')) NOT IN ('voided','rejected','cancelled','canceled')
+           AND LOWER(COALESCE(mt.validation_status,'')) IN ('official','adjusted','validated','approved','completed')
            {$shift_where_mt}"
     );
     $stmtI->execute($shift_params_mt);
     $merch_items_sold = (int)($stmtI->fetchColumn() ?: 0);
+
+    // Fallback: if no rows in items table but transactions exist, check mt.quantity directly
+    if ($merch_items_sold === 0 && $merch_tx_count > 0) {
+        $stmt_fb = $pdo->prepare(
+            "SELECT SUM(COALESCE(mt.quantity, 1)) AS items
+             FROM merchandise_transactions mt
+             WHERE mt.station_id=:station_id AND DATE(mt.transaction_date) BETWEEN :dstart AND :dend
+               AND LOWER(COALESCE(mt.validation_status,'')) IN ('official','adjusted','validated','approved','completed')
+               {$shift_where_mt}"
+        );
+        $stmt_fb->execute($shift_params_mt);
+        $merch_items_sold = (int)($stmt_fb->fetchColumn() ?: 0);
+    }
 } catch (Exception $e) {}
 
-// ── Job Order Sales & Fuel from job_orders via service entries ────────────────
-$labor_fee_revenue  = 0;
-$service_fee_revenue = 0;
-$parts_sales        = 0;
-$jo_status_counts   = ['Pending'=>0,'In Progress'=>0,'Completed'=>0,'Released'=>0,'Cancelled'=>0];
-$jo_payment_summary = [];
+// ── Job Order Sales ────────────────────────────────────────────────────────────
+// job_orders has no shift_period column — filter by date only
+$labor_fee_revenue   = 0;
+$service_fee_revenue = 0; // = labor + parts (the jo total)
+$parts_sales         = 0;
+$jo_status_counts    = ['Pending'=>0,'In Progress'=>0,'Completed'=>0,'Released'=>0,'Cancelled'=>0];
+$jo_payment_summary  = [];
 try {
     $joParams = ['station_id'=>$station_id,'dstart'=>$date_start,'dend'=>$date_end];
-    $joWhere  = "WHERE jo.station_id=:station_id AND DATE(jo.created_at) BETWEEN :dstart AND :dend";
+    $joWhere  = "WHERE jo.station_id=:station_id AND DATE(jo.created_at) BETWEEN :dstart AND :dend
+                   AND LOWER(COALESCE(jo.status,'')) NOT IN ('voided','cancelled','canceled','rejected')";
     $stmt = $pdo->prepare(
         "SELECT jo.status, jo.actual_labor_cost, jo.actual_parts_cost, jo.total_cost,
                 jo.amount_paid, jo.payment_method, jo.is_credit
@@ -202,19 +286,20 @@ try {
         $parts  = (float)($r['actual_parts_cost'] ?? 0);
         $labor_fee_revenue   += $labor;
         $parts_sales         += $parts;
-        $service_fee_revenue += (float)($r['total_cost'] ?? 0);
+        $service_fee_revenue += $labor + $parts; // total JO revenue = labor + parts
         $pm = trim($r['payment_method'] ?? '');
-        if ($pm) {
-            $jo_payment_summary[$pm] = ($jo_payment_summary[$pm] ?? 0) + (float)($r['amount_paid'] ?? 0);
-            $payment_summary[$pm]    = ($payment_summary[$pm] ?? 0) + (float)($r['amount_paid'] ?? 0);
+        if ($pm && (float)($r['amount_paid'] ?? 0) > 0) {
+            $paid = (float)$r['amount_paid'];
+            $jo_payment_summary[$pm] = ($jo_payment_summary[$pm] ?? 0) + $paid;
+            $payment_summary[$pm]    = ($payment_summary[$pm] ?? 0) + $paid;
         }
 
         // Normalize status
-        $st = ucfirst(strtolower(trim($r['status'] ?? '')));
+        $st_raw = strtolower(trim($r['status'] ?? ''));
         $st_map = ['in_progress'=>'In Progress','inprogress'=>'In Progress','in progress'=>'In Progress',
                    'pending'=>'Pending','completed'=>'Completed','released'=>'Released',
                    'cancelled'=>'Cancelled','canceled'=>'Cancelled'];
-        $st_key = $st_map[strtolower($st)] ?? $st;
+        $st_key = $st_map[$st_raw] ?? ucfirst($st_raw);
         if (array_key_exists($st_key, $jo_status_counts)) {
             $jo_status_counts[$st_key]++;
         }
@@ -227,36 +312,79 @@ try {
     $stmt = $pdo->prepare(
         "SELECT SUM(COALESCE(balance_due, total_amount - COALESCE(amount_paid,0), 0)) AS outstanding
          FROM merchandise_transactions
-         WHERE station_id=:station_id AND LOWER(COALESCE(payment_status,'')) NOT IN ('paid','fully_paid')
+         WHERE station_id=:station_id
+           AND LOWER(COALESCE(validation_status,'')) IN ('official','adjusted','validated','approved','completed')
+           AND LOWER(COALESCE(payment_status,'')) NOT IN ('paid','fully_paid')
            AND (credit_account_number IS NOT NULL OR fleet_card_number IS NOT NULL
                 OR LOWER(COALESCE(payment_method,'')) LIKE '%credit%'
                 OR LOWER(COALESCE(payment_method,'')) LIKE '%fleet%')"
     );
     $stmt->execute(['station_id'=>$station_id]);
-    $outstanding_receivables = (float)($stmt->fetchColumn() ?: 0);
+    $outstanding_receivables += (float)($stmt->fetchColumn() ?: 0);
 } catch (Exception $e) {}
 
-// ── Cash Turnover ─────────────────────────────────────────────────────────────
-// Beginning cash = not dynamically tracked, show 0 unless shift_reports has it
-$beginning_cash   = 0;
-$cash_sales       = ($payment_summary['Cash'] ?? 0);
-$cash_collections = 0; // Collections on credit accounts — hard to compute without a collections table
 try {
-    // Try shift_reports for beginning cash
-    $stmt = $pdo->prepare(
-        "SELECT * FROM shift_reports WHERE station_id=:sid AND report_date=:d ORDER BY id DESC LIMIT 1"
+    $stCar = $pdo->prepare(
+        "SELECT SUM(COALESCE(car.outstanding_balance,0))
+         FROM customer_accounts_receivable car
+         JOIN customers c ON car.customer_id = c.id
+         WHERE c.station_id = :sid
+           AND LOWER(COALESCE(car.status,'')) NOT IN ('paid','settled')"
     );
-    $stmt->execute(['sid'=>$station_id,'d'=>$biz_date]);
-    if ($sr = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        // No explicit beginning_cash column found; keep 0
+    $stCar->execute(['sid'=>$station_id]);
+    $outstanding_receivables += (float)($stCar->fetchColumn() ?: 0);
+} catch (Exception $e) {}
+
+try {
+    $stJoAr = $pdo->prepare(
+        "SELECT SUM(COALESCE(balance_due, total_cost - COALESCE(amount_paid,0), 0))
+         FROM job_orders
+         WHERE station_id = :sid
+           AND (is_credit = 1 OR LOWER(COALESCE(payment_status,'')) IN ('unpaid','partial','credit'))
+           AND LOWER(COALESCE(status,'')) NOT IN ('voided','cancelled','canceled','rejected')"
+    );
+    $stJoAr->execute(['sid'=>$station_id]);
+    $outstanding_receivables += (float)($stJoAr->fetchColumn() ?: 0);
+} catch (Exception $e) {}
+
+// Fallback to customer table balance if individual records have 0 balance
+if ($outstanding_receivables <= 0) {
+    try {
+        $stCust = $pdo->prepare("SELECT SUM(COALESCE(outstanding_balance, current_balance, 0)) FROM customers WHERE station_id = ?");
+        $stCust->execute([$station_id]);
+        $outstanding_receivables = (float)($stCust->fetchColumn() ?: 0);
+    } catch (Exception $e) {}
+}
+
+// ── Cash Turnover ─────────────────────────────────────────────────────────────
+$beginning_cash   = 0;
+$cash_sales       = ($payment_summary['Cash'] ?? 0);  // includes fuel + merch + JO cash
+$cash_collections = 0; // AR collections from shift closing
+
+try {
+    $fscWhere = "WHERE fsc.station_id=:station_id AND fsc.report_date BETWEEN :dstart AND :dend";
+    $fscParams = ['station_id'=>$station_id, 'dstart'=>$date_start, 'dend'=>$date_end];
+    if ($filter_shift !== '') {
+        $fscWhere .= " AND LOWER(COALESCE(fsc.shift_period,'')) LIKE :shift_key";
+        $fscParams['shift_key'] = '%' . strtolower($filter_shift) . '%';
+    }
+    $stFsc = $pdo->prepare(
+        "SELECT SUM(COALESCE(beginning_cash,0)) as beg_cash,
+                SUM(COALESCE(ar_collected,0)) as ar_col
+         FROM fuel_sales_closing fsc {$fscWhere}"
+    );
+    $stFsc->execute($fscParams);
+    if ($rowFsc = $stFsc->fetch(PDO::FETCH_ASSOC)) {
+        if ((float)$rowFsc['beg_cash'] > 0) $beginning_cash   = (float)$rowFsc['beg_cash'];
+        if ((float)$rowFsc['ar_col'] > 0)   $cash_collections = (float)$rowFsc['ar_col'];
     }
 } catch (Exception $e) {}
 
 $cash_turnover = $beginning_cash + $cash_sales + $cash_collections;
-$ending_cash   = $cash_turnover; // same without deductions tracked
+$ending_cash   = $cash_turnover;
 
 // ── Overall Sales ─────────────────────────────────────────────────────────────
-$overall_sales = $fuel_sales_total + $merch_sales_total + $labor_fee_revenue + $parts_sales;
+$overall_sales = $fuel_sales_total + $merch_sales_total + $service_fee_revenue;
 
 // ── Payment method display map ─────────────────────────────────────────────────
 $all_payment_methods = [
@@ -754,6 +882,87 @@ table.str-table td.str-center, table.str-table th.str-center {
     .sfss-print-only, .sfss-print-only * { min-height: 0 !important; height: auto !important; }
     .sfss-print-only i, .sfss-print-only .fas, .sfss-print-only .far, .sfss-print-only [class*="fa-"] { display: none !important; }
 }
+
+/* ── Petron Downward Custom Dropdowns ── */
+.petron-dropdown-source { display: none !important; }
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+}
+.petron-dropdown-wrap.is-open { z-index: 10050 !important; }
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 6px 12px !important;
+    background: #fff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    gap: 8px !important;
+    white-space: nowrap !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25,103,210,.2) !important;
+}
+.petron-dropdown-label {
+    flex: 1 !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+.petron-dropdown-arrow {
+    font-size: 10px !important;
+    color: #64748b !important;
+    transition: transform .2s !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-arrow {
+    transform: rotate(180deg) !important;
+}
+.petron-dropdown-menu {
+    position: absolute !important;
+    top: calc(100% + 2px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    z-index: 10051 !important;
+    min-width: 100% !important;
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15) !important;
+    max-height: 240px !important;
+    overflow-y: auto !important;
+    display: none !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu {
+    display: block !important;
+}
+.petron-dropdown-item {
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    background: #fff !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: background .12s, color .12s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #fff !important;
+}
 </style>
 
 <div class="stock-page">
@@ -776,9 +985,15 @@ table.str-table td.str-center, table.str-table th.str-center {
                 <label class="str-filter-label">Shift</label>
                 <select id="filter_shift" class="str-filter-select">
                     <option value="">All Shifts</option>
-                    <option value="first"  <?= strtolower($filter_shift)==='first'  ? 'selected':'' ?>>Shift 1 (6AM–2PM)</option>
-                    <option value="second" <?= strtolower($filter_shift)==='second' ? 'selected':'' ?>>Shift 2 (2PM–10PM)</option>
-                    <option value="third"  <?= strtolower($filter_shift)==='third'  ? 'selected':'' ?>>Shift 3 (10PM–6AM)</option>
+                    <?php if (!empty($known_shifts)): ?>
+                        <?php foreach ($known_shifts as $sk => $sname): ?>
+                            <option value="<?= htmlspecialchars($sk) ?>" <?= strtolower($filter_shift)===strtolower($sk) ? 'selected':'' ?>><?= htmlspecialchars($sname) ?></option>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <option value="first"  <?= strtolower($filter_shift)==='first'  ? 'selected':'' ?>>Shift 1 (6AM–2PM)</option>
+                        <option value="second" <?= strtolower($filter_shift)==='second' ? 'selected':'' ?>>Shift 2 (2PM–10PM)</option>
+                        <option value="third"  <?= strtolower($filter_shift)==='third'  ? 'selected':'' ?>>Shift 3 (10PM–6AM)</option>
+                    <?php endif; ?>
                 </select>
             </div>
 
@@ -841,14 +1056,7 @@ table.str-table td.str-center, table.str-table th.str-center {
                     <span class="str-info-label">Time Out</span>
                     <span class="str-info-value"><?= htmlspecialchars($display_time_out) ?></span>
                 </div>
-                <?php if (count($shift_sessions) > 1): ?>
-                <div class="str-info-item" style="grid-column:1/-1;">
-                    <span class="str-info-label">All Staff on Shift</span>
-                    <span class="str-info-value" style="font-size:13px;">
-                        <?= htmlspecialchars(implode(', ', array_filter(array_map(fn($s) => trim($s['staff_name']), $shift_sessions)))) ?>
-                    </span>
-                </div>
-                <?php endif; ?>
+
             </div>
         </div>
 
@@ -869,9 +1077,7 @@ table.str-table td.str-center, table.str-table th.str-center {
                     <tbody>
                         <tr><td>Fuel Sales</td><td>₱<?= number_format($fuel_sales_total, 2) ?></td></tr>
                         <tr><td>Merchandise Sales</td><td>₱<?= number_format($merch_sales_total, 2) ?></td></tr>
-                        <tr><td>Labor Fee Revenue</td><td>₱<?= number_format($labor_fee_revenue, 2) ?></td></tr>
-                        <tr><td>Service Fee Revenue</td><td>₱<?= number_format($service_fee_revenue, 2) ?></td></tr>
-                        <tr><td>Parts Sales</td><td>₱<?= number_format($parts_sales, 2) ?></td></tr>
+                        <tr><td>Job Order Revenue <small class="text-muted">(Labor + Parts)</small></td><td>₱<?= number_format($service_fee_revenue, 2) ?></td></tr>
                         <tr class="str-total"><td>Overall Sales</td><td>₱<?= number_format($overall_sales, 2) ?></td></tr>
                     </tbody>
                 </table>
@@ -1124,6 +1330,109 @@ function _strPrint(afterPrint) {
         setTimeout(cleanup, 30000);
     }, 150);
 }
+
+// ── Petron Downward Custom Dropdowns for Shift Turnover Report ──
+(function() {
+    function setupStrPetronDD() {
+        var selectors = ['#filter_shift'];
+        selectors.forEach(function(selId) {
+            var select = document.querySelector(selId);
+            if (!select || select.dataset.petronDownReady === '1') return;
+            select.dataset.petronDownReady = '1';
+
+            var wrap = document.createElement('div');
+            wrap.className = 'petron-dropdown-wrap';
+            wrap.style.minWidth = '190px';
+
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'petron-dropdown-trigger';
+
+            var label = document.createElement('span');
+            label.className = 'petron-dropdown-label';
+
+            var arrow = document.createElement('i');
+            arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+            trigger.appendChild(label);
+            trigger.appendChild(arrow);
+
+            var menu = document.createElement('div');
+            menu.className = 'petron-dropdown-menu';
+
+            Array.from(select.options).forEach(function(option) {
+                if (option.hidden) return;
+                var item = document.createElement('div');
+                item.className = 'petron-dropdown-item';
+                item.dataset.value = option.value;
+                item.textContent = option.textContent;
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    select.value = option.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof select.onchange === 'function') {
+                        select.onchange();
+                    }
+                    syncLabel();
+                    wrap.classList.remove('is-open');
+                });
+                menu.appendChild(item);
+            });
+
+            function syncLabel() {
+                var sel = select.options[select.selectedIndex];
+                label.textContent = sel ? sel.textContent.trim() : '';
+                Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(i) {
+                    i.classList.toggle('is-selected', i.dataset.value === select.value);
+                });
+            }
+
+            trigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var willOpen = !wrap.classList.contains('is-open');
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                if (willOpen) {
+                    var rect = wrap.getBoundingClientRect();
+                    menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                    menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                    wrap.classList.add('is-open');
+                    var s = menu.querySelector('.petron-dropdown-item.is-selected');
+                    if (s) s.scrollIntoView({ block: 'nearest' });
+                }
+            });
+
+            select.addEventListener('change', syncLabel);
+            select.classList.add('petron-dropdown-source');
+            select.style.display = 'none';
+            select.hidden = true;
+            select.parentNode.insertBefore(wrap, select.nextSibling);
+            wrap.appendChild(trigger);
+            wrap.appendChild(menu);
+            syncLabel();
+        });
+
+        if (!window.__petronDownCloseBoundStr) {
+            window.__petronDownCloseBoundStr = true;
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.petron-dropdown-wrap')) {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupStrPetronDD);
+    } else {
+        setupStrPetronDD();
+    }
+    window.addEventListener('load', setupStrPetronDD);
+})();
 </script>
 
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>

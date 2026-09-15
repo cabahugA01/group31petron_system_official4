@@ -146,7 +146,9 @@ if ($station_id > 0) {
 $active_filters = [];
 if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_fuel_type'])) $active_filters['fuel_type'] = $_GET['filter_fuel_type'];
-    if (!empty($_GET['filter_pump_id']))   $active_filters['pump_id']   = (int)$_GET['filter_pump_id'];
+    if (!empty($_GET['filter_ugt']))       $active_filters['ugt']       = $_GET['filter_ugt'];
+    // Legacy pump_id support (for backward compat)
+    if (!empty($_GET['filter_pump_id']) && (int)$_GET['filter_pump_id'] > 0) $active_filters['pump_id'] = (int)$_GET['filter_pump_id'];
     if (!empty($_GET['filter_shift']))     $active_filters['shift']     = $_GET['filter_shift'];
 } elseif ($active_tab === 'daily_merch_service') {
     if (!empty($_GET['filter_pm']))     $active_filters['payment_method']  = $_GET['filter_pm'];
@@ -172,6 +174,7 @@ if ($active_tab === 'fuel_sales') {
     if (!empty($_GET['filter_status']))   $active_filters['status']   = $_GET['filter_status'];
     if (!empty($_GET['filter_adj_type'])) $active_filters['adj_type'] = $_GET['filter_adj_type'];
     if (!empty($_GET['filter_batch']))    $active_filters['batch_id'] = $_GET['filter_batch'];
+    if (!empty($_GET['filter_product']))  $active_filters['product']  = $_GET['filter_product'];
 } elseif ($active_tab === 'expired_damaged') {
     if (!empty($_GET['filter_batch']))    $active_filters['batch_id'] = $_GET['filter_batch'];
     if (!empty($_GET['filter_product']))  $active_filters['product']  = $_GET['filter_product'];
@@ -386,7 +389,6 @@ table.rpt-table {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    table-layout: auto !important;
     border-collapse: collapse !important;
     margin-bottom: 0 !important;
 }
@@ -400,17 +402,18 @@ table.rpt-table th {
     color: #00264D !important;
     font-weight: 800 !important;
     text-transform: uppercase !important;
-    padding: 10px 6px !important;
+    padding: 9px 5px !important;
     border-bottom: 2.5px solid #00264D !important;
-    font-size: 13px !important;
+    font-size: 12px !important;
     letter-spacing: 0.2px !important;
     white-space: normal !important;
-    word-break: normal !important;
-    overflow-wrap: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
     vertical-align: middle !important;
     line-height: 1.25 !important;
     min-width: 0 !important;
     text-align: left !important;
+    box-sizing: border-box !important;
 }
 
 .rpt-table tbody td,
@@ -418,16 +421,19 @@ table.rpt-table th {
 .rpt-content table td,
 .rpt-printable-area table td,
 table.rpt-table td {
-    padding: 10px 6px !important;
+    padding: 8px 5px !important;
     border-bottom: 1px solid #e2e8f0 !important;
     color: #0f172a !important;
-    font-size: 13.5px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
     vertical-align: middle !important;
-    line-height: 1.35 !important;
-    white-space: nowrap !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
     min-width: 0 !important;
     text-align: left !important;
+    box-sizing: border-box !important;
 }
 
 /* ── Column Alignment Engine: Bootstrap utility + inline style overrides ── */
@@ -534,6 +540,60 @@ tr.grand-total td {
     max-width: 100% !important;
     margin-bottom: 20px !important;
     box-sizing: border-box !important;
+}
+
+/* Fixed Table Layout for Multi-Column Reports (100% width, No Horizontal Scroll, Full Right-Side Visibility) */
+.rpt-table-fixed,
+table.rpt-table.rpt-table-fixed,
+.rpt-content table.rpt-table-fixed,
+.rpt-printable-area table.rpt-table-fixed,
+.rpt-content table.rpt-table.rpt-table-fixed,
+.rpt-printable-area table.rpt-table.rpt-table-fixed {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.rpt-table-fixed th,
+.rpt-table-fixed td,
+.rpt-content table.rpt-table-fixed th,
+.rpt-content table.rpt-table-fixed td,
+.rpt-printable-area table.rpt-table-fixed th,
+.rpt-printable-area table.rpt-table-fixed td,
+.rpt-content table.rpt-table.rpt-table-fixed th,
+.rpt-content table.rpt-table.rpt-table-fixed td,
+.rpt-printable-area table.rpt-table.rpt-table-fixed th,
+.rpt-printable-area table.rpt-table.rpt-table-fixed td,
+table.rpt-table.rpt-table-fixed th,
+table.rpt-table.rpt-table-fixed td {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    box-sizing: border-box !important;
+}
+
+.rpt-table-fixed td code,
+.rpt-table-fixed th code,
+.rpt-content table.rpt-table-fixed td code,
+.rpt-printable-area table.rpt-table-fixed td code,
+table.rpt-table.rpt-table-fixed td code {
+    white-space: normal !important;
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
+    display: inline-block !important;
+    max-width: 100% !important;
+}
+
+.rpt-table-fixed .badge,
+.rpt-content table.rpt-table-fixed .badge,
+.rpt-printable-area table.rpt-table-fixed .badge,
+table.rpt-table.rpt-table-fixed .badge {
+    white-space: normal !important;
+    display: inline-block !important;
+    text-align: center !important;
+    max-width: 100% !important;
+    word-break: break-word !important;
 }
 
 /* Summary Cards */
@@ -703,7 +763,7 @@ tr.grand-total td {
                     $fuel_types_list = $report_data['fuel_types'] ?? [];
                     $pump_list       = $report_data['pump_list'] ?? [];
                     $sel_ft  = htmlspecialchars($active_filters['fuel_type'] ?? '');
-                    $sel_pid = (int)($active_filters['pump_id'] ?? 0);
+                    $sel_ugt = htmlspecialchars($active_filters['ugt'] ?? '');
                     ?>
                     <?php if (!empty($fuel_types_list)): ?>
                     <label class="ms-2"><i class="fas fa-gas-pump me-1"></i> Fuel Type</label>
@@ -717,10 +777,10 @@ tr.grand-total td {
 
                     <?php if (!empty($pump_list)): ?>
                     <label class="ms-1"><i class="fas fa-tachometer-alt me-1"></i> UGT/Pump</label>
-                    <select name="filter_pump_id" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                    <select name="filter_ugt" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All UGTs</option>
                         <?php foreach ($pump_list as $p): ?>
-                            <option value="<?= (int)$p['pump_id'] ?>" <?= ($sel_pid === (int)$p['pump_id']) ? 'selected' : '' ?>><?= htmlspecialchars($p['label']) ?></option>
+                            <option value="<?= htmlspecialchars($p['pump_id']) ?>" <?= ($sel_ugt === htmlspecialchars($p['pump_id'])) ? 'selected' : '' ?>><?= htmlspecialchars($p['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php endif; ?>
@@ -872,6 +932,7 @@ tr.grand-total td {
                     $sel_status = htmlspecialchars($active_filters['status'] ?? '');
                     $sel_atype  = htmlspecialchars($active_filters['adj_type'] ?? '');
                     $sel_batch  = htmlspecialchars($active_filters['batch_id'] ?? '');
+                    $sel_prod   = htmlspecialchars($active_filters['product'] ?? '');
                     ?>
                     <label class="ms-1"><i class="fas fa-info-circle me-1"></i> Status</label>
                     <select name="filter_status" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
@@ -884,15 +945,41 @@ tr.grand-total td {
                     <label class="ms-1"><i class="fas fa-sliders-h me-1"></i> Adjustment Type</label>
                     <select name="filter_adj_type" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Types</option>
+                        <option value="Physical Count" <?= $sel_atype === 'Physical Count' ? 'selected' : '' ?>>Physical Count / Tank Dip</option>
+                        <option value="Transaction Adjustment" <?= $sel_atype === 'Transaction Adjustment' ? 'selected' : '' ?>>Transaction Adjustment</option>
+                        <option value="Stock-In Adjustment" <?= $sel_atype === 'Stock-In Adjustment' ? 'selected' : '' ?>>Stock-In Adjustment</option>
+                        <option value="Calibration" <?= $sel_atype === 'Calibration' ? 'selected' : '' ?>>Calibration</option>
                         <option value="Expired Product" <?= $sel_atype === 'Expired Product' ? 'selected' : '' ?>>Expired Product</option>
                         <option value="Damaged Product" <?= $sel_atype === 'Damaged Product' ? 'selected' : '' ?>>Damaged Product</option>
-                        <option value="Physical Count" <?= $sel_atype === 'Physical Count' ? 'selected' : '' ?>>Physical Count</option>
                         <option value="Encoding Correction" <?= $sel_atype === 'Encoding Correction' ? 'selected' : '' ?>>Encoding Correction</option>
                         <option value="Stock Correction" <?= $sel_atype === 'Stock Correction' ? 'selected' : '' ?>>Stock Correction</option>
                     </select>
 
-                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch ID</label>
-                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch ID..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch / Ref</label>
+                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch/UGT/Ref..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:115px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-box me-1"></i> Product</label>
+                    <input type="text" name="filter_product" value="<?= $sel_prod ?>" placeholder="Product..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+
+                <?php elseif ($active_tab === 'expired_damaged'): ?>
+                    <?php
+                    $sel_batch = htmlspecialchars($active_filters['batch_id'] ?? '');
+                    $sel_prod  = htmlspecialchars($active_filters['product'] ?? '');
+                    $sel_atype = htmlspecialchars($active_filters['adj_type'] ?? '');
+                    ?>
+                    <label class="ms-1"><i class="fas fa-box me-1"></i> Product</label>
+                    <input type="text" name="filter_product" value="<?= $sel_prod ?>" placeholder="Product Name..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:125px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-barcode me-1"></i> Batch / Ref</label>
+                    <input type="text" name="filter_batch" value="<?= $sel_batch ?>" placeholder="Batch/DR..." style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;width:110px;color:#334155;">
+
+                    <label class="ms-1"><i class="fas fa-filter me-1"></i> Type</label>
+                    <select name="filter_adj_type" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
+                        <option value="">All Types</option>
+                        <option value="Expired" <?= $sel_atype === 'Expired' ? 'selected' : '' ?>>Expired</option>
+                        <option value="Damaged" <?= $sel_atype === 'Damaged' ? 'selected' : '' ?>>Damaged / Defect</option>
+                        <option value="Spillage" <?= $sel_atype === 'Spillage' ? 'selected' : '' ?>>Spillage / Loss</option>
+                    </select>
 
                 <?php elseif ($active_tab === 'job_order'): ?>
                     <?php

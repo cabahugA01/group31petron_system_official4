@@ -138,10 +138,11 @@ function resolve_fuel_inventory_tank_id($pdo, $station_id, $fuel_type_str) {
 
 function is_pending_validation_status($status_str) {
     $s = strtolower(trim($status_str ?? ''));
-    if ($s === 'readings_submitted' || $s === 'draft' || empty($s)) {
+    if ($s === 'draft' || empty($s)) {
         return false;
     }
-    return str_contains($s, 'pending') || in_array($s, ['closing_completed', 'submitted', 'adjusted']);
+    return str_contains($s, 'pending') || str_contains($s, 'awaiting') || $s === 'readings_submitted'
+        || in_array($s, ['closing_completed', 'submitted', 'adjusted', 'awaiting_fuel_sales_closing', 'awaiting_validation']);
 }
 
 // ─── Filters & Inputs ──────────────────────────────────────────
@@ -449,6 +450,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Log activity
             log_activity($pdo, $me['id'], 'Fuel Reading Approved', "TXN {$tx['transaction_id']} | {$tx['fuel_type']} | {$liters_sold} L");
 
+            // Check if all transactions for this shift/date are now verified, and if so, mark fuel_sales_closing as VERIFIED
+            try {
+                $tx_date = date('Y-m-d', strtotime($tx['transaction_date'] ?: $tx['created_at']));
+                $tx_shift = $tx['shift_period'] ?: ($tx['shift_name'] ?? '');
+                $pending_cnt_stmt = $pdo->prepare("
+                    SELECT COUNT(*) FROM fuel_transactions
+                    WHERE station_id = ? AND (DATE(transaction_date) = ? OR (transaction_date IS NULL AND DATE(created_at) = ?))
+                      AND (shift_period = ? OR shift_name = ? OR ? = '')
+                      AND LOWER(COALESCE(status,'')) NOT IN ('verified','approved','adjusted','rejected','voided','cancelled','canceled')
+                ");
+                $pending_cnt_stmt->execute([$station_id, $tx_date, $tx_date, $tx_shift, $tx_shift, $tx_shift]);
+                if ((int)$pending_cnt_stmt->fetchColumn() === 0) {
+                    $pdo->prepare("
+                        UPDATE fuel_sales_closing
+                        SET status = 'VERIFIED', verified_by = COALESCE(verified_by, ?)
+                        WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ?)
+                          AND LOWER(COALESCE(status, '')) NOT IN ('rejected','voided')
+                    ")->execute([$me['id'], $station_id, $tx_date, $tx_shift, $tx_shift]);
+                }
+            } catch (Exception $e) {}
+
             $_SESSION['success'] = "Transaction <strong>{$tx['transaction_id']}</strong> validated successfully.";
         }
         
@@ -697,8 +719,7 @@ $total_sales_today = 0.0;
 
 try {
     // 1. Pending Transactions (Total overall currently awaiting manager validation)
-    // CLOSING_COMPLETED and ADJUSTED transactions are awaiting manager validation/approval
-    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed', 'submitted', 'adjusted'))");
+    $sp = $pdo->prepare("SELECT COUNT(*) FROM fuel_transactions WHERE station_id = ? AND (LOWER(status) LIKE '%pending%' OR LOWER(status) IN ('closing_completed', 'submitted', 'adjusted', 'readings_submitted', 'awaiting_fuel_sales_closing'))");
     $sp->execute([$station_id]);
     $pending_count = (int)$sp->fetchColumn();
 
@@ -837,12 +858,12 @@ try {
 
     foreach ($transactions as $tx) {
         $st = strtolower(trim($tx['status'] ?? ''));
-        $total_liters_today += (float)($tx['liters_sold'] ?? 0);
-        $total_sales_today += (float)($tx['total_amount'] ?? 0);
-        if (str_contains($st, 'pending') || in_array($st, ['closing_completed', 'submitted', 'adjusted'])) {
-            $pending_count++;
-        } elseif (in_array($st, ['verified', 'approved', 'validated'])) {
+        if (in_array($st, ['verified', 'approved', 'validated'])) {
             $validated_count++;
+            $total_liters_today += (float)($tx['liters_sold'] ?? 0);
+            $total_sales_today  += (float)($tx['total_amount'] ?? 0);
+        } elseif (str_contains($st, 'pending') || in_array($st, ['closing_completed', 'submitted', 'adjusted', 'readings_submitted', 'awaiting_fuel_sales_closing'])) {
+            $pending_count++;
         } elseif ($st === 'rejected') {
             $rejected_count++;
         }

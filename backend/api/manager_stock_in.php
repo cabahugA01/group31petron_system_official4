@@ -1150,8 +1150,8 @@ function notify_stock_in_users(PDO $pdo, int $station_id, array $staff_ids, stri
     $user_ids = [];
     $stmt = $pdo->prepare("
         SELECT id FROM users
-        WHERE role IN ('admin','superadmin')
-          AND (station_id = ? OR role = 'superadmin' OR station_id IS NULL)
+        WHERE role IN ('admin')
+          AND station_id = ?
           AND status = 'Active'
     ");
     $stmt->execute([$station_id]);

@@ -1733,6 +1733,75 @@ body[data-page="staff_record_delivery"] .main {
     background: #f8fafc;
     border-color: #94a3b8;
 }
+/* ── Petron Downward Custom Dropdowns ── */
+.petron-dropdown-source { display: none !important; }
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+    min-width: 150px !important;
+}
+.petron-dropdown-wrap.is-open { z-index: 10050 !important; }
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 7px 10px !important;
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    color: #1e293b !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25,103,210,.2) !important;
+}
+.petron-dropdown-label { flex: 1 !important; text-align: left !important; }
+.petron-dropdown-arrow {
+    font-size: 11px !important;
+    color: #64748b !important;
+    transition: transform .2s !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-arrow { transform: rotate(180deg) !important; }
+.petron-dropdown-menu {
+    position: absolute !important;
+    top: calc(100% + 2px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    z-index: 10051 !important;
+    min-width: 100% !important;
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.13) !important;
+    max-height: 220px !important;
+    overflow-y: auto !important;
+    display: none !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu { display: block !important; }
+.petron-dropdown-item {
+    padding: 8px 14px !important;
+    font-size: 14px !important;
+    color: #1e293b !important;
+    background: #fff !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: background .12s, color .12s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #fff !important;
+}
 </style>
 
 <div class="page-header">
@@ -2743,16 +2812,129 @@ function filterDeliveryTable(tab) {
 
 function resetDeliveryFilters(tab) {
     const prefix = tab === 'fuel' ? 'fuel' : 'merch';
-    ['Search', 'Supplier', 'Status', 'Date'].forEach(function(field) {
+    ['Search', 'Date'].forEach(function(field) {
         const el = document.getElementById(prefix + 'Delivery' + field);
         if (el) el.value = '';
     });
+    ['Supplier', 'Status'].forEach(function(field) {
+        const el = document.getElementById(prefix + 'Delivery' + field);
+        if (el) {
+            el.value = '';
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
     filterDeliveryTable(tab);
+}
+
+
+function setupPetronDownwardDropdowns(selectors) {
+    var selects = [];
+    selectors.forEach(function(selector) {
+        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (el) selects.push(el);
+    });
+    selects.forEach(function(select) {
+        if (!select || select.dataset.petronDownReady === '1') return;
+        select.dataset.petronDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'petron-dropdown-wrap';
+        wrap.style.minWidth = (select.offsetWidth > 0 ? select.offsetWidth : 160) + 'px';
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'petron-dropdown-trigger';
+
+        var label = document.createElement('span');
+        label.className = 'petron-dropdown-label';
+
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'petron-dropdown-menu';
+
+        Array.from(select.options).forEach(function(option) {
+            if (option.hidden) return;
+            var item = document.createElement('div');
+            item.className = 'petron-dropdown-item';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('is-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(item) {
+                item.classList.toggle('is-selected', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var willOpen = !wrap.classList.contains('is-open');
+            document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                w.classList.remove('is-open');
+            });
+            if (willOpen) {
+                var rect = wrap.getBoundingClientRect();
+                menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                wrap.classList.add('is-open');
+                var sel = menu.querySelector('.petron-dropdown-item.is-selected');
+                if (sel) sel.scrollIntoView({ block: 'nearest' });
+            }
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('petron-dropdown-source');
+        select.style.display = 'none';
+        select.hidden = true;
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__petronDownCloseBound) {
+        window.__petronDownCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.petron-dropdown-wrap')) {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                    w.classList.remove('is-open');
+                });
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                    w.classList.remove('is-open');
+                });
+            }
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     renderDeliveryPagination('merchandise');
     renderDeliveryPagination('fuel');
+    if (typeof setupPetronDownwardDropdowns === 'function') {
+        setupPetronDownwardDropdowns([
+            '#merchDeliverySupplier', '#merchDeliveryStatus',
+            '#fuelDeliverySupplier',  '#fuelDeliveryStatus'
+        ]);
+    }
 });
 
 // Flash messages from PHP session

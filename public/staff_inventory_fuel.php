@@ -92,7 +92,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted', 'inactive') ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted') ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -290,10 +290,16 @@ try {
         if ($critical_lvl <= 0) $critical_lvl = $capacity > 0 ? $capacity * 0.15 : 0;
         if ($low_lvl <= 0)      $low_lvl      = $capacity > 0 ? $capacity * 0.30 : 0;
         $fill_pct = $capacity > 0 ? round(($current_level_tank / $capacity) * 100, 2) : 0;
-        if      ($current_level_tank <= 0)             { $status = 'Out of Stock'; $sc = '#dc3545'; }
-        elseif  ($current_level_tank <= $critical_lvl) { $status = 'Critical';     $sc = '#dc3545'; }
-        elseif  ($current_level_tank <= $low_lvl)      { $status = 'Low';          $sc = '#fd7e14'; }
-        else                                           { $status = 'Normal';       $sc = '#28a745'; }
+
+        // Check if tank is deactivated in fuel_inventory
+        $sf_inv_status = strtolower(trim($inv['status'] ?? 'active'));
+        $sf_deactivated = in_array($sf_inv_status, ['inactive', 'deactivated', 'disabled'], true);
+
+        if ($sf_deactivated)                              { $status = 'Deactivated';  $sc = '#dc3545'; }
+        elseif ($current_level_tank <= 0)                 { $status = 'Out of Stock'; $sc = '#dc3545'; }
+        elseif ($current_level_tank <= $critical_lvl)     { $status = 'Critical';     $sc = '#dc3545'; }
+        elseif ($current_level_tank <= $low_lvl)          { $status = 'Low';          $sc = '#fd7e14'; }
+        else                                              { $status = 'Normal';       $sc = '#28a745'; }
 
         // Price
         $price = $price_lookup[$ft_key] ?? ($inv ? (float)($inv['price_per_liter'] ?? 0) : 0);
@@ -339,11 +345,70 @@ try {
             'beginning_reading'=> $beg_reading,
             'ending_reading'   => $end_reading,
             'calibration'     => $calibration_val,
-            'total_dispensed' => $total_dispensed
+            'total_dispensed' => $total_dispensed,
+            'inv_id'          => $inv['id'] ?? null
         ];
     }
 } catch (Exception $e) {
     $msg = 'Error loading fuel inventory: ' . $e->getMessage();
+}
+
+// ── Append any additional fuel products from fuel_inventory not covered by TANK_CONFIG_17 ──
+$seen_inv_ids = array_filter(array_column($rows, 'inv_id'));
+foreach ($fi_raw as $row) {
+    $r_id = (int)$row['id'];
+    if (in_array($r_id, $seen_inv_ids, true)) continue;
+    $sf_raw_st = strtolower(trim($row['status'] ?? 'active'));
+    if (in_array($sf_raw_st, ['archived', 'deleted'], true)) continue;
+
+    $cap   = (float)($row['capacity'] ?? 14000);
+    $cur_s = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+    $crit  = (float)($row['critical_level'] ?? ($cap * 0.15));
+    $reord = (float)($row['reorder_level'] ?? ($cap * 0.30));
+    $sf_pr = (float)($row['price_per_liter'] ?? 0);
+
+    $sf_deact = in_array($sf_raw_st, ['inactive', 'deactivated', 'disabled'], true);
+
+    $st = 'Normal'; $sc_e = '#28a745';
+    if ($sf_deact)           { $st = 'Deactivated';  $sc_e = '#dc3545'; }
+    elseif ($cur_s <= 0)     { $st = 'Out of Stock'; $sc_e = '#dc3545'; }
+    elseif ($cur_s <= $crit) { $st = 'Critical';     $sc_e = '#dc3545'; }
+    elseif ($cur_s <= $reord){ $st = 'Low';           $sc_e = '#fd7e14'; }
+
+    $sf_fill = $cap > 0 ? round(($cur_s / $cap) * 100, 2) : 0;
+    $numOnly = (int)preg_replace('/[^0-9]/', '', $row['ugt_no'] ?? '') ?: (count($rows) + 1);
+    $sf_ugt  = !empty($row['ugt_no']) ? $row['ugt_no'] : ('UGT #' . $numOnly);
+
+    $rows[] = [
+        'ugt_no'           => $sf_ugt,
+        'fuel_type'        => $row['fuel_type'],
+        'label'            => $sf_ugt,
+        'tank'             => $sf_ugt,
+        'tanker_num'       => $numOnly,
+        'capacity'         => $cap,
+        'reorder_level'    => $reord,
+        'beginning'        => $cur_s,
+        'purchases'        => 0,
+        'total_available'  => $cur_s,
+        'sales'            => 0,
+        'calibration_adj'  => 0,
+        'ending_system'    => $cur_s,
+        'actual_dip'       => $cur_s,
+        'variance'         => 0,
+        'current_level'    => $cur_s,
+        'status'           => $st,
+        'status_color'     => $sc_e,
+        'fill_pct'         => $sf_fill,
+        'price'            => $sf_pr,
+        'revenue'          => 0,
+        'timestamp'        => $row['last_updated'] ?? null,
+        'beginning_reading'=> 0,
+        'ending_reading'   => 0,
+        'calibration'      => 0,
+        'total_dispensed'  => 0,
+        'inv_id'           => $r_id
+    ];
+    $seen_inv_ids[] = $r_id;
 }
 
 $pending_fuel_sr = 0;
@@ -387,13 +452,14 @@ foreach ($rows as $r) {
 
 // Summary Metrics calculations
 $total_tanks = count($rows);
-$total_fuel_available = array_sum(array_column($rows, 'current_level'));
+$total_fuel_available = array_sum(array_filter(array_map(fn($r) => $r['status'] === 'Deactivated' ? 0 : (float)$r['current_level'], $rows)));
 $total_low_fuel_tanks = count(array_filter($rows, fn($r) => $r['status'] === 'Low'));
 $total_critical_fuel_tanks = count(array_filter($rows, fn($r) => in_array($r['status'], ['Critical','Out of Stock'])));
 
 // Per-type summaries for new dashboard cards
 $diesel_available   = 0; $premium_available  = 0; $regular_available  = 0;
 foreach ($rows as $_r) {
+    if ($_r['status'] === 'Deactivated') continue; // skip deactivated in metrics
     $ft = strtolower(trim($_r['fuel_type']));
     if (str_contains($ft, 'diesel') || $ft === 'kerosene') {
         $diesel_available += $_r['current_level'];
@@ -620,31 +686,139 @@ html, body {
 }
 .inv-filter-bar select {
     cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    padding-right: 28px;
 }
-.inv-filter-bar select option { background:#fff; color:#0f172a; }
-.inv-filter-bar select option:checked { background:#f1f5f9; color:#002F70; font-weight:700; }
 .inv-filter-bar input[type=text] { cursor:text; }
 .fuel-filter-actions { display:flex; align-items:center; gap:8px; }
 
-/* Keep filter controls above table/card surfaces */
-#sq, #cf, #sf, #df,
-select#cf, select#sf,
-input#sq, input#df {
-    pointer-events: auto !important;
+/* ── Guaranteed Downward Filter Dropdowns (Mo-abli paubos pirme - Exact Fuel Inventory Style) ── */
+.petron-dropdown-source {
+    display: none !important;
+}
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+}
+.petron-dropdown-wrap.is-open {
+    z-index: 10050 !important;
+}
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    height: 36px !important;
+    padding: 6px 12px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
     cursor: pointer !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    user-select: none !important;
+    transition: border-color 0.15s, box-shadow 0.15s !important;
+}
+.petron-dropdown-trigger:hover {
+    border-color: #94a3b8 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25, 103, 210, 0.2) !important;
+}
+.petron-dropdown-label {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    flex: 1 !important;
+    text-align: left !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+.petron-dropdown-arrow {
+    font-size: 10px !important;
+    color: #475569 !important;
+    margin-left: 8px !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-menu {
+    display: none !important;
+    position: absolute !important;
+    top: calc(100% + 2px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    min-width: 100% !important;
+    width: max-content !important;
+    max-width: 260px !important;
+    max-height: 260px !important;
+    overflow-y: auto !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+    z-index: 10050 !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu {
+    display: block !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar {
+    width: 6px !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-track {
+    background: #f8fafc !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-thumb {
+    background: #cbd5e1 !important;
+    border-radius: 4px !important;
+}
+.petron-dropdown-menu::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8 !important;
+}
+.petron-dropdown-item {
+    padding: 7px 14px !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    line-height: 1.4 !important;
+    font-weight: 400 !important;
+    background: #ffffff !important;
+    transition: background 0.05s, color 0.05s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #ffffff !important;
+    font-weight: 400 !important;
+}
+
+/* Keep search control enabled */
+#sq, input#sq {
+    pointer-events: auto !important;
+    cursor: text !important;
     opacity: 1 !important;
     visibility: visible !important;
     display: inline-block !important;
     position: relative !important;
     z-index: 3 !important;
 }
-#sq { cursor: text !important; }
+select#cf, select#sf, select#df,
+.petron-dropdown-source,
+select[data-petron-down-ready="1"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    position: absolute !important;
+}
 .inv-filter-bar button, .inv-filter-bar a { pointer-events:auto !important; position:relative; z-index:3; }
 
 /* ── Zero-Scroll Fixed-Layout Tables ── */
@@ -1125,16 +1299,14 @@ body.sidebar-collapsed .modal-overlay,
 <script>
 (function() {
     function forceEnableNow() {
-        ['sq', 'cf', 'sf'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) {
-                el.style.pointerEvents = 'auto';
-                el.style.cursor = id === 'sq' ? 'text' : 'pointer';
-                el.disabled = false;
-                el.style.opacity = '1';
-                el.style.zIndex = '3';
-            }
-        });
+        var el = document.getElementById('sq');
+        if (el) {
+            el.style.pointerEvents = 'auto';
+            el.style.cursor = 'text';
+            el.disabled = false;
+            el.style.opacity = '1';
+            el.style.zIndex = '3';
+        }
     }
     forceEnableNow();
     setTimeout(forceEnableNow, 100);
@@ -1203,12 +1375,19 @@ body.sidebar-collapsed .modal-overlay,
                         <td style="text-align:right;font-weight:600;color:#475569;font-size:12.5px;"><?= number_format($r['capacity'], 0) ?> L</td>
                         <td style="text-align:right;font-weight:800;color:#002F70;font-size:13.5px;"><?= number_format($r['current_level'], 2) ?> L</td>
                         <td style="text-align:right;font-weight:700;color:#16a34a;font-size:12.5px;"><?= number_format($avail_space, 2) ?> L</td>
-                        <td style="text-align:center;">
-                            <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;">
+                        <td style="text-align:center;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;">
+                            <span class="status-pill" style="background:<?= $r['status_color'] ?>18;color:<?= $r['status_color'] ?>;border:1px solid <?= $r['status_color'] ?>40;padding:3px 7px;border-radius:4px;font-size:11.5px;font-weight:700;text-transform:uppercase;white-space:nowrap;display:inline-block;line-height:1.2;">
                                 <?= htmlspecialchars($st_label) ?>
                             </span>
                         </td>
-                        <td style="color:#64748b; font-size:12px; font-weight:600; white-space:nowrap;"><?= $ts_str ?></td>
+                        <td style="font-size:12px;color:#1e293b;line-height:1.3;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;">
+                            <?php if ($r['timestamp'] && strtotime($r['timestamp']) > 0): ?>
+                                <div style="font-weight:600;white-space:nowrap;"><?= date('M d, Y', strtotime($r['timestamp'])) ?></div>
+                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?= date('h:i A', strtotime($r['timestamp'])) ?></div>
+                            <?php else: ?>
+                                &mdash;
+                            <?php endif; ?>
+                        </td>
                         <td style="text-align:center; padding-left:8px !important; padding-right:16px !important; white-space:nowrap !important;">
                             <button type="button" class="int-btn-outline" onclick='openTankModal(<?= $r_json ?>)'>
                                 <i class="fas fa-eye" style="font-size:10px;"></i> View
@@ -1750,7 +1929,10 @@ function applyFuelInventoryFilters(e) {
 function resetFuelInventoryFilters() {
     ['sq', 'cf', 'sf'].forEach(function(id) {
         var el = document.getElementById(id);
-        if (el) el.value = '';
+        if (el) {
+            el.value = '';
+            el.dispatchEvent(new Event('change'));
+        }
     });
     filterFuelTable();
 }
@@ -1981,6 +2163,118 @@ function printTankRecord(r) {
     win.print();
 }
 
+function setupPetronDownwardDropdowns(selectors) {
+    var selects = [];
+    selectors.forEach(function(selector) {
+        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+        if (el) selects.push(el);
+    });
+
+    selects.forEach(function(select) {
+        if (!select || select.dataset.petronDownReady === '1') return;
+        select.dataset.petronDownReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'petron-dropdown-wrap';
+
+        if (select.id === 'cf') {
+            wrap.style.minWidth = '160px';
+        } else if (select.id === 'sf') {
+            wrap.style.minWidth = '145px';
+        }
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'petron-dropdown-trigger';
+
+        var label = document.createElement('span');
+        label.className = 'petron-dropdown-label';
+
+        var arrow = document.createElement('i');
+        arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+        trigger.appendChild(label);
+        trigger.appendChild(arrow);
+
+        var menu = document.createElement('div');
+        menu.className = 'petron-dropdown-menu';
+
+        Array.from(select.options).forEach(function(option) {
+            if (option.hidden) return;
+            var item = document.createElement('div');
+            item.className = 'petron-dropdown-item';
+            item.dataset.value = option.value;
+            item.textContent = option.textContent;
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                syncLabel();
+                wrap.classList.remove('is-open');
+            });
+            menu.appendChild(item);
+        });
+
+        function syncLabel() {
+            var selected = select.options[select.selectedIndex];
+            label.textContent = selected ? selected.textContent.trim() : '';
+            Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(item) {
+                item.classList.toggle('is-selected', item.dataset.value === select.value);
+            });
+        }
+
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var willOpen = !wrap.classList.contains('is-open');
+            document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(openWrap) {
+                openWrap.classList.remove('is-open');
+            });
+            if (willOpen) {
+                var rect = wrap.getBoundingClientRect();
+                if (rect.right + 140 > window.innerWidth) {
+                    menu.style.left = 'auto';
+                    menu.style.right = '0';
+                } else {
+                    menu.style.left = '0';
+                    menu.style.right = 'auto';
+                }
+                wrap.classList.add('is-open');
+                var selectedItem = menu.querySelector('.petron-dropdown-item.is-selected');
+                if (selectedItem) {
+                    selectedItem.scrollIntoView({ block: 'nearest' });
+                }
+            }
+        });
+
+        select.addEventListener('change', syncLabel);
+        select.classList.add('petron-dropdown-source');
+        select.style.display = 'none';
+        select.hidden = true;
+        select.parentNode.insertBefore(wrap, select.nextSibling);
+        wrap.appendChild(trigger);
+        wrap.appendChild(menu);
+        syncLabel();
+    });
+
+    if (!window.__petronDownCloseBound) {
+        window.__petronDownCloseBound = true;
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.petron-dropdown-wrap')) {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(wrap) {
+                    wrap.classList.remove('is-open');
+                });
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(wrap) {
+                    wrap.classList.remove('is-open');
+                });
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Move modals to body to avoid z-index and stacking context issues
     ['tankModal', 'movementModal', 'fuelSrModal', 'fsrSuccessOverlay', 'fsrSuccessPopup'].forEach(function(id) {
@@ -2031,6 +2325,10 @@ document.addEventListener('DOMContentLoaded', function() {
             el.addEventListener(item[1], filterFuelTable);
         }
     });
+
+    if (typeof setupPetronDownwardDropdowns === 'function') {
+        setupPetronDownwardDropdowns(['#cf', '#sf']);
+    }
 
     if (typeof setupTablePagination === 'function') {
         setupTablePagination('fuelTable', 'fuelRowsLimit', 'fuelPagination', 20);

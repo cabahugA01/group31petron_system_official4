@@ -175,8 +175,8 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         );
         $counts['mgr_customers'] = $counts['customers'];
 
-    } elseif (in_array($role, ['admin', 'superadmin', 'developer'])) {
-        // ADMIN — scope to station_id where possible
+    } elseif (in_array($role, ['admin'])) {
+        // ADMIN — scope to station_id
         $stn_where  = $station_id > 0 ? "si.station_id = ? AND " : "";
         $stn_param  = $station_id > 0 ? [$station_id] : [];
         $stn_where2 = $station_id > 0 ? "station_id = ? AND " : "";
@@ -210,7 +210,7 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['reports']       = $admin_system_alerts;
         $counts['admin_reports'] = $admin_system_alerts;
 
-        // 4. Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
+        // Fuel Management Oversight: Pending Fuel Transactions requiring admin attention
         $admin_fuel_pending = $safe_count(
             "SELECT COUNT(*) FROM fuel_transactions WHERE {$stn_where2}LOWER(COALESCE(status,'')) IN ('pending','pending validation')",
             $stn_param2
@@ -218,6 +218,15 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['fuel']                  = $admin_fuel_pending;
         $counts['admin_fuel']            = $admin_fuel_pending;
         $counts['admin_fuel_management'] = $admin_fuel_pending;
+
+    } elseif (in_array($role, ['superadmin', 'developer'])) {
+        // SUPERADMIN — only own system/security alert count, no operational station badges
+        $sa_unread = $safe_count(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND status = 'unread'",
+            [$user_id]
+        );
+        $counts['notifications'] = $sa_unread;
+        // All other badge counts remain 0 for superadmin — they don't manage station operations
     }
 
     // Respect user_preferences badge_seen timestamps so visited sections stay cleared

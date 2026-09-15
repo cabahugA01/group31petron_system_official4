@@ -164,6 +164,7 @@ require_once __DIR__ . '/../partials/header.php';
 .badge-cat-vehicle{background:#eff6ff;color:#1d4ed8;}
 .badge-cat-merchandise{background:#fdf2f8;color:#be185d;}
 .badge-cat-service{background:#f5f3ff;color:#6d28d9;}
+.badge-cat-inspection{background:#fef3c7;color:#b45309;}
 /* Payload list */
 .payload-list{margin:0;padding:0;list-style:none;font-size:11px;}
 .payload-list li{margin-bottom:3px;}
@@ -232,6 +233,7 @@ require_once __DIR__ . '/../partials/header.php';
             <option value="Merchandise Product" <?= $f_category === 'Merchandise Product' ? 'selected' : '' ?>>Merchandise Product</option>
             <option value="Service Type"        <?= $f_category === 'Service Type'        ? 'selected' : '' ?>>Service Type</option>
             <option value="Vehicle"             <?= $f_category === 'Vehicle'             ? 'selected' : '' ?>>Vehicle</option>
+            <option value="Inspection Item"     <?= $f_category === 'Inspection Item'     ? 'selected' : '' ?>>Inspection Item</option>
         </select>
     </div>
     <div>
@@ -319,6 +321,8 @@ require_once __DIR__ . '/../partials/header.php';
                             $item_label = $payload['product_name'] ?? '—';
                         } elseif ($row['category'] === 'Service Type') {
                             $item_label = $payload['service_name'] ?? '—';
+                        } elseif ($row['category'] === 'Inspection Item') {
+                            $item_label = $payload['item_name'] ?? $payload['inspection_name'] ?? '—';
                         } else {
                             $item_label = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? '')) ?: '—';
                         }
@@ -326,6 +330,7 @@ require_once __DIR__ . '/../partials/header.php';
                         // Category badge class
                         $catClass = 'badge';
                         if ($row['category'] === 'Vehicle')              $catClass .= ' badge-cat-vehicle';
+                        elseif ($row['category'] === 'Inspection Item')  $catClass .= ' badge-cat-inspection';
                         elseif ($row['category'] === 'Merchandise Product') $catClass .= ' badge-cat-merchandise';
                         elseif ($row['category'] === 'Service Type')     $catClass .= ' badge-cat-service';
 

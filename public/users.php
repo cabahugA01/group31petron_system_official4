@@ -358,6 +358,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($my_role === 'admin' && !in_array($role, ['staff', 'manager'], true)) {
                     throw new Exception('As Admin, you can only create Staff or Manager users.');
                 }
+                if ($my_role === 'superadmin' && $role !== 'admin') {
+                    throw new Exception('As Superadmin, you can only create Admin/Owner users.');
+                }
 
                 $employee_id_input = generateEmployeeID($pdo, $role);
 
@@ -387,15 +390,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $station_target = $my_station_id;
                 }
 
-                // Role & per-station uniqueness rules (multiple managers allowed)
-
+                // ── USER LIMITS PER STATION ──
+                // Admin/Owner: Maximum 1 active account per station
                 if ($role === 'admin' && $station_target) {
                     $ca = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='admin' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
                     $ca->execute([$station_target]);
                     if ((int)$ca->fetchColumn() > 0) {
-                        throw new Exception('This station already has an active Admin. Each station is allowed ONLY 1 Admin.');
+                        throw new Exception('An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.');
                     }
                 }
+
+                // Manager: Maximum 1 active account per station
+                if ($role === 'manager' && $station_target) {
+                    $cm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $cm->execute([$station_target]);
+                    if ((int)$cm->fetchColumn() > 0) {
+                        throw new Exception('A Manager account already exists for this station. Only one Manager account is allowed per station.');
+                    }
+                }
+
+                // Staff / Operations Staff: NO FIXED ACCOUNT LIMIT (Admin/Owner may create as many Staff accounts as needed)
 
                 $hashed = password_hash($password, PASSWORD_DEFAULT);
 
@@ -443,9 +457,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "Created user '$username' ($role)" . ($email_sent ? " (Email sent to $email)" : " (Email NOT sent to $email)") . ($employee_id_input ? " EmpID:$employee_id_input" : ''));
 
                 if ($email_sent) {
-                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully! ✅ Login credentials have been automatically emailed to <strong>" . htmlspecialchars($email) . "</strong>.";
+                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully! Login credentials have been automatically emailed to <strong>" . htmlspecialchars($email) . "</strong>.";
                 } else {
-                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. ⚠️ Email could not be sent automatically. Initial Temp Password: <strong>" . htmlspecialchars($password) . "</strong> — please share this manually with the employee.";
+                    $msg = "User <strong>" . htmlspecialchars($full_name_for_email) . "</strong> created successfully. Email could not be sent automatically. Initial Temp Password: <strong>" . htmlspecialchars($password) . "</strong> — please share this manually with the employee.";
                     $is_error = false;
                 }
 
@@ -517,12 +531,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 $target_stn = !empty($target_user['station_id']) ? (int)$target_user['station_id'] : ($my_role === 'admin' ? $my_station_id : 0);
-                // Multiple managers allowed per station
+                // Station limits enforcement for edit
                 if ($role === 'admin' && $target_stn > 0) {
                     $checkAdmin = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
                     $checkAdmin->execute([$target_stn, $id]);
                     if ((int)$checkAdmin->fetchColumn() > 0) {
-                        throw new Exception("Cannot assign Admin role. This station already has an active Admin (Only 1 Admin allowed per station).");
+                        throw new Exception("An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.");
+                    }
+                }
+                if ($role === 'manager' && $target_stn > 0) {
+                    $checkMgr = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $checkMgr->execute([$target_stn, $id]);
+                    if ((int)$checkMgr->fetchColumn() > 0) {
+                        throw new Exception("A Manager account already exists for this station. Only one Manager account is allowed per station.");
                     }
                 }
 
@@ -652,13 +673,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $target_role = strtolower(trim($target_user['role'] ?? 'staff'));
                 $target_stn  = (int)($target_user['station_id'] ?? 0);
 
-                // Multiple managers allowed — no restore restriction
-
+                // Station limits enforcement for restore
                 if ($target_role === 'admin' && $target_stn > 0) {
                     $chkAdm = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'admin' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
                     $chkAdm->execute([$target_stn, $id]);
                     if ((int)$chkAdm->fetchColumn() > 0) {
-                        throw new Exception("Cannot restore this Admin. Station already has an active Admin (Only 1 Admin allowed per station).");
+                        throw new Exception("An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.");
+                    }
+                }
+                if ($target_role === 'manager' && $target_stn > 0) {
+                    $chkMgr = $pdo->prepare("SELECT COUNT(*) FROM users WHERE LOWER(role) = 'manager' AND station_id = ? AND id != ? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+                    $chkMgr->execute([$target_stn, $id]);
+                    if ((int)$chkMgr->fetchColumn() > 0) {
+                        throw new Exception("A Manager account already exists for this station. Only one Manager account is allowed per station.");
                     }
                 }
 
@@ -748,19 +775,28 @@ if ($my_station_id) {
     $station_name = $stn_stmt->fetchColumn() ?: 'Station #' . $my_station_id;
 }
 
-// ── Check active Manager count per station (for role dropdown enforcement) ──
+// ── Check active Admin & Manager count per station (1-account-per-station enforcement) ──
 $station_manager_count = 0;
 $station_manager_name  = '';
+$station_admin_count   = 0;
+$station_admin_name    = '';
 if ($my_station_id) {
     try {
-        $mgr_chk = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) AS mgr_name FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive') LIMIT 1");
+        $mgr_chk = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) AS mgr_name FROM users WHERE LOWER(role)='manager' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
         $mgr_chk->execute([$my_station_id]);
         $mgr_row = $mgr_chk->fetch(PDO::FETCH_NUM);
         $station_manager_count = (int)($mgr_row[0] ?? 0);
         $station_manager_name  = trim((string)($mgr_row[1] ?? ''));
+
+        $adm_chk = $pdo->prepare("SELECT COUNT(*), CONCAT(first_name,' ',last_name) AS adm_name FROM users WHERE LOWER(role)='admin' AND station_id=? AND LOWER(status) NOT IN ('disabled','archived','inactive')");
+        $adm_chk->execute([$my_station_id]);
+        $adm_row = $adm_chk->fetch(PDO::FETCH_NUM);
+        $station_admin_count = (int)($adm_row[0] ?? 0);
+        $station_admin_name  = trim((string)($adm_row[1] ?? ''));
     } catch (Exception $e) {}
 }
-$manager_slot_taken = false; // Multiple managers allowed per station
+$manager_slot_taken = ($station_manager_count >= 1);
+$admin_slot_taken   = ($station_admin_count >= 1);
 
 // Get UI Config
 try {
@@ -810,9 +846,9 @@ if (isset($_GET['ajax_check_slots']) && !empty($_GET['station_id'])) {
 
         echo json_encode([
             'success'       => true,
-            'manager_taken' => false, // Multiple managers allowed
+            'manager_taken' => ($mgrCount >= 1),
             'manager_name'  => $mgrName,
-            'admin_taken'   => $admCount >= 1,
+            'admin_taken'   => ($admCount >= 1),
             'admin_name'    => $admName,
         ]);
     } catch (Exception $e) {
@@ -1725,17 +1761,16 @@ setTimeout(function() {
                         <select name="role" id="user_role_add" class="inp" required onchange="toggleShiftField('add');onRoleChangeAddUser(this)">
                             <option value="">Select role</option>
                             <?php if ($my_role === 'superadmin'): ?>
-                                <option value="staff">Staff</option>
-                                <option value="manager">Manager</option>
-                                <option value="admin">Admin</option>
+                                <option value="admin">Admin/Owner</option>
                             <?php elseif ($my_role === 'admin'): ?>
                                 <option value="staff">Staff</option>
-                            <option value="manager" >Manager</option>
+                                <option value="manager">Manager</option>
                             <?php endif; ?>
                         </select>
-                        <?php if ($my_role === 'admin'): ?>
-                        <div id="manager_slot_badge" style="display:none;"></div>
-                        <?php endif; ?>
+                        <div id="role_limit_note_add" style="display:none; margin-top:8px; padding:10px 14px; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; color:#991b1b; font-size:12.5px; font-weight:600; line-height:1.45; align-items:flex-start; gap:8px;">
+                            <i class="fas fa-exclamation-triangle" style="color:#dc2626; font-size:15px; margin-top:2px; flex-shrink:0;"></i>
+                            <span id="role_limit_note_text_add"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -1832,16 +1867,18 @@ setTimeout(function() {
                 <div class="form-grid-2">
                     <div class="form-group">
                         <label class="lbl">Role <span style="color:#dc2626;">*</span></label>
-                        <select name="role" id="user_role_edit" class="inp" required onchange="toggleShiftField('edit')">
+                        <select name="role" id="user_role_edit" class="inp" required onchange="toggleShiftField('edit');onRoleChangeEditUser(this)">
                             <?php if ($my_role === 'superadmin'): ?>
-                                <option value="staff">Staff</option>
-                                <option value="manager">Manager</option>
-                                <option value="admin">Admin</option>
+                                <option value="admin">Admin/Owner</option>
                             <?php elseif ($my_role === 'admin'): ?>
                                 <option value="staff">Staff</option>
                                 <option value="manager">Manager</option>
                             <?php endif; ?>
                         </select>
+                        <div id="role_limit_note_edit" style="display:none; margin-top:8px; padding:10px 14px; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; color:#991b1b; font-size:12.5px; font-weight:600; line-height:1.45; align-items:flex-start; gap:8px;">
+                            <i class="fas fa-exclamation-triangle" style="color:#dc2626; font-size:15px; margin-top:2px; flex-shrink:0;"></i>
+                            <span id="role_limit_note_text_edit"></span>
+                        </div>
                     </div>
 
                 </div>
@@ -2008,6 +2045,14 @@ window.SYSTEM_SECURITY_CONFIG = {
     require_uppercase: <?= $sec_req_upper ? 'true' : 'false' ?>,
     require_numbers: <?= $sec_req_numbers ? 'true' : 'false' ?>,
     require_special_chars: <?= $sec_req_special ? 'true' : 'false' ?>
+};
+
+window.stationRoleLimits = {
+    station_id: <?= json_encode($my_station_id) ?>,
+    admin_taken: <?= ($station_admin_count >= 1) ? 'true' : 'false' ?>,
+    admin_name: <?= json_encode($station_admin_name) ?>,
+    manager_taken: <?= ($station_manager_count >= 1) ? 'true' : 'false' ?>,
+    manager_name: <?= json_encode($station_manager_name) ?>
 };
 
 function validatePasswordString(val) {
@@ -2213,7 +2258,16 @@ function validateAddForm() {
         return false;
     }
 
-    // (Multiple managers per station are now allowed — no slot enforcement needed)
+    if (role.toLowerCase() === 'admin' && window.stationRoleLimits && window.stationRoleLimits.admin_taken) {
+        alert('An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.');
+        if (roleEl) roleEl.focus();
+        return false;
+    }
+    if (role.toLowerCase() === 'manager' && window.stationRoleLimits && window.stationRoleLimits.manager_taken) {
+        alert('A Manager account already exists for this station. Only one Manager account is allowed per station.');
+        if (roleEl) roleEl.focus();
+        return false;
+    }
 
     // 6c. Superadmin must pick a station before submitting
     const stationSel = document.getElementById('add_station_id');
@@ -2322,6 +2376,17 @@ async function handleAddUserSubmit(e) {
     if (ph !== '' && !placeholders.includes(ph.toLowerCase()) && !isValidPhilippineNumber(ph)) { showAddUserError('Invalid Contact Number: must be 11-digit PH mobile starting with 09.'); phEl?.focus(); return; }
     if (!role) { showAddUserError('Role selection is required. Please select a role from the dropdown.'); roleEl?.focus(); return; }
 
+    if (role.toLowerCase() === 'admin' && window.stationRoleLimits && window.stationRoleLimits.admin_taken) {
+        showAddUserError('An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.');
+        roleEl?.focus();
+        return;
+    }
+    if (role.toLowerCase() === 'manager' && window.stationRoleLimits && window.stationRoleLimits.manager_taken) {
+        showAddUserError('A Manager account already exists for this station. Only one Manager account is allowed per station.');
+        roleEl?.focus();
+        return;
+    }
+
     const stationSel = document.getElementById('add_station_id');
     if (stationSel && !stationSel.value) { showAddUserError('Please select a Station before creating this user.'); stationSel.focus(); return; }
 
@@ -2418,6 +2483,18 @@ function validateEditForm() {
         return false;
     }
 
+    const curRole = (window.currentEditingUser?.role || '').toLowerCase().trim();
+    if (role.toLowerCase() === 'admin' && curRole !== 'admin' && window.stationRoleLimits && window.stationRoleLimits.admin_taken) {
+        alert('An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.');
+        if (roleEl) roleEl.focus();
+        return false;
+    }
+    if (role.toLowerCase() === 'manager' && curRole !== 'manager' && window.stationRoleLimits && window.stationRoleLimits.manager_taken) {
+        alert('A Manager account already exists for this station. Only one Manager account is allowed per station.');
+        if (roleEl) roleEl.focus();
+        return false;
+    }
+
     return true;
 }
 
@@ -2469,6 +2546,18 @@ function clearAddUserForm() {
         hint.textContent = 'Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639';
     }
 
+    const noteBox = document.getElementById('role_limit_note_add');
+    if (noteBox) noteBox.style.display = 'none';
+
+    const submitBtn = document.getElementById('btnSubmitAddUser');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.style.pointerEvents = 'auto';
+        submitBtn.removeAttribute('title');
+    }
+
     const shiftGroup = document.getElementById('shift_field_group_add');
     if (shiftGroup) shiftGroup.style.display = 'none';
 }
@@ -2476,24 +2565,116 @@ function clearAddUserForm() {
 function openAddModal() {
     clearAddUserForm();
     toggleShiftField('add');
+    const roleSel = document.getElementById('user_role_add');
+    if (roleSel) onRoleChangeAddUser(roleSel);
     document.getElementById('addModal').style.display = 'flex';
     setTimeout(function() {
         clearAddUserForm();
         toggleShiftField('add');
+        if (roleSel) onRoleChangeAddUser(roleSel);
     }, 50);
-    setTimeout(function() {
-        toggleShiftField('add');
-    }, 150);
 }
 
-// ── Manager slot badge visibility on role change (Admin view) ──
+// ── Role limits enforcement on role change (Add User modal) ──
 function onRoleChangeAddUser(selectEl) {
-    const badge = document.getElementById('manager_slot_badge');
-    if (!badge) return;
-    if (selectEl.value === 'manager') {
-        badge.style.display = 'inline-flex';
+    if (!selectEl) return;
+    const role = (selectEl.value || '').toLowerCase().trim();
+    const noteBox = document.getElementById('role_limit_note_add');
+    const noteText = document.getElementById('role_limit_note_text_add');
+    const submitBtn = document.getElementById('btnSubmitAddUser');
+
+    let isBlocked = false;
+    let blockMessage = '';
+
+    if (role === 'admin') {
+        if (window.stationRoleLimits && window.stationRoleLimits.admin_taken) {
+            isBlocked = true;
+            blockMessage = 'An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.';
+        }
+    } else if (role === 'manager') {
+        if (window.stationRoleLimits && window.stationRoleLimits.manager_taken) {
+            isBlocked = true;
+            blockMessage = 'A Manager account already exists for this station. Only one Manager account is allowed per station.';
+        }
+    } else if (role === 'staff') {
+        // Staff / Operations Staff: NO FIXED ACCOUNT LIMIT
+        isBlocked = false;
+    }
+
+    if (isBlocked) {
+        if (noteBox && noteText) {
+            noteText.textContent = blockMessage;
+            noteBox.style.display = 'flex';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+            submitBtn.style.pointerEvents = 'none';
+            submitBtn.title = blockMessage;
+        }
     } else {
-        badge.style.display = 'none';
+        if (noteBox) {
+            noteBox.style.display = 'none';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+            submitBtn.style.pointerEvents = 'auto';
+            submitBtn.removeAttribute('title');
+        }
+    }
+}
+
+// ── Role limits enforcement on role change (Edit User modal) ──
+let currentEditingUser = null;
+function onRoleChangeEditUser(selectEl) {
+    if (!selectEl) return;
+    const newRole = (selectEl.value || '').toLowerCase().trim();
+    const curRole = (window.currentEditingUser?.role || '').toLowerCase().trim();
+    const noteBox = document.getElementById('role_limit_note_edit');
+    const noteText = document.getElementById('role_limit_note_text_edit');
+    const submitBtn = document.querySelector('#editModal button[type="submit"]');
+
+    let isBlocked = false;
+    let blockMessage = '';
+
+    if (newRole === 'admin' && curRole !== 'admin') {
+        if (window.stationRoleLimits && window.stationRoleLimits.admin_taken) {
+            isBlocked = true;
+            blockMessage = 'An Admin/Owner account already exists for this station. Only one Admin/Owner account is allowed per station.';
+        }
+    } else if (newRole === 'manager' && curRole !== 'manager') {
+        if (window.stationRoleLimits && window.stationRoleLimits.manager_taken) {
+            isBlocked = true;
+            blockMessage = 'A Manager account already exists for this station. Only one Manager account is allowed per station.';
+        }
+    }
+
+    if (isBlocked) {
+        if (noteBox && noteText) {
+            noteText.textContent = blockMessage;
+            noteBox.style.display = 'flex';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+            submitBtn.style.pointerEvents = 'none';
+            submitBtn.title = blockMessage;
+        }
+    } else {
+        if (noteBox) {
+            noteBox.style.display = 'none';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+            submitBtn.style.pointerEvents = 'auto';
+            submitBtn.removeAttribute('title');
+        }
     }
 }
 
@@ -2503,15 +2684,7 @@ function onStationChangeCheckSlots(stationId) {
     const badge       = document.getElementById('sa_slot_badge');
     const badgeText   = document.getElementById('sa_slot_badge_text');
 
-    if (!stationId || !roleSelect) return;
-
-    // Reset role options first
-    const opts = roleSelect.options;
-    for (let i = 0; i < opts.length; i++) {
-        opts[i].disabled = false;
-        // Strip any previous "(Slot Full)" suffix
-        opts[i].text = opts[i].text.replace(/\s*\(Slot Full.*?\)/gi, '').trim();
-    }
+    if (!stationId) return;
 
     if (badge) { badge.style.display = 'inline-flex'; }
     if (badgeText) { badgeText.textContent = 'Checking slot availability...'; }
@@ -2521,45 +2694,39 @@ function onStationChangeCheckSlots(stationId) {
         .then(data => {
             if (!data.success) return;
 
+            window.stationRoleLimits = window.stationRoleLimits || {};
+            window.stationRoleLimits.station_id = stationId;
+            window.stationRoleLimits.admin_taken = !!data.admin_taken;
+            window.stationRoleLimits.admin_name = data.admin_name || '';
+            window.stationRoleLimits.manager_taken = !!data.manager_taken;
+            window.stationRoleLimits.manager_name = data.manager_name || '';
+
+            // Update role notes and buttons immediately
+            if (roleSelect) {
+                onRoleChangeAddUser(roleSelect);
+            }
+
             let messages = [];
-
-            // Manager option always stays enabled (multiple managers allowed)
-            const mgrOpt = Array.from(opts).find(o => o.value === 'manager');
-            if (mgrOpt) {
-                mgrOpt.disabled = false;
-                mgrOpt.text = 'Manager';
-                messages.push('✅ Manager slot available');
+            if (data.admin_taken) {
+                messages.push('Admin: Slot Full (1 already assigned)');
+            } else {
+                messages.push('Admin: Available');
             }
-
-            // Update Admin option
-            const admOpt = Array.from(opts).find(o => o.value === 'admin');
-            if (admOpt) {
-                if (data.admin_taken) {
-                    admOpt.disabled = true;
-                    admOpt.text = 'Admin (Slot Full — 1 already assigned)';
-                    messages.push('⛔ Admin slot taken by: ' + (data.admin_name || 'existing user'));
-                } else {
-                    admOpt.disabled = false;
-                    admOpt.text = 'Admin';
-                    messages.push('✅ Admin slot available');
-                }
+            if (data.manager_taken) {
+                messages.push('Manager: Slot Full (1 already assigned)');
+            } else {
+                messages.push('Manager: Available');
             }
-
-            // If currently selected option is now disabled, reset selection
-            const curOpt = opts[roleSelect.selectedIndex];
-            if (curOpt && curOpt.disabled) {
-                roleSelect.selectedIndex = 0;
-                toggleShiftField('add');
-            }
+            messages.push('Staff: Unlimited');
 
             if (badge && badgeText) {
                 badge.style.display = 'inline-flex';
                 badgeText.textContent = messages.join('  |  ');
 
-                const allGood = !data.manager_taken && !data.admin_taken;
-                badge.style.background = allGood ? '#f0fdf4' : '#fff7ed';
-                badge.style.color      = allGood ? '#16a34a' : '#c2410c';
-                badge.style.border     = allGood ? '1px solid #86efac' : '1px solid #fdba74';
+                const hasFull = data.admin_taken || data.manager_taken;
+                badge.style.background = hasFull ? '#fff7ed' : '#f0fdf4';
+                badge.style.color      = hasFull ? '#c2410c' : '#16a34a';
+                badge.style.border     = hasFull ? '1px solid #fdba74' : '1px solid #86efac';
             }
         })
         .catch(() => {
@@ -2568,6 +2735,7 @@ function onStationChangeCheckSlots(stationId) {
 }
 
 function openEditModal(user) {
+    window.currentEditingUser = user;
     document.getElementById('edit_user_id').value = user.id;
     document.getElementById('edit_first_name').value = (user.first_name || '').trim();
     document.getElementById('edit_last_name').value = (user.last_name || '').trim();
@@ -2590,6 +2758,7 @@ function openEditModal(user) {
     }
     
     toggleShiftField('edit');
+    if (roleSel) onRoleChangeEditUser(roleSel);
     document.getElementById('editModal').style.display = 'flex';
 }
 

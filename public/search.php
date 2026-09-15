@@ -403,9 +403,7 @@ if (!empty($query)) {
                     ]);
                     $subtitle = implode(' · ', $sub_items) ?: "Status: {$r['status']} · {$ts}";
 
-                    if ($is_admin) {
-                        $txn_link = 'admin_transactions_oversight.php?search=' . $txn_q;
-                    } elseif ($role === 'manager') {
+                    if ($is_admin || $role === 'manager') {
                         $txn_link = 'manager_validated_transactions.php?search=' . $txn_q;
                     } else {
                         $txn_link = 'staff_transactions_hub.php?section=history&hsearch=' . $txn_q;
@@ -664,6 +662,7 @@ if (!empty($query)) {
                                 strpos($name_lower, 'unleaded')  !== false ||
                                 strpos($name_lower, 'gasoline')  !== false);
 
+                    $pid_int = (int)($r['id'] ?? 0);
                     if ($is_fuel) {
                         $inv_link = $is_admin
                             ? 'admin_inventory_fuel.php?search=' . $p_q
@@ -712,8 +711,9 @@ if (!empty($query)) {
                         $price_disp  = (float)($fr['price_per_liter'] ?? 0) > 0
                             ? ' · Price: ₱' . number_format((float)$fr['price_per_liter'], 2) . '/L'
                             : '';
+                        $tank_id_int = (int)($fr['id'] ?? 0);
                         $fuel_inv_link = $is_admin
-                            ? 'admin_inventory_fuel.php?search='   . $fq
+                            ? 'admin_inventory_fuel.php?search=' . $fq
                             : ($role === 'manager' ? 'manager_inventory_fuel.php?search=' . $fq : 'staff_inventory_fuel.php?search=' . $fq);
                         $results[] = [
                             'type'     => 'Product',
@@ -762,9 +762,7 @@ if (!empty($query)) {
                     $mech        = $r['mechanic_name'] ?: 'Unassigned';
                     $subtitle    = "Customer: {$r['customer_name']} · Service: {$r['service_type']} · Mechanic: {$mech} · Status: {$r['status']}";
 
-                    if ($is_admin) {
-                        $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
-                    } elseif ($role === 'manager') {
+                    if ($is_admin || $role === 'manager') {
                         $jo_link = 'manager_validated_transactions.php?search=' . $jo_q;
                     } else {
                         $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
@@ -813,9 +811,7 @@ if (!empty($query)) {
                         $mech        = $r['mechanic_name'];
                         $subtitle    = "Customer: {$r['customer_name']} · Service: {$r['service_type']} · Mechanic: {$mech} · Status: {$r['status']}";
 
-                        if ($is_admin) {
-                            $jo_link = 'admin_transactions_oversight.php?search=' . $jo_q;
-                        } elseif ($role === 'manager') {
+                        if ($is_admin || $role === 'manager') {
                             $jo_link = 'manager_validated_transactions.php?search=' . $jo_q;
                         } else {
                             $jo_link = 'staff_transactions_hub.php?section=history&hsearch=' . $jo_q;
@@ -1092,8 +1088,9 @@ if (!empty($query)) {
                     $cost  = $r['cost_price']  ? ' · Cost: ₱' . number_format($r['cost_price'], 2) : '';
                     $pm_q  = urlencode($r['product_name']);
 
+                    $pm_pid_int = (int)($r['id'] ?? 0);
                     $prod_mgmt_link = $is_admin
-                        ? 'admin_set_prices.php?tab=merch&search='   . $pm_q
+                        ? 'admin_set_prices.php?tab=merch&search=' . $pm_q
                         : 'manager_set_prices.php?tab=merch&search=' . $pm_q;
 
                     $results[] = [
@@ -1218,7 +1215,7 @@ if (!empty($query)) {
                     $amount      = $r['total_amount'] ? ' · ₱' . number_format((float)$r['total_amount'], 2) : '';
                     $fuel        = $r['fuel_type_display'] ?? 'Fuel';
                     $fpo_link    = $is_admin
-                        ? 'admin_fuel_deliveries_oversight.php'
+                        ? 'admin_inventory_fuel.php'
                         : ($role === 'manager' ? 'manager_fuel_purchase_orders.php' : 'staff_record_delivery.php');
 
                     $results[] = [
@@ -1271,9 +1268,9 @@ if (!empty($query)) {
                     $or_ref  = $r['or_number'] ? " OR#: {$r['or_number']}" : '';
                     $ar_ref  = $r['transaction_id'] ?: ('AR-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
                     $ar_q    = urlencode($ar_ref);
-                    $ar_link = $is_admin
-                        ? 'admin_transactions_oversight.php?tab=ar&search=' . $ar_q
-                        : ($role === 'manager' ? 'manager_validated_transactions.php?tab=ar&search=' . $ar_q : 'staff_transactions_hub.php?section=history&hsearch=' . $ar_q);
+                    $ar_link = ($is_admin || $role === 'manager')
+                        ? 'manager_validated_transactions.php?tab=ar&search=' . $ar_q
+                        : 'staff_transactions_hub.php?section=history&hsearch=' . $ar_q;
                     $results[] = [
                         'type'     => 'AR / Credit',
                         'title'    => "{$ar_ref}{$code}{$cust}",
@@ -1313,7 +1310,7 @@ if (!empty($query)) {
 
                         $ar_cust_link = ($role === 'staff')
                             ? 'staff_transactions_hub.php?section=history&hsearch=' . urlencode($cr['name'])
-                            : ($role === 'manager' ? 'manager_validated_transactions.php?tab=ar&search=' . urlencode($cr['name']) : 'admin_transactions_oversight.php?tab=ar&search=' . urlencode($cr['name']));
+                            : 'manager_validated_transactions.php?tab=ar&search=' . urlencode($cr['name']);
 
                         $results[] = [
                             'type'     => 'AR / Credit',
@@ -1395,7 +1392,7 @@ if (!empty($query)) {
                     $sr_q    = urlencode($sr_ref);
                     $sr_link = ($role === 'manager')
                         ? 'manager_stock_request_review.php?search=' . $sr_q
-                        : ($is_admin ? 'admin_fuel_deliveries_oversight.php?search=' . $sr_q : 'staff_inventory_fuel.php?search=' . $sr_q);
+                        : ($is_admin ? 'admin_inventory_fuel.php?search=' . $sr_q : 'staff_inventory_fuel.php?search=' . $sr_q);
 
                     $results[] = [
                         'type'     => 'Stock Request',
@@ -1431,9 +1428,9 @@ if (!empty($query)) {
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $req_ref  = $r['request_no'] ?: ('REQ-' . str_pad($r['id'], 5, '0', STR_PAD_LEFT));
                     $req_q    = urlencode($req_ref);
-                    $req_link = ($role === 'manager')
-                        ? 'manager_request_data_management.php?search=' . $req_q
-                        : 'admin_transactions_oversight.php?tab=requests&search=' . $req_q;
+                    $req_link = ($role === 'staff')
+                        ? 'staff_transactions_hub.php?section=merchandise'
+                        : 'manager_request_data_management.php?search=' . $req_q;
 
                     $results[] = [
                         'type'     => 'Request/Approval',
@@ -1463,9 +1460,9 @@ if (!empty($query)) {
                 $stmt->execute([$like, $like, $like, $like]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $tr_q    = urlencode($r['transaction_id']);
-                    $tr_link = ($role === 'manager')
-                        ? 'manager_validated_transactions.php?search=' . $tr_q
-                        : 'admin_transactions_oversight.php?search=' . $tr_q;
+                    $tr_link = ($role === 'staff')
+                        ? 'staff_transactions_hub.php?section=history&hsearch=' . $tr_q
+                        : 'manager_validated_transactions.php?search=' . $tr_q;
 
                     $results[] = [
                         'type'     => 'Request/Approval',
@@ -1538,12 +1535,10 @@ if (!empty($query)) {
                 $stmt->execute([$like, $like, $like, $like, $like]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $m_name = $r['full_name'] ?: trim("{$r['first_name']} {$r['last_name']}");
-                    $spec   = $r['specialization'] ? " · {$r['specialization']}" : '';
-                    $shift  = $r['shift_assignment'] ? " · Shift: {$r['shift_assignment']}" : '';
                     $results[] = [
                         'type'     => 'Mechanic',
                         'title'    => $m_name,
-                        'subtitle' => "Mechanic{$spec}{$shift} · Status: " . ucfirst($r['status']),
+                        'subtitle' => "Mechanic · Status: " . ucfirst($r['status']),
                         'meta'     => $r['status'],
                         'link'     => 'manager_mechanics_management.php?search=' . urlencode($m_name),
                         'icon'     => $ICONS['Mechanic'],

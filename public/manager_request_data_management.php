@@ -61,7 +61,7 @@ $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
 $search = trim($_GET['search'] ?? '');
 $valid_statuses = ['Pending', 'Approved', 'Rejected'];
-$valid_categories = ['Vehicle', 'Merchandise Product', 'Service Type'];
+$valid_categories = ['Vehicle', 'Merchandise Product', 'Service Type', 'Inspection Item'];
 if ($f_status !== '' && !in_array($f_status, $valid_statuses, true)) $f_status = '';
 if ($f_category !== '' && !in_array($f_category, $valid_categories, true)) $f_category = '';
 
@@ -85,13 +85,22 @@ if ($date_to !== '') {
     $params[] = $date_to;
 }
 if ($search !== '') {
-    $where .= " AND (r.request_no LIKE ? OR r.data_payload LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.name LIKE ? OR u.username LIKE ?)";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
+    $where .= " AND (r.request_no LIKE ? OR r.data_payload LIKE ? OR r.category LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) LIKE ? OR u.name LIKE ? OR u.username LIKE ? OR rev.first_name LIKE ? OR rev.last_name LIKE ? OR CONCAT(COALESCE(rev.first_name, ''), ' ', COALESCE(rev.last_name, '')) LIKE ? OR rev.name LIKE ? OR rev.username LIKE ? OR st.name LIKE ?)";
+    $s_term = "%$search%";
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
+    $params[] = $s_term;
 }
 
 $rows = [];
@@ -437,6 +446,7 @@ table.tbl-requests tbody tr:hover td {
 
 .badge-cat { background: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 800; }
 .badge-cat-vehicle { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; font-weight: 800; }
+        .badge-cat-inspection { background: #fef3c7; color: #b45309; border: 1.5px solid #fde68a; font-weight: 800; }
 .badge-cat-merchandise { background: #fdf2f8; color: #be185d; border: 1.5px solid #fbcfe8; font-weight: 800; }
 .badge-cat-service { background: #f5f3ff; color: #6d28d9; border: 1.5px solid #ddd6fe; font-weight: 800; }
 
@@ -675,6 +685,7 @@ if (!empty($_SESSION['success'])) unset($_SESSION['success']);
         <select name="category" class="inp" style="min-width:160px;">
             <option value="">All Requests</option>
             <option value="Vehicle" <?= $f_category === 'Vehicle' ? 'selected' : '' ?>>Vehicle</option>
+                                    <option value="Inspection Item" <?= $f_category === 'Inspection Item' ? 'selected' : '' ?>>Inspection Item</option>
             <option value="Merchandise Product" <?= $f_category === 'Merchandise Product' ? 'selected' : '' ?>>Merchandise Product</option>
             <option value="Service Type" <?= $f_category === 'Service Type' ? 'selected' : '' ?>>Service Type</option>
         </select>
@@ -752,6 +763,7 @@ if (!empty($_SESSION['success'])) unset($_SESSION['success']);
                         // Category Badge Styling
                         $catClass = 'badge-cat';
                         if ($row['category'] === 'Vehicle') $catClass = 'badge-cat-vehicle';
+                        elseif ($row['category'] === 'Inspection Item') $catClass = 'badge-cat-inspection';
                         elseif ($row['category'] === 'Merchandise Product') $catClass = 'badge-cat-merchandise';
                         elseif ($row['category'] === 'Service Type') $catClass = 'badge-cat-service';
 
@@ -787,7 +799,7 @@ if (!empty($_SESSION['success'])) unset($_SESSION['success']);
                             $processed_by_name = '—';
                         }
                     ?>
-                        <tr>
+                        <tr class="mdr-row">
                             <!-- 1. REQ NO. -->
                             <td style="vertical-align:middle;padding:10px 6px;box-sizing:border-box;">
                                 <strong style="color:#002F70;font-family:Consolas, 'Courier New', monospace;font-size:13.5px;font-weight:800;letter-spacing:0.2px;display:block;white-space:nowrap;"><?= htmlspecialchars($row['request_no']) ?></strong>
@@ -843,6 +855,12 @@ if (!empty($_SESSION['success'])) unset($_SESSION['success']);
                                         <div><strong>Model:</strong> <?= htmlspecialchars($payload['vehicle_model'] ?? '—') ?></div>
                                         <div><strong>Type:</strong> <?= htmlspecialchars($payload['vehicle_type'] ?? '—') ?></div>
                                         <div><strong>Fuel:</strong> <?= htmlspecialchars($payload['fuel_type'] ?? '—') ?></div>
+                                    <?php elseif ($row['category'] === 'Inspection Item'): ?>
+                                        <div><strong>Item Name:</strong> <span style="color:#0f172a;font-weight:800;font-size:13.5px;"><?= htmlspecialchars($payload['item_name'] ?? $payload['inspection_name'] ?? '—') ?></span></div>
+                                        <div><strong>Category:</strong> <?= htmlspecialchars($payload['category'] ?? 'General') ?></div>
+                                        <?php if (!empty($payload['description'])): ?>
+                                            <div><strong>Description:</strong> <?= htmlspecialchars($payload['description']) ?></div>
+                                        <?php endif; ?>
                                     <?php endif; ?>
 
                                     <?php if (!empty($reqReason)): ?>
@@ -905,6 +923,36 @@ if (!empty($_SESSION['success'])) unset($_SESSION['success']);
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <!-- Master Data Requests Pagination Footer -->
+    <div id="mdrPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13.5px; color:#475569; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center;">
+            <span id="mdrShowingEntriesText" style="font-size:13.5px; color:#475569; font-weight:700;">Showing <?= empty($rows) ? '0' : '1–'.min(10, count($rows)) ?> of <?= count($rows) ?> entries</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="margin:0; font-weight:700; color:#475569; font-size:13.5px;">Rows per page:</label>
+                <select id="mdrPerPage" onchange="mdrChangePerPage()" style="padding:5px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:13.5px; font-weight:700; background:transparent !important; color:#1e293b; outline:none; cursor:pointer;">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="mdrPrevBtn" onclick="mdrGoPage(mdrState.page - 1)" 
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="mdrPageLabel" style="color:#1e293b; font-size:13.5px; font-weight:700; padding:0 4px;">Page 1 of <?= max(1, ceil(count($rows) / 10)) ?></span>
+                <button id="mdrNextBtn" onclick="mdrGoPage(mdrState.page + 1)" 
+                        style="width:34px; height:34px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:<?= count($rows) > 10 ? 'pointer' : 'not-allowed' ?>; color:<?= count($rows) > 10 ? '#475569' : '#cbd5e1' ?>; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                        onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1078,6 +1126,28 @@ function openReviewModal(req) {
                 <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(serviceReason)}">
             </div>
         `;
+    } else if (req.category === 'Inspection Item') {
+        const itemReason = payload.reason ?? payload.remarks ?? payload.notes ?? '';
+        editorDiv.innerHTML = `
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label>Inspection Item Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="edit_inspection_name" class="inp" style="width:100%;" value="${escapeHtml(payload.item_name || payload.inspection_name || '')}">
+                </div>
+                <div style="flex:1;">
+                    <label>Category</label>
+                    <input type="text" id="edit_inspection_cat" class="inp" style="width:100%;" value="${escapeHtml(payload.category || 'General')}">
+                </div>
+            </div>
+            <div style="margin-top:10px;">
+                <label>Description / Notes</label>
+                <textarea id="edit_inspection_desc" class="inp" style="width:100%;resize:vertical;min-height:45px;">${escapeHtml(payload.description || '')}</textarea>
+            </div>
+            <div style="margin-top:10px;">
+                <label>Reason for Request / Initial Notes</label>
+                <input type="text" id="edit_remarks" class="inp" style="width:100%;" value="${escapeHtml(itemReason)}">
+            </div>
+        `;
     } else if (req.category === 'Vehicle') {
         const vehicleReason = payload.reason ?? payload.remarks ?? payload.notes ?? '';
         editorDiv.innerHTML = `
@@ -1231,6 +1301,22 @@ async function submitReviewDecision(forcedAction) {
                 category: category,
                 suggested_price: price,
                 estimated_duration: duration || null,
+                remarks: rem || null
+            };
+        } else if (currentRequest.category === 'Inspection Item') {
+            const itemName = document.getElementById('edit_inspection_name')?.value?.trim();
+            const itemCat  = document.getElementById('edit_inspection_cat')?.value?.trim();
+            const itemDesc = document.getElementById('edit_inspection_desc')?.value?.trim();
+            const rem      = document.getElementById('edit_remarks')?.value?.trim();
+
+            if (!itemName) { setReviewError('Inspection Item Name is required.'); return; }
+
+            modifiedPayload = {
+                item_name: itemName,
+                inspection_name: itemName,
+                category: itemCat || 'General',
+                description: itemDesc || null,
+                is_active: 1,
                 remarks: rem || null
             };
         } else if (currentRequest.category === 'Vehicle') {
@@ -1404,6 +1490,72 @@ function initFuelCombo() {
         if (!wrap.contains(e.target)) hideList();
     }, { once: false });
 }
+</script>
+
+<script>
+// ── Master Data Requests Pagination (Matching Transaction Module) ──
+var mdrState = { page: 1, per_page: 10 };
+
+function mdrRender() {
+    var rows = Array.from(document.querySelectorAll('table.tbl-requests tbody tr.mdr-row'));
+    var pp = mdrState.per_page || 10;
+    var tot = rows.length;
+    var tp = Math.max(1, Math.ceil(tot / pp));
+    if (mdrState.page > tp) mdrState.page = tp;
+    if (mdrState.page < 1) mdrState.page = 1;
+    var p = mdrState.page;
+
+    var start = (p - 1) * pp;
+    var end   = p * pp;
+
+    rows.forEach(function(r, i) {
+        r.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    // Update entries counter
+    var showingStart = tot === 0 ? 0 : start + 1;
+    var showingEnd   = Math.min(end, tot);
+    var entriesLbl   = document.getElementById('mdrShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    var lbl = document.getElementById('mdrPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    var prev = document.getElementById('mdrPrevBtn');
+    var next = document.getElementById('mdrNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+window.mdrState = mdrState;
+window.mdrGoPage = function(p) {
+    var rows = document.querySelectorAll('table.tbl-requests tbody tr.mdr-row');
+    var tp = Math.max(1, Math.ceil(rows.length / (mdrState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    mdrState.page = p;
+    mdrRender();
+};
+
+window.mdrChangePerPage = function() {
+    var s = document.getElementById('mdrPerPage');
+    if (s) mdrState.per_page = parseInt(s.value, 10);
+    mdrState.page = 1;
+    mdrRender();
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    mdrRender();
+});
 </script>
 
 </div>

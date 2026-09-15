@@ -250,8 +250,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $last_name      = trim($_POST['last_name'] ?? '');
         $contact_no     = trim($_POST['contact_no'] ?? '');
         $address        = sanitize_optional_field($_POST['address'] ?? '');
-        $specialization = trim($_POST['specialization'] ?? '');
+        $specialization = trim($_POST['specialization'] ?? 'General Mechanic');
+        if (empty($specialization)) { $specialization = 'General Mechanic'; }
         $shift_assignment = trim($_POST['shift_assignment'] ?? 'All Shifts');
+        if (empty($shift_assignment)) { $shift_assignment = 'All Shifts'; }
         $date_hired     = trim($_POST['date_hired'] ?? '') ?: null;
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
         $full_name      = trim($first_name . ($middle_name !== '' && $middle_name !== 'N/A' ? ' ' . $middle_name : '') . ' ' . $last_name);
@@ -264,7 +266,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
             $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
-        elseif (empty($specialization)) { $_SESSION['error'] = 'Specialty is required.'; }
         else {
             $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
             if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
@@ -305,8 +306,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $last_name      = trim($_POST['last_name'] ?? '');
         $contact_no     = trim($_POST['contact_no'] ?? '');
         $address        = sanitize_optional_field($_POST['address'] ?? '');
-        $specialization = trim($_POST['specialization'] ?? '');
+        $specialization = trim($_POST['specialization'] ?? 'General Mechanic');
+        if (empty($specialization)) { $specialization = 'General Mechanic'; }
         $shift_assignment = trim($_POST['shift_assignment'] ?? 'All Shifts');
+        if (empty($shift_assignment)) { $shift_assignment = 'All Shifts'; }
         $date_hired     = trim($_POST['date_hired'] ?? '') ?: null;
         $status         = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
         $full_name      = trim($first_name . ($middle_name !== '' && $middle_name !== 'N/A' ? ' ' . $middle_name : '') . ' ' . $last_name);
@@ -319,7 +322,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', preg_replace('/[\s\-\(\)\.]/', '', $contact_no))) {
             $_SESSION['error'] = 'Invalid Philippine contact number. Must be an 11-digit mobile number starting with 09 (e.g. 09171234567 or +639171234567).';
         }
-        elseif (empty($specialization)) { $_SESSION['error'] = 'Specialty is required.'; }
         else {
             $clean_c = preg_replace('/[\s\-\(\)\.]/', '', $contact_no);
             if (str_starts_with($clean_c, '+639')) { $contact_no = '09' . substr($clean_c, 4); }
@@ -719,6 +721,7 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 /* Filter Bar */
 .filters-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .filters-form > div { display:flex; flex-direction:column; gap:4px; }
+.filters-form > div.filter-actions { display:flex; flex-direction:row !important; gap:8px; align-items:flex-end; }
 .filters-form label { font-size:15.5px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.4px; }
 .filters-form .inp { height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:15.5px; color:#1e293b; background:#fff; outline:none; transition:border-color .15s; }
 .filters-form .inp:focus { border-color:#002F70; box-shadow:0 0 0 3px rgba(0,47,112,.1); }
@@ -983,9 +986,9 @@ button.tbl-btn.wkld { color:#475569!important; }
 <div class="filters-form">
     <div style="flex:2;min-width:200px;">
         <label><i class="fas fa-search"></i> Search</label>
-        <input type="text" id="tableSearch" class="inp" style="width:100%;" placeholder="Name / Mechanic ID / Contact..." onkeyup="filterTable()">
+        <input type="text" id="tableSearch" class="inp" style="width:100%;" placeholder="Name / Mechanic ID / Contact..." value="<?= htmlspecialchars($_GET['search'] ?? $_GET['q'] ?? '') ?>" oninput="filterTable()" onkeyup="filterTable()">
     </div>
-    <div style="flex:1;min-width:130px;">
+    <div style="flex:1;max-width:220px;min-width:140px;">
         <label><i class="fas fa-toggle-on"></i> Status</label>
         <select id="statusFilter" class="inp" style="width:100%;" onchange="filterTable()">
             <option value="">All Status</option>
@@ -993,30 +996,9 @@ button.tbl-btn.wkld { color:#475569!important; }
             <option value="inactive">Inactive</option>
         </select>
     </div>
-    <div style="flex:1;min-width:160px;">
-        <label><i class="fas fa-tools"></i> Specialty</label>
-        <select id="specialtyFilter" class="inp" style="width:100%;" onchange="filterTable()">
-            <option value="">All Specialties</option>
-            <option value="General Mechanic">General Mechanic</option>
-            <option value="Oil Change">Oil Change</option>
-            <option value="Brake System">Brake System</option>
-            <option value="Air Conditioning">Air Conditioning</option>
-            <option value="Engine Repair">Engine Repair</option>
-            <option value="Electrical">Electrical</option>
-            <option value="Tire Services">Tire Services</option>
-        </select>
-    </div>
-    <div style="flex:1;min-width:130px;">
-        <label><i class="fas fa-clock"></i> Shift</label>
-        <select id="shiftFilter" class="inp" style="width:100%;" onchange="filterTable()">
-            <option value="">All Shifts</option>
-            <option value="First Shift">First Shift</option>
-            <option value="Second Shift">Second Shift</option>
-        </select>
-    </div>
-    <div style="display:flex;gap:8px;align-items:flex-end;">
-        <button type="button" onclick="filterTable()" class="btn-action btn-primary" style="height:36px;"><i class="fas fa-filter"></i> Filter</button>
-        <button type="button" onclick="resetFilters()" class="btn-action btn-secondary" style="height:36px;"><i class="fas fa-undo"></i> Reset</button>
+    <div class="filter-actions" style="display:flex; flex-direction:row !important; gap:8px; align-items:flex-end;">
+        <button type="button" onclick="filterTable()" class="btn-action btn-primary" style="height:36px; white-space:nowrap;"><i class="fas fa-filter"></i> Filter</button>
+        <button type="button" onclick="resetFilters()" class="btn-action btn-secondary" style="height:36px; white-space:nowrap;"><i class="fas fa-undo"></i> Reset</button>
     </div>
 </div>
 
@@ -1034,8 +1016,6 @@ button.tbl-btn.wkld { color:#475569!important; }
                     <th>First Name</th>
                     <th>Last Name</th>
                     <th>Contact No.</th>
-                    <th>Specialty</th>
-                    <th style="text-align:center;">Shift</th>
                     <th style="text-align:center;">Assigned JO</th>
                     <th style="text-align:center;">Completed Today</th>
                     <th style="text-align:center;">Status</th>
@@ -1045,7 +1025,7 @@ button.tbl-btn.wkld { color:#475569!important; }
             <tbody>
                 <?php if (empty($mechanics_list)): ?>
                 <tr id="emptyDbRow">
-                    <td colspan="10" style="text-align:center;padding:50px 20px;color:#64748b;">
+                    <td colspan="8" style="text-align:center;padding:50px 20px;color:#64748b;">
                         <i class="fas fa-user-slash" style="font-size:40px;color:#cbd5e1;display:block;margin:0 auto 10px;"></i>
                         <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 5px;">No mechanics available.</h3>
                         <p style="font-size:14.5px;color:#64748b;margin:0;">Click "Add New Mechanic" to register.</p>
@@ -1057,7 +1037,6 @@ button.tbl-btn.wkld { color:#475569!important; }
                     $statusClass = $row['status'] === 'active' ? 'badge-active' : 'badge-inactive';
                     $assigned = (int)($row['assigned_jo_count'] ?? 0) + (int)($row['mt_active_count'] ?? 0);
                     $completedToday = (int)($row['completed_today'] ?? 0);
-                    $shift = htmlspecialchars($row['shift_assignment'] ?? 'All Shifts');
                     // Build display name: First Last
                     $fname = trim($row['first_name'] ?? '');
                     $mname = trim($row['middle_name'] ?? '');
@@ -1072,17 +1051,11 @@ button.tbl-btn.wkld { color:#475569!important; }
                 ?>
                 <tr class="mech-row"
                     data-id="<?= (int)$row['id'] ?>"
-                    data-status="<?= htmlspecialchars($row['status']) ?>"
-                    data-specialty="<?= htmlspecialchars($row['specialization'] ?: 'General Mechanic') ?>"
-                    data-shift="<?= htmlspecialchars($row['shift_assignment'] ?? '') ?>">
+                    data-status="<?= htmlspecialchars($row['status']) ?>">
                     <td style="font-family:monospace;font-weight:700;color:#002F70;font-size:14.5px;"><?= $fid ?></td>
                     <td class="mech-fname" style="font-weight:700;color:#0f172a;"><?= htmlspecialchars($fname ?: '—') ?></td>
                     <td class="mech-lname" style="font-weight:600;color:#0f172a;"><?= htmlspecialchars($lname ?: '—') ?></td>
                     <td class="mech-contact" style="color:#475569;"><?= htmlspecialchars($row['contact_no'] ?: '—') ?></td>
-                    <td class="mech-spec" style="font-weight:600;color:#334155;"><?= htmlspecialchars($row['specialization'] ?: 'General Mechanic') ?></td>
-                    <td style="text-align:center;">
-                        <span style="font-size:14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:2px 8px;font-weight:600;color:#475569;"><?= $shift ?></span>
-                    </td>
                     <td style="text-align:center;">
                         <?php if ($assigned > 0): ?>
                         <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;padding:2px 8px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;gap:4px;">
@@ -1132,7 +1105,7 @@ button.tbl-btn.wkld { color:#475569!important; }
                 <?php endforeach; ?>
                 <?php endif; ?>
                 <tr id="noFilterRow" style="display:none;">
-                    <td colspan="10" style="text-align:center;padding:40px;color:#64748b;">
+                    <td colspan="8" style="text-align:center;padding:40px;color:#64748b;">
                         <i class="fas fa-search" style="font-size:32px;color:#cbd5e1;display:block;margin:0 auto 10px;"></i>
                         No mechanics matched your filters.
                     </td>
@@ -1298,34 +1271,14 @@ button.tbl-btn.wkld { color:#475569!important; }
                 </div>
 
                 <div class="form-section-title"><i class="fas fa-briefcase"></i> Work Information</div>
-                <div class="form-grid-3">
-                    <div class="form-field" style="margin-bottom:0;">
-                        <label>Specialty <span style="color:#dc2626;">*</span></label>
-                        <select name="specialization" id="field_specialty" required>
-                            <option value="General Mechanic" selected>General Mechanic</option>
-                            <option value="Oil Change">Oil Change</option>
-                            <option value="Brake System">Brake System</option>
-                            <option value="Air Conditioning">Air Conditioning</option>
-                            <option value="Engine Repair">Engine Repair</option>
-                            <option value="Electrical">Electrical</option>
-                            <option value="Tire Services">Tire Services</option>
-                        </select>
-                    </div>
-                    <div class="form-field" style="margin-bottom:0;">
-                        <label>Shift</label>
-                        <select name="shift_assignment" id="field_shift">
-                            <option value="All Shifts" selected>All Shifts</option>
-                            <option value="First Shift">First Shift</option>
-                            <option value="Second Shift">Second Shift</option>
-                        </select>
-                    </div>
-                    <div class="form-field" style="margin-bottom:0;">
-                        <label>Employment Status <span style="color:#dc2626;">*</span></label>
-                        <select name="status" id="field_status" required>
-                            <option value="active" selected>Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
+                <input type="hidden" name="specialization" id="field_specialty" value="General Mechanic">
+                <input type="hidden" name="shift_assignment" id="field_shift" value="All Shifts">
+                <div class="form-field" style="margin-bottom:0; max-width:280px;">
+                    <label>Employment Status <span style="color:#dc2626;">*</span></label>
+                    <select name="status" id="field_status" required>
+                        <option value="active" selected>Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1342,12 +1295,10 @@ function validateMechanicForm() {
     const mnEl = document.getElementById('field_middle_name');
     const lnEl = document.getElementById('field_last_name');
     const phEl = document.getElementById('field_contact');
-    const spEl = document.getElementById('field_specialty');
 
     const fn = (fnEl?.value || '').trim();
     const ln = (lnEl?.value || '').trim();
     const ph = (phEl?.value || '').trim();
-    const sp = (spEl?.value || '').trim();
 
     const placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
 
@@ -1380,24 +1331,28 @@ function validateMechanicForm() {
         return false;
     }
 
-    // Specialty (Required)
-    if (!sp) {
-        alert('Specialty selection is required. Please select a specialty from the dropdown.');
-        if (spEl) spEl.focus();
-        return false;
-    }
-
     return true;
 }
 // ── Export Mechanics ─────────────────────────────────────────────────────────
 function exportMechanics(format) {
-    const q    = encodeURIComponent(document.getElementById('tableSearch')?.value || '');
-    const st   = encodeURIComponent(document.getElementById('statusFilter')?.value || '');
-    const sp   = encodeURIComponent(document.getElementById('specialtyFilter')?.value || '');
-    const sh   = encodeURIComponent(document.getElementById('shiftFilter')?.value || '');
-    const url  = `export_mechanics_list.php?format=${format}&q=${q}&status=${st}&specialty=${sp}&shift=${sh}`;
-    if (format === 'print' || format === 'pdf') {
-        window.open(url, '_blank');
+    const q  = encodeURIComponent(document.getElementById('tableSearch')?.value || '');
+    const st = encodeURIComponent(document.getElementById('statusFilter')?.value || '');
+    const url = `export_mechanics_list.php?format=${format}&q=${q}&status=${st}`;
+
+    if (format === 'print') {
+        let iframe = document.getElementById('mechPrintReportIframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'mechPrintReportIframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+        }
+        iframe.src = url;
     } else {
         window.location.href = url;
     }
@@ -1407,8 +1362,6 @@ function exportMechanics(format) {
 function filterTable() {
     const q    = (document.getElementById('tableSearch')?.value || '').toLowerCase().trim();
     const sSt  = (document.getElementById('statusFilter')?.value || '').toLowerCase().trim();
-    const sSp  = (document.getElementById('specialtyFilter')?.value || '').toLowerCase().trim();
-    const sSh  = (document.getElementById('shiftFilter')?.value || '').toLowerCase().trim();
     const rows = document.querySelectorAll('#mechanicsTable tbody tr.mech-row');
     let vis = 0;
 
@@ -1416,21 +1369,19 @@ function filterTable() {
         const fname   = (tr.querySelector('.mech-fname')?.textContent || '').toLowerCase().trim();
         const lname   = (tr.querySelector('.mech-lname')?.textContent || '').toLowerCase().trim();
         const contact = (tr.querySelector('.mech-contact')?.textContent || '').toLowerCase().trim();
-        const spec    = (tr.querySelector('.mech-spec')?.textContent || '').toLowerCase().trim();
         const id      = (tr.querySelector('td:first-child')?.textContent || '').toLowerCase().trim();
         const status  = (tr.dataset.status || '').toLowerCase().trim();
-        const specVal = (tr.dataset.specialty || '').toLowerCase().trim();
-        const shiftVal= (tr.dataset.shift || '').toLowerCase().trim();
+        const fullname = (fname + ' ' + lname).trim();
+        const combined = `${id} ${fname} ${lname} ${fullname} ${contact}`.toLowerCase();
 
-        const matchQ = !q || fname.includes(q) || lname.includes(q) || contact.includes(q) || spec.includes(q) || id.includes(q);
-        const matchStatus = !sSt || status === sSt;
-        const matchSpec = !sSp || specVal === sSp || spec === sSp;
-        let matchShift = true;
-        if (sSh && sSh !== 'all shifts') {
-            matchShift = (shiftVal === sSh || shiftVal === 'all shifts' || shiftVal === '');
+        let matchQ = true;
+        if (q) {
+            const terms = q.split(/\s+/).filter(Boolean);
+            matchQ = combined.includes(q) || terms.every(t => combined.includes(t));
         }
+        const matchStatus = !sSt || status === sSt;
 
-        const ok = matchQ && matchStatus && matchSpec && matchShift;
+        const ok = matchQ && matchStatus;
         tr.style.display = ok ? '' : 'none';
         if (ok) vis++;
     });
@@ -1441,7 +1392,7 @@ function filterTable() {
     }
 }
 function resetFilters() {
-    ['tableSearch','statusFilter','specialtyFilter','shiftFilter'].forEach(id => {
+    ['tableSearch','statusFilter'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -1451,21 +1402,22 @@ document.addEventListener('DOMContentLoaded', filterTable);
 
 // ── View Modal ────────────────────────────────────────────────────────────────
 function openViewModal(m) {
-    document.getElementById('viewMecId').textContent   = 'MEC-' + String(m.id).padStart(4,'0');
-    document.getElementById('viewName').textContent    = m.full_name;
-    document.getElementById('viewFullName').textContent= m.full_name;
-    document.getElementById('viewAvatar').textContent  = (m.full_name||'M').charAt(0).toUpperCase();
-    document.getElementById('viewContact').textContent = m.contact_no || '—';
-    document.getElementById('viewAddress').textContent = m.address || '—';
-    document.getElementById('viewSpecialty').textContent = m.specialization || 'General Mechanic';
-    document.getElementById('viewShift').textContent   = m.shift_assignment || 'All Shifts';
-    document.getElementById('viewDateHired').textContent = m.date_hired || '—';
-    document.getElementById('viewCreatedAt').textContent = m.created_at || '—';
-    document.getElementById('viewAssigned').textContent  = m.assigned_jo_count || 0;
-    document.getElementById('viewCompleted').textContent = m.completed_jo_count || 0;
+    if (!document.getElementById('viewModal')) return;
+    if (document.getElementById('viewMecId')) document.getElementById('viewMecId').textContent   = 'MEC-' + String(m.id).padStart(4,'0');
+    if (document.getElementById('viewName')) document.getElementById('viewName').textContent    = m.full_name;
+    if (document.getElementById('viewFullName')) document.getElementById('viewFullName').textContent= m.full_name;
+    if (document.getElementById('viewAvatar')) document.getElementById('viewAvatar').textContent  = (m.full_name||'M').charAt(0).toUpperCase();
+    if (document.getElementById('viewContact')) document.getElementById('viewContact').textContent = m.contact_no || '—';
+    if (document.getElementById('viewAddress')) document.getElementById('viewAddress').textContent = m.address || '—';
+    if (document.getElementById('viewDateHired')) document.getElementById('viewDateHired').textContent = m.date_hired || '—';
+    if (document.getElementById('viewCreatedAt')) document.getElementById('viewCreatedAt').textContent = m.created_at || '—';
+    if (document.getElementById('viewAssigned')) document.getElementById('viewAssigned').textContent  = m.assigned_jo_count || 0;
+    if (document.getElementById('viewCompleted')) document.getElementById('viewCompleted').textContent = m.completed_jo_count || 0;
     const isAct = m.status === 'active';
-    document.getElementById('viewStatusContainer').innerHTML =
-        `<span class="badge ${isAct?'badge-active':'badge-inactive'}"><i class="fas ${isAct?'fa-check-circle':'fa-times-circle'}"></i> ${isAct?'Active':'Inactive'}</span>`;
+    if (document.getElementById('viewStatusContainer')) {
+        document.getElementById('viewStatusContainer').innerHTML =
+            `<span class="badge ${isAct?'badge-active':'badge-inactive'}"><i class="fas ${isAct?'fa-check-circle':'fa-times-circle'}"></i> ${isAct?'Active':'Inactive'}</span>`;
+    }
     document.getElementById('viewModal').style.display = 'flex';
 }
 
@@ -1607,8 +1559,8 @@ function openAddModal() {
     document.getElementById('modalTitle').innerHTML = '<i class="fas fa-plus-circle"></i> Add New Mechanic';
     document.getElementById('field_mechanic_id').value = 'MEC-<?= sprintf('%04d', $next_mech_id) ?>';
     ['field_first_name','field_middle_name','field_last_name','field_contact','field_address'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-    document.getElementById('field_specialty').value = 'General Mechanic';
-    document.getElementById('field_shift').value = 'All Shifts';
+    if (document.getElementById('field_specialty')) document.getElementById('field_specialty').value = 'General Mechanic';
+    if (document.getElementById('field_shift')) document.getElementById('field_shift').value = 'All Shifts';
     document.getElementById('field_status').value = 'active';
     document.getElementById('field_date_hired').value = '';
     document.getElementById('addEditModal').style.display = 'flex';
@@ -1623,8 +1575,8 @@ function openEditModal(m) {
     document.getElementById('field_last_name').value   = m.last_name   || '';
     document.getElementById('field_contact').value     = m.contact_no  || '';
     document.getElementById('field_address').value     = m.address     || '';
-    document.getElementById('field_specialty').value   = m.specialization || 'General Mechanic';
-    document.getElementById('field_shift').value       = m.shift_assignment || 'All Shifts';
+    if (document.getElementById('field_specialty')) document.getElementById('field_specialty').value   = m.specialization || 'General Mechanic';
+    if (document.getElementById('field_shift')) document.getElementById('field_shift').value       = m.shift_assignment || 'All Shifts';
     document.getElementById('field_status').value      = m.status || 'active';
     document.getElementById('field_date_hired').value  = m.date_hired || '';
     document.getElementById('addEditModal').style.display = 'flex';
@@ -1765,7 +1717,7 @@ function showToastNotification(message, type = "success", title = "") {
 document.addEventListener("DOMContentLoaded", function() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
-        const searchVal = urlParams.get('search');
+        const searchVal = urlParams.get('search') || urlParams.get('q');
         if (searchVal) {
             const searchInput = document.getElementById('tableSearch');
             if (searchInput) {

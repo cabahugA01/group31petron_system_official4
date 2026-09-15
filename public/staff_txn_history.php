@@ -190,6 +190,86 @@ require_login();
   color: #00264D !important;
   border-color: #00264D !important;
 }
+
+/* ── Petron Downward Custom Dropdowns ── */
+.petron-dropdown-source { display: none !important; }
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+}
+.petron-dropdown-wrap.is-open { z-index: 10050 !important; }
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 12px !important;
+    background: #fff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    font-size: 13.5px !important;
+    color: #0f172a !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    gap: 8px !important;
+    white-space: nowrap !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25,103,210,.2) !important;
+}
+.petron-dropdown-label {
+    flex: 1 !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+.petron-dropdown-arrow {
+    font-size: 11px !important;
+    color: #64748b !important;
+    transition: transform .2s !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-arrow {
+    transform: rotate(180deg) !important;
+}
+.petron-dropdown-menu {
+    position: absolute !important;
+    top: calc(100% + 4px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    z-index: 10051 !important;
+    min-width: 100% !important;
+    background: #fff !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15) !important;
+    max-height: 240px !important;
+    overflow-y: auto !important;
+    display: none !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu {
+    display: block !important;
+}
+.petron-dropdown-item {
+    padding: 8px 14px !important;
+    font-size: 13.5px !important;
+    color: #1e293b !important;
+    background: #fff !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: background .12s, color .12s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #fff !important;
+}
 </style>
 
 <div class="txn-section-header">
@@ -246,7 +326,7 @@ require_login();
   </div>
   <div class="th-filter-grp">
     <label>Transaction Type</label>
-    <select name="txn_type">
+    <select id="histFilterTxnType" name="txn_type">
       <option value="">All Types</option>
       <option value="merchandise" <?= $hist_filter_type==='merchandise'?'selected':'' ?>>Merchandise Only</option>
       <option value="job_order" <?= $hist_filter_type==='job_order'?'selected':'' ?>>Job Order Only</option>
@@ -255,14 +335,14 @@ require_login();
   </div>
   <div class="th-filter-grp">
     <label>Customer</label>
-    <select name="cust_type">
+    <select id="histFilterCustType" name="cust_type">
       <option value="">All</option>
       <option value="registered" <?= $hist_filter_ctype==='registered'?'selected':'' ?>>Registered</option>
     </select>
   </div>
   <div class="th-filter-grp">
     <label>Payment Method</label>
-    <select name="payment">
+    <select id="histFilterPayment" name="payment">
       <option value="">All Methods</option>
       <?php foreach(['Cash','Credit Card','Debit Card','GCash','Maya','Petron Fleet Card','Credit Account'] as $_pm): ?>
       <option value="<?= $_pm ?>" <?= $hist_filter_pay===$_pm?'selected':'' ?>><?= $_pm ?></option>
@@ -271,7 +351,7 @@ require_login();
   </div>
   <div class="th-filter-grp">
     <label>Payment Status</label>
-    <select name="pstatus">
+    <select id="histFilterPstatus" name="pstatus">
       <option value="">All Statuses</option>
       <option value="paid" <?= strtolower($hist_filter_pstatus)==='paid'?'selected':'' ?>>Paid</option>
       <option value="pending" <?= strtolower($hist_filter_pstatus)==='pending'?'selected':'' ?>>Pending</option>
@@ -280,7 +360,7 @@ require_login();
   </div>
   <div class="th-filter-grp">
     <label>Status</label>
-    <select name="vstatus">
+    <select id="histFilterVstatus" name="vstatus">
       <option value="">All Statuses</option>
       <option value="Completed" <?= $hist_filter_vstatus==='Completed'?'selected':'' ?>>Completed</option>
       <option value="Adjusted" <?= $hist_filter_vstatus==='Adjusted'?'selected':'' ?>>Adjusted</option>
@@ -289,7 +369,7 @@ require_login();
   </div>
   <div class="th-filter-grp">
     <label>Shift</label>
-    <select name="shift">
+    <select id="histFilterShift" name="shift">
       <option value="">All Shifts</option>
       <option value="first" <?= $hist_filter_shift==='first'?'selected':'' ?>>Shift 1</option>
       <option value="second" <?= $hist_filter_shift==='second'?'selected':'' ?>>Shift 2</option>
@@ -676,5 +756,116 @@ window.histChangePerPage = function() {
 };
 
 histRender();
+})();
+
+// ── Petron Downward Custom Dropdowns for Transaction History ──
+(function() {
+    function setupHistPetronDD() {
+        var selectors = [
+            '#histFilterTxnType',
+            '#histFilterCustType',
+            '#histFilterPayment',
+            '#histFilterPstatus',
+            '#histFilterVstatus',
+            '#histFilterShift'
+        ];
+        selectors.forEach(function(selId) {
+            var select = document.querySelector(selId);
+            if (!select || select.dataset.petronDownReady === '1') return;
+            select.dataset.petronDownReady = '1';
+
+            var wrap = document.createElement('div');
+            wrap.className = 'petron-dropdown-wrap';
+            if (select.name === 'txn_type') wrap.style.minWidth = '190px';
+            else if (select.name === 'payment') wrap.style.minWidth = '155px';
+            else if (select.name === 'cust_type' || select.name === 'shift') wrap.style.minWidth = '115px';
+            else if (select.name === 'pstatus') wrap.style.minWidth = '140px';
+            else if (select.name === 'vstatus') wrap.style.minWidth = '130px';
+            else wrap.style.minWidth = '140px';
+
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'petron-dropdown-trigger';
+
+            var label = document.createElement('span');
+            label.className = 'petron-dropdown-label';
+
+            var arrow = document.createElement('i');
+            arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+            trigger.appendChild(label);
+            trigger.appendChild(arrow);
+
+            var menu = document.createElement('div');
+            menu.className = 'petron-dropdown-menu';
+
+            Array.from(select.options).forEach(function(option) {
+                if (option.hidden) return;
+                var item = document.createElement('div');
+                item.className = 'petron-dropdown-item';
+                item.dataset.value = option.value;
+                item.textContent = option.textContent;
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    select.value = option.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    syncLabel();
+                    wrap.classList.remove('is-open');
+                });
+                menu.appendChild(item);
+            });
+
+            function syncLabel() {
+                var sel = select.options[select.selectedIndex];
+                label.textContent = sel ? sel.textContent.trim() : '';
+                Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(i) {
+                    i.classList.toggle('is-selected', i.dataset.value === select.value);
+                });
+            }
+
+            trigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var willOpen = !wrap.classList.contains('is-open');
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                if (willOpen) {
+                    var rect = wrap.getBoundingClientRect();
+                    menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                    menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                    wrap.classList.add('is-open');
+                    var s = menu.querySelector('.petron-dropdown-item.is-selected');
+                    if (s) s.scrollIntoView({ block: 'nearest' });
+                }
+            });
+
+            select.addEventListener('change', syncLabel);
+            select.classList.add('petron-dropdown-source');
+            select.style.display = 'none';
+            select.hidden = true;
+            select.parentNode.insertBefore(wrap, select.nextSibling);
+            wrap.appendChild(trigger);
+            wrap.appendChild(menu);
+            syncLabel();
+        });
+
+        if (!window.__petronDownCloseBoundHist) {
+            window.__petronDownCloseBoundHist = true;
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.petron-dropdown-wrap')) {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupHistPetronDD);
+    } else {
+        setupHistPetronDD();
+    }
 })();
 </script>

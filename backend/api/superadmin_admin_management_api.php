@@ -333,6 +333,13 @@ if ($action === 'add_station') {
         // Audit log
         log_activity($pdo, $me['id'], 'Create Station', "SuperAdmin created station '{$station_name}' (ID {$new_id}, Region: {$region_upper})");
 
+        // Set session flash messages for page reload
+        $_SESSION['admin_mgmt_flash'] = [
+            'type' => 'success',
+            'msg'  => "Station '{$station_name}' created successfully and is now available for admin assignment."
+        ];
+        $_SESSION['success'] = "Station '{$station_name}' created successfully and is now available for admin assignment.";
+
         echo json_encode([
             'ok'         => true,
             'message'    => "Station '{$station_name}' created successfully and is now available for admin assignment.",

@@ -427,7 +427,20 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     WHERE ft.station_id = ?
                       AND DATE(ft.transaction_date) BETWEEN ? AND ?
                       AND $shift_cond
-                      AND LOWER(COALESCE(ft.status,'')) NOT IN ('rejected','cancelled','canceled','voided')
+                      AND LOWER(COALESCE(ft.status,'')) IN ('verified','approved','validated')
+                      AND EXISTS (
+                          SELECT 1 FROM fuel_sales_closing fsc
+                          WHERE fsc.station_id = ft.station_id
+                            AND fsc.report_date = DATE(ft.transaction_date)
+                            AND (
+                                fsc.shift_period = ft.shift_period
+                                OR fsc.shift = ft.shift_name
+                                OR fsc.shift = ft.shift_period
+                                OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                                OR ft.shift_period IS NULL OR ft.shift_period = ''
+                            )
+                            AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+                      )
                     ORDER BY ft.transaction_date ASC, TIME(ft.transaction_date) ASC, ft.fuel_type ASC, ft.pump_id ASC
                 ");
                 $q->execute([$station_id, $date_start, $date_end]);
@@ -571,7 +584,20 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     WHERE ft.station_id = ?
                       AND DATE(ft.transaction_date) BETWEEN ? AND ?
                       AND $shift_cond
-                      AND LOWER(COALESCE(ft.status,'')) NOT IN ('rejected','cancelled','canceled','voided')
+                      AND LOWER(COALESCE(ft.status,'')) IN ('verified','approved','validated')
+                      AND EXISTS (
+                          SELECT 1 FROM fuel_sales_closing fsc
+                          WHERE fsc.station_id = ft.station_id
+                            AND fsc.report_date = DATE(ft.transaction_date)
+                            AND (
+                                fsc.shift_period = ft.shift_period
+                                OR fsc.shift = ft.shift_name
+                                OR fsc.shift = ft.shift_period
+                                OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                                OR ft.shift_period IS NULL OR ft.shift_period = ''
+                            )
+                            AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+                      )
                     GROUP BY mode_of_payment
                     ORDER BY amount DESC
                 ");

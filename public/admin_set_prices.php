@@ -107,10 +107,11 @@ try {
 
 // ── Handle Approvals / Rejections ──────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    // Preserve the active tab across POST redirects
     $redirect_tab = trim($_POST['active_tab'] ?? 'fuel');
     if (!in_array($redirect_tab, ['fuel', 'merch', 'services'])) $redirect_tab = 'fuel';
+
+    try {
+        $action = $_POST['action'] ?? '';
 
     if ($action === 'approve_price') {
         $approval_id = (int)$_POST['approval_id'];
@@ -292,6 +293,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $target_fuel_name = !empty($fuel_name) ? $fuel_name : $old_name;
             $target_ugt       = !empty($ugt_no) ? $ugt_no : $old_ugt;
 
+            // Ensure unique_station_fuel constraint is not violated if new name conflicts with an existing tank
+            if (strcasecmp($target_fuel_name, $old_name) !== 0) {
+                $chk_stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND fuel_type = ? AND id != ? LIMIT 1");
+                $chk_stmt->execute([$fuel_station_id, $target_fuel_name, $id]);
+                if ($chk_stmt->fetchColumn()) {
+                    $target_fuel_name = $old_name;
+                }
+            }
+
             $matching_ids = get_matching_fuel_ids($pdo, $fuel_station_id, $id, $old_name);
             if (empty($matching_ids)) $matching_ids = [$id];
             $in_clause   = implode(',', array_fill(0, count($matching_ids), '?'));
@@ -353,42 +363,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("UPDATE fuel_inventory SET ugt_no=?, fuel_type=?, price_per_liter=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id=?")
                 ->execute([$target_ugt, $target_fuel_name, $price, $capacity, $critical_level, $reorder_level, $status_val, $me['id'], $id]);
 
-            // 2. Sync fuel_type and price_per_liter to other matching fuel tanks (if any)
+            // 2. Sync price_per_liter ONLY to other matching fuel tanks (do NOT touch fuel_type to prevent duplicate key error)
             if (count($matching_ids) > 1) {
                 $other_ids = array_values(array_filter($matching_ids, fn($mid) => (int)$mid !== (int)$id));
                 if (!empty($other_ids)) {
                     $other_in = implode(',', array_fill(0, count($other_ids), '?'));
-                    $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, price_per_liter=?, updated_by=?, last_updated=NOW() WHERE id IN ($other_in)")
-                        ->execute(array_merge([$target_fuel_name, $price, $me['id']], $other_ids));
+                    $pdo->prepare("UPDATE fuel_inventory SET price_per_liter=?, updated_by=?, last_updated=NOW() WHERE id IN ($other_in)")
+                        ->execute(array_merge([$price, $me['id']], $other_ids));
                 }
             }
 
-            // ── Sync to fuel_types & fuel_pricing across system ──
-            $fuel_type_id = $old_fuel['fuel_type_id'] ?? null;
-            if ($fuel_type_id) {
-                try {
-                    if (!empty($fuel_name)) {
-                        $pdo->prepare("UPDATE fuel_types SET name = ?, price_per_liter = ? WHERE id = ?")
-                            ->execute([$target_fuel_name, $price, $fuel_type_id]);
-                    } else {
-                        $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
-                            ->execute([$price, $fuel_type_id]);
-                    }
-                } catch (Exception $e) {}
+            // ── Sync to fuel_types & fuel_pricing across all matching tanks ──
+            try {
+                $m_stmt = $pdo->prepare("SELECT id, fuel_type_id FROM fuel_inventory WHERE id IN ($in_clause)");
+                $m_stmt->execute($matching_ids);
+                $all_m_rows = $m_stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($all_m_rows as $mrow) {
+                    $ft_id = (int)($mrow['fuel_type_id'] ?? 0);
+                    if ($ft_id > 0) {
+                        try {
+                            if ((int)$mrow['id'] === (int)$id && !empty($fuel_name) && strcasecmp($target_fuel_name, $old_name) === 0) {
+                                $pdo->prepare("UPDATE fuel_types SET name = ?, price_per_liter = ? WHERE id = ?")
+                                    ->execute([$target_fuel_name, $price, $ft_id]);
+                            } else {
+                                $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")
+                                    ->execute([$price, $ft_id]);
+                            }
+                        } catch (Exception $e) {}
 
-                try {
-                    $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
-                    $fp_stmt->execute([$fuel_station_id, $fuel_type_id]);
-                    $fp_id = $fp_stmt->fetchColumn();
-                    if ($fp_id) {
-                        $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
-                            ->execute([$price, $fp_id]);
-                    } else {
-                        $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
-                            ->execute([$fuel_station_id, $fuel_type_id, $price, $me['id']]);
+                        try {
+                            $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                            $fp_stmt->execute([$fuel_station_id, $ft_id]);
+                            $fp_id = $fp_stmt->fetchColumn();
+                            if ($fp_id) {
+                                $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                                    ->execute([$price, $fp_id]);
+                            } else {
+                                $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                                    ->execute([$fuel_station_id, $ft_id, $price, $me['id']]);
+                            }
+                        } catch (Exception $e) {}
                     }
-                } catch (Exception $e) {}
-            }
+                }
+            } catch (Exception $e) {}
 
             // ── Log price change to history if price changed ──
             if (abs($price - $old_price) > 0.001) {
@@ -434,8 +451,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: admin_set_prices.php?tab=fuel");
         exit;
     }
-    header("Location: admin_set_prices.php?tab=" . urlencode($redirect_tab));
-    exit;
+        header("Location: admin_set_prices.php?tab=" . urlencode($redirect_tab));
+        exit;
+    } catch (Throwable $e) {
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+        header("Location: admin_set_prices.php?tab=" . urlencode($redirect_tab ?? 'fuel'));
+        exit;
+    }
 }
 
 
@@ -879,9 +901,10 @@ try {
                ON s.id = p.product_id
               AND p.product_type IN ('service', 'service_type')
               AND p.status = 'pending'
+        WHERE s.station_id = ?
         ORDER BY s.service_name
     ");
-    $stmt->execute();
+    $stmt->execute([(int)$station_id]);
     $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Add manager names in a second pass
@@ -1202,7 +1225,7 @@ table.pricing-table tbody tr:hover {
 .badge-active    { background: #dcfce7 !important; color: #15803d !important; border: 1px solid #86efac !important; }
 .badge-critical  { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
 .badge-low       { background: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important; }
-.badge-out       { background: #f1f5f9 !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; }
+.badge-out       { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
 .badge-inactive  { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #f87171 !important; }
 .badge-noprice   { background: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a !important; }
 .badge-warn      { background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fca5a5 !important; }
@@ -1260,8 +1283,8 @@ table.pricing-table tbody tr:hover {
 .act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border: 1.5px solid #f87171 !important; background: #fff5f5 !important; }
 .act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #dc2626 !important; }
 
-.act-btn-activate { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-activate:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #16a34a !important; }
+.act-btn-activate { color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border: 1.5px solid #15803d !important; background: #16a34a !important; font-weight: 700 !important; box-shadow: 0 1px 3px rgba(22,163,74,0.3) !important; }
+.act-btn-activate:hover { background: #15803d !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #166534 !important; }
 
 .act-btn-approve { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
 .act-btn-approve:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #16a34a !important; }
@@ -1401,8 +1424,7 @@ table.pricing-table tbody tr:hover {
     #approvePriceModalAdmin,
     #toggleFuelStatusModal,
     #toggleServiceStatusModal,
-    #restoreServiceFeesModal,
-    #confirmationModal {
+    #restoreServiceFeesModal {
         left: 250px !important;
         width: calc(100% - 250px) !important;
         right: 0 !important;
@@ -1411,6 +1433,19 @@ table.pricing-table tbody tr:hover {
         align-items: center !important;
         justify-content: center !important;
         padding: 20px !important;
+    }
+    /* confirmationModal always covers full viewport — never offset by sidebar */
+    #confirmationModal {
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        bottom: 0 !important;
+        right: 0 !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 20px !important;
+        box-sizing: border-box !important;
     }
 
     body.sidebar-collapsed .admin-layout-modal,
@@ -1434,8 +1469,7 @@ table.pricing-table tbody tr:hover {
     body.sidebar-collapsed #approvePriceModalAdmin,
     body.sidebar-collapsed #toggleFuelStatusModal,
     body.sidebar-collapsed #toggleServiceStatusModal,
-    body.sidebar-collapsed #restoreServiceFeesModal,
-    body.sidebar-collapsed #confirmationModal {
+    body.sidebar-collapsed #restoreServiceFeesModal {
         left: 70px !important;
         width: calc(100% - 70px) !important;
         right: 0 !important;
@@ -1476,6 +1510,39 @@ table.pricing-table tbody tr:hover {
     min-width: 0 !important;
 }
 </style>
+<style>
+/* ── STRICT ANTI-OVERLAP RULES FOR ADMIN TABLES ── */
+#adminMerchTable,
+#adminFuelTable,
+.pricing-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+#adminMerchTable th,
+#adminMerchTable td,
+#adminFuelTable th,
+#adminFuelTable td {
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+}
+
+#adminMerchTable td:nth-child(2) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.35 !important;
+    max-width: 0 !important;
+}
+
+#adminMerchTable td:nth-child(2) strong {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    display: block !important;
+}
+</style>
+
 
 <div class="main-content">
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
@@ -1518,6 +1585,11 @@ table.pricing-table tbody tr:hover {
     <div style="background:#dcfce7;border:1.5px solid #86efac;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:15.5px;color:#166534;font-weight:600;">
         <i class="fas fa-check-circle" style="font-size:16px;"></i>
         <span><?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></span>
+    </div>
+<?php elseif (!empty($_SESSION['error'])): ?>
+    <div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:15.5px;color:#991b1b;font-weight:600;">
+        <i class="fas fa-exclamation-circle" style="font-size:16px;"></i>
+        <span><?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?></span>
     </div>
 <?php elseif (!empty($_SESSION['warning'])): ?>
     <div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:15.5px;color:#92400e;font-weight:600;">
@@ -1664,19 +1736,19 @@ table.pricing-table tbody tr:hover {
                         } elseif ($level <= 0 || in_array($raw_status, ['out of stock', 'out', 'empty'])) {
                             $status_label = 'Out of Stock';
                             $status_class = 'badge-out';
-                            $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
                         } elseif (($critical > 0 && $level <= $critical) || in_array($raw_status, ['critical', 'crit'])) {
                             $status_label = 'Critical';
                             $status_class = 'badge-critical';
-                            $badge_style  = 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                            $badge_style  = 'background:#fee2e2 !important;color:#b91c1c !important;border:1px solid #fca5a5 !important;';
                         } elseif (($reorder > 0 && $level <= $reorder) || in_array($raw_status, ['low', 'low stock', 'reorder'])) {
                             $status_label = 'Low Stock';
                             $status_class = 'badge-low';
-                            $badge_style  = 'background:#fef3c7;color:#92400e;border:1px solid #fde68a;';
+                            $badge_style  = 'background:#fef3c7 !important;color:#92400e !important;border:1px solid #fde68a !important;';
                         } else {
                             $status_label = 'Normal';
                             $status_class = 'badge-normal';
-                            $badge_style  = 'background:#dcfce7;color:#15803d;border:1px solid #86efac;';
+                            $badge_style  = 'background:#dcfce7 !important;color:#15803d !important;border:1px solid #86efac !important;';
                         }
                         
                         $ugt_str = $f['ugt_no'] ?? ('UGT #' . $f['pump_id']);
@@ -1727,9 +1799,9 @@ table.pricing-table tbody tr:hover {
                         
                         <!-- Status -->
                         <td style="vertical-align:middle;text-align:center;">
-                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>padding:3px 6px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;">
+                            <span class="badge <?php echo $status_class; ?>" style="<?php echo $badge_style; ?>display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;">
                                 <?php if ($is_deactivated): ?>
-                                    <i class="fas fa-ban" style="font-size:9px;"></i> DEACTIVATED
+                                    <i class="fas fa-ban" style="font-size:9.5px;"></i> DEACTIVATED
                                 <?php else: ?>
                                     <?php echo htmlspecialchars($status_label); ?>
                                 <?php endif; ?>
@@ -1898,16 +1970,16 @@ table.pricing-table tbody tr:hover {
         <div class="table-wrap" style="width:100% !important;overflow-x:hidden !important;box-sizing:border-box !important;">
             <table class="pricing-table" id="adminMerchTable" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
                 <colgroup>
-                    <col style="width:13%;">   <!-- SKU -->
-                    <col style="width:17%;">   <!-- Product -->
-                    <col style="width:11%;">   <!-- Category / Brand -->
-                    <col style="width:6.5%;">  <!-- UOM -->
+                    <col style="width:11%;">   <!-- SKU -->
+                    <col style="width:23%;">   <!-- Product (expanded) -->
+                    <col style="width:10%;">   <!-- Category / Brand -->
+                    <col style="width:6%;">    <!-- UOM -->
                     <col style="width:7.5%;">  <!-- Selling Price -->
                     <col style="width:5%;">    <!-- Stock -->
                     <col style="width:9.5%;">  <!-- Request Status -->
                     <col style="width:7%;">    <!-- Status -->
-                    <col style="width:8%;">    <!-- Updated -->
-                    <col style="width:15.5%;"> <!-- Actions -->
+                    <col style="width:7%;">    <!-- Updated -->
+                    <col style="width:14%;">   <!-- Actions -->
                 </colgroup>
                 <thead style="background:#002F6C !important;">
                     <tr style="background:#002F6C !important;">
@@ -1943,6 +2015,7 @@ table.pricing-table tbody tr:hover {
                         $is_inactive   = in_array($prod_status, ['inactive', 'disabled', 'deactivated']);
                     ?>
                     <tr class="admin-merch-row"
+                        data-id="<?php echo (int)($item['id'] ?? 0); ?>"
                         data-name="<?php echo strtolower(htmlspecialchars($item['product_name'] ?? '')); ?>"
                         data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                         data-brand="<?php echo strtolower(htmlspecialchars($item['brand'] ?? 'Generic')); ?>"
@@ -1950,7 +2023,7 @@ table.pricing-table tbody tr:hover {
                         data-cat="<?php echo htmlspecialchars($cat_label); ?>"
                         data-prodstatus="<?php echo $is_inactive ? 'inactive' : 'active'; ?>"
                         data-reqstatus="<?php echo $app_status; ?>"
-                        <?php if ($is_inactive): ?>style="opacity:0.6;background:#f8f9fa;"<?php endif; ?>>
+                        <?php if ($is_inactive): ?>style="background:#f8fafc;"<?php endif; ?>>
                         
                         <!-- SKU -->
                         <td style="vertical-align:middle;padding:8px 6px;white-space:nowrap;">
@@ -2039,7 +2112,7 @@ table.pricing-table tbody tr:hover {
                                     <button type="button" onclick="viewAdminMerchandiseDetails(<?php echo $item['id']; ?>)" class="act-btn act-btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </button>
-                                    <button type="button" onclick="openAdminEditProductModal(<?php echo $item['id']; ?>)" class="act-btn act-btn-edit">
+                                    <button type="button" onclick="openAdminEditProductModal(<?php echo (int)$item['id']; ?>)" class="act-btn act-btn-edit">
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
                                     <?php if (!$is_inactive): ?>
@@ -2047,8 +2120,8 @@ table.pricing-table tbody tr:hover {
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button type="button" onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-activate" style="color:#15803d !important;border-color:#86efac !important;background:#f0fdf4 !important;">
-                                            <i class="fas fa-check-circle"></i> Activate
+                                        <button type="button" onclick="activateMerchandise(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars(addslashes($item['product_name'] ?? '')); ?>')" class="act-btn act-btn-activate" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:1.5px solid #15803d !important;background:#16a34a !important;font-weight:700 !important;box-shadow:0 1px 3px rgba(22,163,74,0.3) !important;">
+                                            <i class="fas fa-check-circle" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Activate
                                         </button>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -2350,8 +2423,13 @@ table.pricing-table tbody tr:hover {
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (₱) <span style="color:#dc2626;">*</span></label>
+                    <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Default Selling Price (&#8369;) <span style="color:#dc2626;">*</span></label>
                     <input type="number" step="0.01" min="0" id="adminEditPrice" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15.5px; font-weight:700; color:#002F6C;" placeholder="0.00"              oninput="sanitizeDecimalInput(this)">
+                </div>
+                <div style="grid-column: span 2;">
+                    <label style="display:block; font-size:14.5px; font-weight:600; color:#334155; margin-bottom:4px;">Expiration Date <span style="color:#94a3b8; font-weight:400;">(Optional)</span></label>
+                    <input type="date" id="adminEditExpiry" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:15px; box-sizing:border-box;">
+                    <small style="color:#64748b; font-size:13px;">Leave blank for non-perishable products (tools, accessories, etc.)</small>
                 </div>
             </div>
             <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
@@ -2461,7 +2539,6 @@ table.pricing-table tbody tr:hover {
                     <div><span style="color:#64748b;font-weight:600;">Service Fee:</span><br><strong id="adm_vs_fee" style="color:#002F6C;font-size:14px;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Labor Fee:</span><br><strong id="adm_vs_labor" style="color:#0369a1;font-size:14px;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Total Service Rate:</span><br><strong id="adm_vs_total" style="color:#15803d;font-size:14px;">-</strong></div>
-                    <div><span style="color:#64748b;font-weight:600;">Estimated Duration:</span><br><span id="adm_vs_duration" style="color:#334155;font-weight:600;">-</span></div>
                     <div><span style="color:#64748b;font-weight:600;">Required Mechanics:</span><br><span id="adm_vs_mechanics" style="color:#334155;font-weight:600;">-</span></div>
                     <div><span style="color:#64748b;font-weight:600;">Status:</span><br><span id="adm_vs_status" style="margin-top:2px;display:inline-block;">-</span></div>
                     <div><span style="color:#64748b;font-weight:600;">Last Updated:</span><br><span id="adm_vs_updated" style="color:#475569;font-weight:600;">-</span></div>
@@ -2568,7 +2645,7 @@ table.pricing-table tbody tr:hover {
                 <h4 style="margin:0 0 14px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;"><i class="fas fa-info-circle"></i> Product Specification &amp; Overview</h4>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:15.5px;">
                     <div><span style="color:#64748b;font-weight:600;">SKU / Code:</span><br><code id="adm_vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
-                    
+                    <div><span style="color:#64748b;font-weight:600;">Barcode:</span><br><code id="adm_vm_barcode" style="font-weight:800;color:#0284c7;">-</code></div>
                     <div><span style="color:#64748b;font-weight:600;">Product Name:</span><br><strong id="adm_vm_name" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Category:</span><br><strong id="adm_vm_category">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;">Brand:</span><br><strong id="adm_vm_brand">-</strong></div>
@@ -2781,7 +2858,7 @@ function showCustomAlert(message, type, callback) {
     container.appendChild(toast);
     setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
 
-    var delay = (typeof callback === 'function') ? 2200 : (isError || isWarning ? 6000 : 4500);
+    var delay = (typeof callback === 'function') ? 500 : (isError || isWarning ? 4000 : 3000);
     setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
@@ -2794,10 +2871,16 @@ function showCustomAlert(message, type, callback) {
 
 // ── 1. Admin Edit Product Modal ────────────────────────────────────────────
 function openAdminEditProductModal(id) {
+    // Show modal immediately — instant feedback on click
     document.getElementById('adminEditId').value = id;
+    // Clear previous values while loading
+    var fields = ['adminEditName','adminEditCategory','adminEditBrand','adminEditSku'];
+    fields.forEach(function(f){ var el = document.getElementById(f); if(el) el.value = ''; });
     document.getElementById('adminEditProductModal').style.display = 'flex';
+    // Fetch fresh data in background
     fetch('admin_set_prices_handler.php?action=get_merch_details_admin&id=' + id)
-        .then(r => r.json()).then(data => {
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
             if (data.success && data.item) {
                 var i = data.item;
                 document.getElementById('adminEditName').value     = i.product_name || '';
@@ -2809,8 +2892,10 @@ function openAdminEditProductModal(id) {
                 document.getElementById('adminEditCritical').value = parseInt(i.critical_level || 10);
                 document.getElementById('adminEditStatus').value   = i.status || 'active';
                 document.getElementById('adminEditPrice').value    = parseFloat(i.unit_price || 0).toFixed(2);
+                document.getElementById('adminEditExpiry').value   = i.expiration_date || '';
             }
-        });
+        })
+        .catch(function() { /* Modal stays open; user can still proceed */ });
 }
 
 function closeAdminEditProductModal() {
@@ -2871,6 +2956,7 @@ document.getElementById('adminEditProductForm').addEventListener('submit', funct
     fd.append('reorder_level',  reorderVal);
     fd.append('critical_level', criticalVal);
     fd.append('status',         document.getElementById('adminEditStatus').value);
+    fd.append('expiration_date', ((document.getElementById('adminEditExpiry') || {}).value || '').trim());
 
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {
@@ -2933,8 +3019,6 @@ function openAdminViewServiceModal(svc) {
     
     var totalFee = (parseFloat(svc.service_price || 0) + parseFloat(svc.labor_fee || 0)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     document.getElementById('adm_vs_total').textContent = '₱' + totalFee;
-    
-    document.getElementById('adm_vs_duration').textContent = svc.duration_str || (svc.estimated_duration ? svc.estimated_duration + ' mins' : '—');
     document.getElementById('adm_vs_mechanics').textContent = (svc.required_mechanics || 1) + ' mechanic(s)';
     document.getElementById('adm_vs_updated').textContent = svc.updated_at || '—';
     document.getElementById('adm_vs_desc').textContent = svc.description || 'No description provided.';
@@ -3364,89 +3448,115 @@ function viewAdminMerchandiseDetails(id) {
     });
 
     fetch('admin_set_prices_handler.php?action=get_merchandise_details_admin&id=' + id)
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) { closeAdminViewMerchModal(); showCustomAlert(data.message || 'Failed to load product details.', 'error'); return; }
-        var p = data.product;
-        document.getElementById('adm_vm_title').textContent = (p.name || 'Product') + ' — SPECIFICATION & HISTORY';
-        document.getElementById('adm_vm_sku').textContent = p.sku || '—';
-        document.getElementById('adm_vm_barcode').textContent = p.barcode || '—';
-        document.getElementById('adm_vm_name').textContent = p.name || '—';
-        document.getElementById('adm_vm_category').textContent = p.category_name || '—';
-        document.getElementById('adm_vm_brand').textContent = p.brand || '—';
-        document.getElementById('adm_vm_unit').textContent = p.unit || '—';
-        document.getElementById('adm_vm_price').textContent = '₱' + parseFloat(p.price || 0).toFixed(2);
-        document.getElementById('adm_vm_cost').textContent = '₱' + parseFloat(p.cost || 0).toFixed(2);
-        document.getElementById('adm_vm_stock').textContent = parseFloat(p.current_stock || 0).toLocaleString();
-        document.getElementById('adm_vm_batch_count').textContent = (p.batch_count || 0) + ' batch(es)';
-        document.getElementById('adm_vm_reorder').textContent = p.min_stock_level || '—';
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data || !data.success) {
+            closeAdminViewMerchModal();
+            showCustomAlert((data && data.message) ? data.message : 'Failed to load product details.', 'error');
+            return;
+        }
+        var p = data.product || {};
+        
+        function setVmText(elId, val) {
+            var el = document.getElementById(elId);
+            if (el) el.textContent = (val !== null && val !== undefined && val !== '') ? val : '—';
+        }
+
+        setVmText('adm_vm_title', (p.name || 'Product') + ' — SPECIFICATION & HISTORY');
+        setVmText('adm_vm_sku', p.sku);
+        setVmText('adm_vm_barcode', p.barcode);
+        setVmText('adm_vm_name', p.name);
+        setVmText('adm_vm_category', p.category_name);
+        setVmText('adm_vm_brand', p.brand);
+        setVmText('adm_vm_unit', p.unit);
+        setVmText('adm_vm_price', '₱' + parseFloat(p.price || 0).toFixed(2));
+        setVmText('adm_vm_cost', '₱' + parseFloat(p.cost || 0).toFixed(2));
+        setVmText('adm_vm_stock', parseFloat(p.current_stock || 0).toLocaleString());
+        setVmText('adm_vm_batch_count', (p.batch_count || 0) + ' batch(es)');
+        setVmText('adm_vm_reorder', p.min_stock_level);
+        
         var stLower = (p.status || 'active').toLowerCase();
         var stColor = stLower === 'active' ? '#16a34a' : '#dc2626';
         var stBg = stLower === 'active' ? '#dcfce7' : '#fee2e2';
-        document.getElementById('adm_vm_status').innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:14px;font-weight:700;">' + (p.status || 'Active') + '</span>';
+        var stEl = document.getElementById('adm_vm_status');
+        if (stEl) {
+            stEl.innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:14px;font-weight:700;">' + (p.status || 'Active') + '</span>';
+        }
 
         // Batches
         var bb = document.getElementById('adm_vm_batches_body');
-        if (data.batches && data.batches.length > 0) {
-            bb.innerHTML = data.batches.map(function(b) {
-                var stBadge = b.status === 'active' ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:12.5px;font-weight:700;white-space:nowrap;">Active</span>' : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:12.5px;font-weight:700;white-space:nowrap;">' + b.status + '</span>';
-                var tdB = 'padding:9px 12px;font-size:13.5px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
-                return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="' + tdB + 'font-family:monospace;font-weight:700;color:#0284c7;">' + (b.batch_number || '—') + '</td>' +
-                    '<td style="' + tdB + 'font-weight:700;">' + parseFloat(b.remaining_qty || 0).toLocaleString() + '</td>' +
-                    '<td style="' + tdB + '">' + (b.expiration_date || '—') + '</td>' +
-                    '<td style="' + tdB + '">' + stBadge + '</td></tr>';
-            }).join('');
-        } else { bb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No batch records</td></tr>'; }
+        if (bb) {
+            if (data.batches && data.batches.length > 0) {
+                bb.innerHTML = data.batches.map(function(b) {
+                    var stBadge = b.status === 'active' ? '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:10px;font-size:12.5px;font-weight:700;white-space:nowrap;">Active</span>' : '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:12.5px;font-weight:700;white-space:nowrap;">' + b.status + '</span>';
+                    var tdB = 'padding:9px 12px;font-size:13.5px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
+                    return '<tr style="border-top:1px solid #f1f5f9;">' +
+                        '<td style="' + tdB + 'font-family:monospace;font-weight:700;color:#0284c7;">' + (b.batch_number || '—') + '</td>' +
+                        '<td style="' + tdB + 'font-weight:700;">' + parseFloat(b.remaining_qty || 0).toLocaleString() + '</td>' +
+                        '<td style="' + tdB + '">' + (b.expiration_date || '—') + '</td>' +
+                        '<td style="' + tdB + '">' + stBadge + '</td></tr>';
+                }).join('');
+            } else { bb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No batch records</td></tr>'; }
+        }
 
         // Price History
         var pb = document.getElementById('adm_vm_price_history_body');
-        if (data.price_history && data.price_history.length > 0) {
-            pb.innerHTML = data.price_history.map(function(h) {
-                var statusColor = h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#dc2626' : '#d97706';
-                var statusBg = h.status === 'approved' ? '#dcfce7' : h.status === 'rejected' ? '#fee2e2' : '#fef3c7';
-                var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
-                var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
-                return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
-                    '<td style="' + tdBase + '">₱' + parseFloat(h.old_price || 0).toFixed(2) + '</td>' +
-                    '<td style="' + tdBase + 'font-weight:800;color:#002F6C;">₱' + parseFloat(h.new_price || 0).toFixed(2) + '</td>' +
-                    '<td style="' + tdUser + '">' + (h.requested_by_name || '—') + '</td>' +
-                    '<td style="' + tdUser + '">' + (h.approved_by_name || '—') + '</td>' +
-                    '<td style="' + tdBase + '"><span style="background:' + statusBg + ';color:' + statusColor + ';padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap;">' + (h.status || '—') + '</span></td></tr>';
-            }).join('');
-        } else { pb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No price history</td></tr>'; }
+        if (pb) {
+            if (data.price_history && data.price_history.length > 0) {
+                pb.innerHTML = data.price_history.map(function(h) {
+                    var statusColor = h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#dc2626' : '#d97706';
+                    var statusBg = h.status === 'approved' ? '#dcfce7' : h.status === 'rejected' ? '#fee2e2' : '#fef3c7';
+                    var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
+                    var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
+                    return '<tr style="border-top:1px solid #f1f5f9;">' +
+                        '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
+                        '<td style="' + tdBase + '">₱' + parseFloat(h.old_price || 0).toFixed(2) + '</td>' +
+                        '<td style="' + tdBase + 'font-weight:800;color:#002F6C;">₱' + parseFloat(h.new_price || 0).toFixed(2) + '</td>' +
+                        '<td style="' + tdUser + '">' + (h.requested_by_name || '—') + '</td>' +
+                        '<td style="' + tdUser + '">' + (h.approved_by_name || '—') + '</td>' +
+                        '<td style="' + tdBase + '"><span style="background:' + statusBg + ';color:' + statusColor + ';padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap;">' + (h.status || '—') + '</span></td></tr>';
+                }).join('');
+            } else { pb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No price history</td></tr>'; }
+        }
 
         // Config History
         var cb = document.getElementById('adm_vm_config_history_body');
-        if (data.config_history && data.config_history.length > 0) {
-            cb.innerHTML = data.config_history.map(function(h) {
-                var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
-                var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
-                return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
-                    '<td style="' + tdBase + 'font-weight:700;color:#002F6C;">' + (h.field_name || '—') + '</td>' +
-                    '<td style="' + tdBase + 'color:#dc2626;line-height:1.4;">' + (h.old_value || '—') + '</td>' +
-                    '<td style="' + tdBase + 'color:#16a34a;font-weight:700;line-height:1.4;">' + (h.new_value || '—') + '</td>' +
-                    '<td style="' + tdUser + 'color:#334155;">' + (h.changed_by_name || '—') + '</td></tr>';
-            }).join('');
-        } else { cb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No configuration changes recorded</td></tr>'; }
+        if (cb) {
+            if (data.config_history && data.config_history.length > 0) {
+                cb.innerHTML = data.config_history.map(function(h) {
+                    var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
+                    var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
+                    return '<tr style="border-top:1px solid #f1f5f9;">' +
+                        '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
+                        '<td style="' + tdBase + 'font-weight:700;color:#002F6C;">' + (h.field_name || '—') + '</td>' +
+                        '<td style="' + tdBase + 'color:#dc2626;line-height:1.4;">' + (h.old_value || '—') + '</td>' +
+                        '<td style="' + tdBase + 'color:#16a34a;font-weight:700;line-height:1.4;">' + (h.new_value || '—') + '</td>' +
+                        '<td style="' + tdUser + 'color:#334155;">' + (h.changed_by_name || '—') + '</td></tr>';
+                }).join('');
+            } else { cb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No configuration changes recorded</td></tr>'; }
+        }
 
         // Status History
         var sb = document.getElementById('adm_vm_status_history_body');
-        if (data.status_history && data.status_history.length > 0) {
-            sb.innerHTML = data.status_history.map(function(h) {
-                var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
-                var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
-                return '<tr style="border-top:1px solid #f1f5f9;">' +
-                    '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
-                    '<td style="' + tdBase + 'color:#64748b;text-transform:capitalize;">' + (h.old_status || '—') + '</td>' +
-                    '<td style="' + tdBase + 'font-weight:700;text-transform:capitalize;color:#16a34a;">' + (h.new_status || '—') + '</td>' +
-                    '<td style="' + tdUser + 'color:#334155;">' + (h.changed_by_name || '—') + '</td></tr>';
-            }).join('');
-        } else { sb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No status changes recorded</td></tr>'; }
+        if (sb) {
+            if (data.status_history && data.status_history.length > 0) {
+                sb.innerHTML = data.status_history.map(function(h) {
+                    var tdBase = 'padding:9px 10px;font-size:13px;vertical-align:top;word-break:break-word;overflow-wrap:break-word;';
+                    var tdUser = 'padding:9px 10px;font-size:12.5px;vertical-align:top;word-break:break-all;overflow-wrap:anywhere;';
+                    return '<tr style="border-top:1px solid #f1f5f9;">' +
+                        '<td style="' + tdBase + 'color:#64748b;line-height:1.35;">' + (h.created_at || '—') + '</td>' +
+                        '<td style="' + tdBase + 'color:#64748b;text-transform:capitalize;">' + (h.old_status || '—') + '</td>' +
+                        '<td style="' + tdBase + 'font-weight:700;text-transform:capitalize;color:#16a34a;">' + (h.new_status || '—') + '</td>' +
+                        '<td style="' + tdUser + 'color:#334155;">' + (h.changed_by_name || '—') + '</td></tr>';
+                }).join('');
+            } else { sb.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:14px;color:#94a3b8;font-size:13.5px;">No status changes recorded</td></tr>'; }
+        }
     })
-    .catch(function() { closeAdminViewMerchModal(); showCustomAlert('Network error while loading product details.', 'error'); });
+    .catch(function(err) {
+        console.error('Error in viewAdminMerchandiseDetails:', err);
+        closeAdminViewMerchModal();
+        showCustomAlert('Error loading product details.', 'error');
+    });
 }
 
 function closeAdminViewMerchModal() {
@@ -3870,25 +3980,70 @@ function openToggleFuelStatusModal(id, newStatus, fuelName) {
     var descEl = document.getElementById('toggleFuelStatusDesc');
     var confirmBtn = document.getElementById('toggleFuelStatusConfirmBtn');
     if (isDeactivate) {
-        header.style.background = 'linear-gradient(135deg,#dc2626,#b91c1c)';
-        icon.innerHTML = '<i class="fas fa-ban" style="font-size:28px;color:#fff;"></i>';
-        titleEl.textContent = 'Deactivate Fuel Product';
-        descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#dc2626;">Inactive</strong>. This will prevent it from being used in transactions until reactivated.';
-        confirmBtn.style.background = '#dc2626';
-        confirmBtn.innerHTML = '<i class="fas fa-ban"></i> Confirm Deactivation';
+        if (header) header.style.background = 'linear-gradient(135deg,#dc2626,#b91c1c)';
+        if (icon) icon.innerHTML = '<i class="fas fa-ban" style="font-size:24px;color:#fff;"></i>';
+        if (titleEl) titleEl.textContent = 'Deactivate Fuel Product';
+        if (descEl) descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#dc2626;">Inactive</strong>. This will prevent it from being used in transactions until reactivated.';
+        if (confirmBtn) {
+            confirmBtn.style.setProperty('background', '#dc2626', 'important');
+            confirmBtn.style.setProperty('color', '#ffffff', 'important');
+            confirmBtn.innerHTML = '<i class="fas fa-ban" style="color:#ffffff !important;"></i> Confirm Deactivation';
+        }
     } else {
-        header.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
-        icon.innerHTML = '<i class="fas fa-check-circle" style="font-size:28px;color:#fff;"></i>';
-        titleEl.textContent = 'Activate Fuel Product';
-        descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#16a34a;">Active</strong>. It will be available for transactions.';
-        confirmBtn.style.background = '#16a34a';
-        confirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Activation';
+        if (header) header.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+        if (icon) icon.innerHTML = '<i class="fas fa-check-circle" style="font-size:24px;color:#fff;"></i>';
+        if (titleEl) titleEl.textContent = 'Activate Fuel Product';
+        if (descEl) descEl.innerHTML = 'You are about to set <strong style="color:#0f172a;">' + fuelName + '</strong> to <strong style="color:#16a34a;">Active</strong>. It will be available for transactions.';
+        if (confirmBtn) {
+            confirmBtn.style.setProperty('background', '#16a34a', 'important');
+            confirmBtn.style.setProperty('color', '#ffffff', 'important');
+            confirmBtn.innerHTML = '<i class="fas fa-check-circle" style="color:#ffffff !important;"></i> Confirm Activation';
+        }
     }
     modal.style.display = 'flex';
 }
 
 function closeToggleFuelStatusModal() {
     document.getElementById('toggleFuelStatusModal').style.display = 'none';
+}
+
+function confirmToggleFuelStatus() {
+    var id     = document.getElementById('toggleFuelStatusId').value;
+    var status = document.getElementById('toggleFuelStatusValue').value;
+    var btn    = document.getElementById('toggleFuelStatusConfirmBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    }
+    var fd = new FormData();
+    fd.append('action', 'toggle_fuel_status_admin');
+    fd.append('id', id);
+    fd.append('status', status);
+
+    fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            closeToggleFuelStatusModal();
+            if (data.success) {
+                showCustomAlert(data.message || 'Fuel product status updated successfully.', 'success', function() {
+                    location.reload();
+                });
+            } else {
+                showCustomAlert(data.message || 'Failed to update fuel status.', 'error');
+            }
+        })
+        .catch(function() {
+            closeToggleFuelStatusModal();
+            showCustomAlert('Network error while updating fuel status.', 'error');
+        })
+        .finally(function() {
+            if (btn) {
+                btn.disabled = false;
+                var isDeact = (status === 'inactive');
+                btn.style.setProperty('background', isDeact ? '#dc2626' : '#16a34a', 'important');
+                btn.innerHTML = isDeact ? '<i class="fas fa-ban" style="color:#ffffff !important;"></i> Confirm Deactivation' : '<i class="fas fa-check-circle" style="color:#ffffff !important;"></i> Confirm Activation';
+            }
+        });
 }
 
 function openApprovePriceModalAdmin(approvalId, productName, oldPrice, newPrice, tab) {
@@ -3927,10 +4082,20 @@ function exportPricing(format) {
         st  = encodeURIComponent(document.getElementById('svcStatusFilter')?.value || '');
         cat = encodeURIComponent(document.getElementById('serviceCategoryFilter')?.value || '');
     }
-    const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&q=${q}&status=${st}&category=${cat}&brand=${brd}`;
+    const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&q=${q}&status=${st}&category=${cat}&brand=${brd}&_ts=${Date.now()}`;
+
     if (format === 'print' || format === 'pdf') {
-        window.open(url, '_blank');
+        // Use hidden iframe — triggers print dialog directly without opening a new tab
+        let iframe = document.getElementById('pricingPrintIframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'pricingPrintIframe';
+            iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+            document.body.appendChild(iframe);
+        }
+        iframe.src = url;
     } else {
+        // Excel / CSV — direct download, no new tab
         window.location.href = url;
     }
 }
@@ -4194,6 +4359,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     var barcode  = ((document.getElementById('newMerchBarcode') || {}).value || '').trim();
     var reorder  = parseInt((document.getElementById('newMerchReorder') || {}).value) || 24;
     var critical = parseInt((document.getElementById('newMerchCritical') || {}).value) || 10;
+    var expiry   = ((document.getElementById('newMerchExpiry') || {}).value || '').trim();
 
     var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
     if (!name || placeholders.includes(name.toLowerCase())) {
@@ -4229,6 +4395,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     formData.append('barcode', barcode);
     formData.append('reorder_level', reorder);
     formData.append('critical_level', critical);
+    formData.append('expiration_date', expiry);
 
     fetch('admin_set_prices_handler.php', { method: 'POST', body: formData })
     .then(function(response) { return response.json(); })
@@ -4257,15 +4424,63 @@ var confirmModalData = null;
 function showConfirmModal(title, subtitle, message, callback, data) {
     confirmModalCallback = callback || null;
     confirmModalData = data || null;
-    
-    document.getElementById('confirmModalTitle').textContent = title || 'Confirm Action';
-    document.getElementById('confirmModalSubtitle').textContent = subtitle || 'Please confirm your action';
-    document.getElementById('confirmModalMessage').textContent = message || 'Are you sure you want to proceed?';
-    document.getElementById('confirmationModal').style.display = 'flex';
+
+    var isDeactivate = !title || title.toLowerCase().includes('deactivate');
+
+    var titleEl = document.getElementById('confirmActionTitle');
+    if (titleEl) titleEl.textContent = title || 'Confirm Action';
+
+    var subEl = document.getElementById('confirmActionSubtitle');
+    if (subEl) subEl.textContent = subtitle || 'Please confirm this action.';
+
+    var headerEl = document.getElementById('confirmActionHeader');
+    var iconEl = document.getElementById('confirmActionIcon');
+    var btnEl = document.getElementById('confirmActionBtn');
+    var btnIconEl = document.getElementById('confirmActionBtnIcon');
+    var btnLabelEl = document.getElementById('confirmActionBtnLabel');
+
+    if (isDeactivate) {
+        if (headerEl) headerEl.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)';
+        if (iconEl) iconEl.className = 'fas fa-ban';
+        if (btnEl) {
+            btnEl.style.setProperty('background', '#dc2626', 'important');
+            btnEl.style.setProperty('box-shadow', '0 2px 6px rgba(220,38,38,0.35)', 'important');
+        }
+        if (btnIconEl) btnIconEl.className = 'fas fa-ban';
+        if (btnLabelEl) btnLabelEl.textContent = 'Confirm Deactivation';
+    } else {
+        if (headerEl) headerEl.style.background = 'linear-gradient(135deg, #15803d, #166534)';
+        if (iconEl) iconEl.className = 'fas fa-check-circle';
+        if (btnEl) {
+            btnEl.style.setProperty('background', '#16a34a', 'important');
+            btnEl.style.setProperty('box-shadow', '0 2px 6px rgba(22,163,74,0.35)', 'important');
+        }
+        if (btnIconEl) btnIconEl.className = 'fas fa-check-circle';
+        if (btnLabelEl) btnLabelEl.textContent = 'Confirm Activation';
+    }
+
+    var msgEl = document.getElementById('confirmActionMessage');
+    if (msgEl) {
+        var match = (message || '').match(/"([^"]+)"/);
+        if (match && match[1]) {
+            var actionVerb = isDeactivate ? 'deactivate' : 'activate';
+            msgEl.innerHTML = 'Are you sure you want to ' + actionVerb + ' <strong style="color:#0f172a; font-weight:700;">"' + match[1] + '"</strong>?';
+        } else {
+            msgEl.textContent = (message || 'Are you sure you want to proceed?').replace(/\n\n.*$/, '');
+        }
+    }
+
+    var modal = document.getElementById('confirmationModal');
+    if (modal) {
+        modal.style.cssText = 'display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; width:100vw !important; height:100vh !important; background:rgba(15,23,42,0.65) !important; backdrop-filter:blur(3px) !important; z-index:99999 !important; align-items:center !important; justify-content:center !important; padding:20px !important; box-sizing:border-box !important;';
+    }
 }
 
 function closeConfirmModal() {
-    document.getElementById('confirmationModal').style.display = 'none';
+    var modal = document.getElementById('confirmationModal');
+    if (modal) {
+        modal.style.cssText = 'display:none !important;';
+    }
     confirmModalCallback = null;
     confirmModalData = null;
 }
@@ -4283,7 +4498,7 @@ function deactivateMerchandise(id, productName) {
     showConfirmModal(
         'Deactivate Merchandise Product',
         'Confirm deactivation',
-        'Are you sure you want to deactivate "' + productName + '"?\n\nThis will set the product status to inactive.',
+        'Are you sure you want to deactivate "' + productName + '"?',
         function(data) {
             var formData = new FormData();
             formData.append('action', 'deactivate_merchandise');
@@ -4294,13 +4509,13 @@ function deactivateMerchandise(id, productName) {
                 body: formData
             })
             .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    showCustomAlert(data.message || 'Product deactivated successfully!', 'success', function() {
+            .then(function(res) {
+                if (res.success) {
+                    showCustomAlert(res.message || 'Product deactivated successfully!', 'success', function() {
                         location.reload();
                     });
                 } else {
-                    showCustomAlert(data.message || 'Failed to deactivate product', 'error');
+                    showCustomAlert(res.message || 'Failed to deactivate product', 'error');
                 }
             })
             .catch(function() { showCustomAlert('Error deactivating product', 'error'); });
@@ -4313,7 +4528,7 @@ function activateMerchandise(id, productName) {
     showConfirmModal(
         'Activate Merchandise Product',
         'Confirm activation',
-        'Are you sure you want to activate "' + productName + '"?\n\nThis will set the product status to active.',
+        'Are you sure you want to activate "' + productName + '"?',
         function(data) {
             var formData = new FormData();
             formData.append('action', 'activate_merchandise');
@@ -4324,13 +4539,13 @@ function activateMerchandise(id, productName) {
                 body: formData
             })
             .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    showCustomAlert(data.message || 'Product activated successfully!', 'success', function() {
+            .then(function(res) {
+                if (res.success) {
+                    showCustomAlert(res.message || 'Product activated successfully!', 'success', function() {
                         location.reload();
                     });
                 } else {
-                    showCustomAlert(data.message || 'Failed to activate product', 'error');
+                    showCustomAlert(res.message || 'Failed to activate product', 'error');
                 }
             })
             .catch(function() { showCustomAlert('Error activating product', 'error'); });
@@ -4509,8 +4724,6 @@ function openAddServiceModal() {
     if (nameEl) nameEl.value = '';
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
-    var durEl = document.getElementById('addSvcDuration');
-    if (durEl) durEl.value = '';
     var mechEl = document.getElementById('addSvcMechanics');
     if (mechEl) mechEl.value = '';
     var feeEl = document.getElementById('addSvcServiceFee');
@@ -4533,8 +4746,6 @@ function closeAddServiceModal() {
     if (form) form.reset();
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
-    var durEl = document.getElementById('addSvcDuration');
-    if (durEl) durEl.value = '';
     var mechEl = document.getElementById('addSvcMechanics');
     if (mechEl) mechEl.value = '';
     hideSvcCatDrop('add');
@@ -4549,8 +4760,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 
     var svcFee      = parseFloat((document.getElementById('addSvcServiceFee') || {}).value) || 0;
     var laborFee    = parseFloat((document.getElementById('addSvcLaborFee')   || {}).value) || 0;
-    var durationVal = ((document.getElementById('addSvcDuration')  || {}).value || '').trim();
-    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : 60;
     var mechsVal    = ((document.getElementById('addSvcMechanics') || {}).value || '').trim();
     var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : 1;
     var desc        = (document.getElementById('addSvcDescription')  || {}).value || '';
@@ -4580,7 +4789,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     fd.append('category',             category);
     fd.append('service_price',        svcFee);
     fd.append('labor_fee',            laborFee);
-    fd.append('estimated_duration',   duration);
     fd.append('required_mechanics',   mechs);
     fd.append('description',          desc);
 
@@ -4951,11 +5159,9 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         <p style="margin:2px 0 0 0;font-size:14px;color:rgba(255,255,255,.8);">Please confirm this action.</p>
       </div>
     </div>
-    <form method="POST" action="admin_set_prices.php" style="padding:20px 22px;">
-      <input type="hidden" name="action" value="toggle_fuel_status_admin">
-      <input type="hidden" name="active_tab" value="fuel">
-      <input type="hidden" id="toggleFuelStatusId" name="id">
-      <input type="hidden" id="toggleFuelStatusValue" name="status">
+    <div style="padding:20px 22px;">
+      <input type="hidden" id="toggleFuelStatusId">
+      <input type="hidden" id="toggleFuelStatusValue">
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:15.5px;color:#475569;line-height:1.6;" id="toggleFuelStatusDesc">
           Are you sure you want to change the status of <strong id="toggleFuelStatusName" style="color:#0f172a;">this fuel</strong>?
@@ -4963,9 +5169,9 @@ safeAddListener('addServiceForm', 'submit', function(e) {
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button type="button" onclick="closeToggleFuelStatusModal()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel</button>
-        <button type="submit" id="toggleFuelStatusConfirmBtn" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 22px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-ban" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm Deactivation</button>
+        <button type="button" id="toggleFuelStatusConfirmBtn" onclick="confirmToggleFuelStatus()" style="background:#dc2626;color:#ffffff;border:none;padding:9px 22px;border-radius:8px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-ban" style="color:#ffffff !important;"></i> Confirm Deactivation</button>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 
@@ -5202,6 +5408,12 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         </div>
         <input type="hidden" id="newMerchCritical" value="0">
       </div>
+      <!-- Row 6: Expiration Date (Optional) -->
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Expiration Date <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="date" id="newMerchExpiry" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        <small style="color:#64748b;font-size:13px;">Leave blank if product has no expiration (e.g. tools, accessories)</small>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
         <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;"></i> Add Product</button>
@@ -5211,32 +5423,36 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 </div>
 
 <!-- Reusable Confirmation Modal -->
-<div id="confirmationModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;width:90%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;animation:adminModalPopIn .18s ease;">
+<div id="confirmationModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(15,23,42,0.65);backdrop-filter:blur(3px);z-index:99999;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;">
+    <div style="background:#ffffff;border-radius:16px;width:100%;max-width:440px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.35);display:flex;flex-direction:column;overflow:hidden;animation:adminModalPopIn .2s ease-out;border:1px solid rgba(226,232,240,0.8);margin:0;max-height:calc(100vh - 48px);">
         <!-- Header -->
-        <div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:18px 24px;display:flex;align-items:center;gap:12px;">
-            <div style="width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;">
-                <i class="fas fa-exclamation-triangle" style="color:#fff;font-size:20px;"></i>
+        <div id="confirmActionHeader" style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 22px;display:flex;align-items:center;gap:14px;border-radius:15px 15px 0 0;flex-shrink:0;">
+            <div style="width:42px;height:42px;background:rgba(255,255,255,0.18);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i id="confirmActionIcon" class="fas fa-ban" style="color:#ffffff;font-size:20px;"></i>
             </div>
-            <div>
-                <h3 style="margin:0;font-size:16px;font-weight:700;color:#fff;" id="confirmModalTitle">Confirm Action</h3>
-                <p style="margin:2px 0 0 0;font-size:14.5px;color:rgba(255,255,255,0.9);" id="confirmModalSubtitle">Please confirm your action</p>
+            <div style="flex:1;min-width:0;">
+                <h3 style="margin:0;font-size:16px;font-weight:800;color:#ffffff;line-height:1.3;" id="confirmActionTitle">Deactivate Merchandise Product</h3>
+                <p style="margin:3px 0 0 0;font-size:13px;color:rgba(255,255,255,0.85);font-weight:500;" id="confirmActionSubtitle">Please confirm this action.</p>
             </div>
         </div>
         
         <!-- Body -->
-        <div style="padding:24px;">
-            <p style="margin:0;font-size:14px;color:#475569;line-height:1.6;" id="confirmModalMessage">Are you sure you want to proceed?</p>
-        </div>
-        
-        <!-- Footer -->
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-            <button type="button" onclick="closeConfirmModal()" style="background:#f1f5f9 !important;color:#0f172a !important;-webkit-text-fill-color:#0f172a !important;border:1px solid #cbd5e1;padding:9px 20px;border-radius:6px;font-size:15.5px;font-weight:700 !important;cursor:pointer;transition:all .2s;">
-                <i class="fas fa-times" style="color:#0f172a !important;-webkit-text-fill-color:#0f172a !important;"></i> Cancel
-            </button>
-            <button type="button" id="confirmModalBtn" onclick="confirmModalAction()" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none;padding:9px 24px;border-radius:6px;font-size:15.5px;font-weight:700 !important;cursor:pointer;transition:all .2s;box-shadow:0 2px 4px rgba(220,38,38,0.3);">
-                <i class="fas fa-check" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> Confirm
-            </button>
+        <div style="padding:22px 24px;background:#ffffff;display:flex;flex-direction:column;gap:18px;">
+            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:18px 20px;">
+                <div style="font-size:15px;color:#334155;line-height:1.6;" id="confirmActionMessage">
+                    Are you sure you want to proceed?
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="display:flex;justify-content:flex-end;gap:10px;align-items:center;">
+                <button type="button" onclick="closeConfirmModal()" style="background:#f1f5f9 !important;color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;border:1.5px solid #cbd5e1 !important;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s;">
+                    <i class="fas fa-times-circle" style="color:#1e293b !important;-webkit-text-fill-color:#1e293b !important;"></i> Cancel
+                </button>
+                <button type="button" id="confirmActionBtn" onclick="confirmModalAction()" style="background:#dc2626 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;border:none !important;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:700 !important;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(220,38,38,0.35);transition:all .15s;">
+                    <i id="confirmActionBtnIcon" class="fas fa-ban" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;"></i> <span id="confirmActionBtnLabel">Confirm Deactivation</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -5294,13 +5510,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
             <small style="color:#94a3b8;font-size:14px;">Mechanic labor fee</small>
           </div>
-          <div>
-            <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins) <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
-            <input type="number" id="addSvcDuration" min="5" max="480" step="5"
-              style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-          </div>
-          <div>
+          <div style="grid-column:1/-1;">
             <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="addSvcMechanics" min="1" max="10"
               style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15.5px;box-sizing:border-box;"
@@ -5369,9 +5579,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 
 /* ── Center modal forms in the content layout (excluding sidebar navigation) ── */
 @media (min-width: 992px) {
-    [id*="Modal"],
-    [id*="modal"],
-    .admin-layout-modal {
+    div.admin-layout-modal,
+    div[id$="Modal"]:not(#confirmationModal):not(#approveConfirmModal) {
         left: 250px !important;
         width: calc(100% - 250px) !important;
         right: 0 !important;
@@ -5379,9 +5588,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         box-sizing: border-box !important;
         justify-content: center !important;
     }
-    body.sidebar-collapsed [id*="Modal"],
-    body.sidebar-collapsed [id*="modal"],
-    body.sidebar-collapsed .admin-layout-modal {
+    body.sidebar-collapsed div.admin-layout-modal,
+    body.sidebar-collapsed div[id$="Modal"]:not(#confirmationModal):not(#approveConfirmModal) {
         left: 70px !important;
         width: calc(100% - 70px) !important;
         right: 0 !important;
@@ -5389,9 +5597,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     }
 }
 @media (max-width: 991px) {
-    [id*="Modal"],
-    [id*="modal"],
-    .admin-layout-modal {
+    div.admin-layout-modal,
+    div[id$="Modal"]:not(#confirmationModal):not(#approveConfirmModal) {
         left: 0 !important;
         width: 100% !important;
         right: 0 !important;
@@ -5418,8 +5625,8 @@ function syncAdminModalLayout() {
         'addServiceModal', 'priceHistoryModal', 'viewRequestModal',
         'rejectModal', 'approveConfirmModal', 'rejectReasonModal',
         'editPriceModalAdmin', 'rejectPriceModalAdmin', 'approvePriceModalAdmin',
-        'toggleFuelStatusModal', 'toggleServiceStatusModal', 'restoreServiceFeesModal',
-        'confirmationModal'
+        'toggleFuelStatusModal', 'toggleServiceStatusModal', 'restoreServiceFeesModal'
+        /* confirmationModal intentionally excluded — it must cover the full viewport */
     ];
     modalOverlays.forEach(function(id) {
         var m = document.getElementById(id);
@@ -5433,7 +5640,64 @@ function syncAdminModalLayout() {
 }
 window.addEventListener('resize', syncAdminModalLayout);
 window.addEventListener('load', syncAdminModalLayout);
-document.addEventListener('DOMContentLoaded', syncAdminModalLayout);
+document.addEventListener('DOMContentLoaded', function() {
+    syncAdminModalLayout();
+
+    // Auto-open Merchandise Details Modal & scroll into view when navigated from Global Search
+    var urlParams = new URLSearchParams(window.location.search);
+    var autoOpenPid = urlParams.get('product_id') || urlParams.get('pid');
+    var autoOpenSearch = urlParams.get('search_query') || urlParams.get('search');
+    var autoOpenFlag = urlParams.get('auto_open') === '1' || !!autoOpenPid;
+    var tab = urlParams.get('tab');
+
+    if ((autoOpenFlag || autoOpenPid || autoOpenSearch) && (tab === 'merch' || !tab)) {
+        // Strip auto-open params from URL immediately so refresh won't re-trigger
+        (function() {
+            var clean = new URLSearchParams(window.location.search);
+            ['auto_open','product_id','pid','search_query','search'].forEach(function(k){ clean.delete(k); });
+            var newUrl = window.location.pathname + (clean.toString() ? '?' + clean.toString() : '');
+            history.replaceState(null, '', newUrl);
+        })();
+
+        setTimeout(function() {
+            var searchInput = document.getElementById('adminSearchInput');
+            if (searchInput && autoOpenSearch && !searchInput.value) {
+                searchInput.value = autoOpenSearch;
+                if (typeof filterAdminMerchTable === 'function') filterAdminMerchTable();
+            }
+
+            var targetRow = null;
+            if (autoOpenPid) {
+                targetRow = document.querySelector('#adminMerchBody tr.admin-merch-row[data-id="' + autoOpenPid + '"]');
+            }
+            if (!targetRow && autoOpenSearch) {
+                var sLower = autoOpenSearch.toLowerCase().trim();
+                var allRows = document.querySelectorAll('#adminMerchBody tr.admin-merch-row');
+                for (var i = 0; i < allRows.length; i++) {
+                    var n = (allRows[i].dataset.name || '').toLowerCase();
+                    var s = (allRows[i].dataset.sku || '').toLowerCase();
+                    if (n === sLower || s === sLower || n.indexOf(sLower) !== -1 || sLower.indexOf(n) !== -1) {
+                        targetRow = allRows[i];
+                        break;
+                    }
+                }
+            }
+
+            if (targetRow) {
+                // Scroll smoothly to row and highlight it (no modal auto-open)
+                targetRow.style.display = '';
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                targetRow.style.transition = 'all 0.5s ease';
+                targetRow.style.outline = '3px solid #002F70';
+                targetRow.style.backgroundColor = '#dbeafe';
+                setTimeout(function() {
+                    targetRow.style.outline = '';
+                    targetRow.style.backgroundColor = '';
+                }, 2500);
+            }
+        }, 350);
+    }
+});
 </script>
 </div> <!-- /.main-content -->
 

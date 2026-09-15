@@ -167,6 +167,10 @@ if ($search !== '') {
             $mt_params[] = $term;
         }
     }
+    $mt_search[] = "CAST(mt.id AS CHAR) LIKE ?"; $mt_params[] = $term;
+    $mt_search[] = "CONCAT('TXN-', LPAD(mt.id, 5, '0')) LIKE ?"; $mt_params[] = $term;
+    $mt_search[] = "CONCAT('JO-', LPAD(mt.id, 5, '0')) LIKE ?"; $mt_params[] = $term;
+    $mt_search[] = "CONCAT('JO-', mt.id) LIKE ?"; $mt_params[] = $term;
     $item_search = [];
     foreach (['product_name', 'category', 'item_type'] as $col) {
         if (vt_has($mti_cols, $col)) {
@@ -299,6 +303,9 @@ if ($search !== '') {
             $jo_params[] = $term;
         }
     }
+    $jo_search[] = "CAST(jo.id AS CHAR) LIKE ?"; $jo_params[] = $term;
+    $jo_search[] = "CONCAT('JO-', LPAD(jo.id, 5, '0')) LIKE ?"; $jo_params[] = $term;
+    $jo_search[] = "CONCAT('JO-', jo.id) LIKE ?"; $jo_params[] = $term;
     if ($jo_search) {
         $jo_where .= " AND (" . implode(' OR ', $jo_search) . ")";
     }
@@ -1573,7 +1580,7 @@ try {
                         if ($vst === 'voided' || $vst === 'void' || $vst === 'cancelled') {
                             echo '<span class="badge badge-red" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-ban" style="margin-right:3px;"></i> Voided</span>';
                         } elseif ($vst === 'adjusted') {
-                            echo '<span class="badge badge-amber" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-sliders-h" style="margin-right:3px;"></i> Adjusted</span>';
+                            echo '<span class="badge badge-gray" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;"><i class="fas fa-sliders-h" style="margin-right:3px;"></i> Adjusted</span>';
                         } elseif ($has_void_req) {
                             echo '<span class="badge badge-red" style="font-size:10px;font-weight:800;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1.2;border-radius:6px;box-sizing:border-box;" title="Void Requested"><i class="fas fa-clock" style="margin-right:3px;"></i> Void Req.</span>';
                         } elseif ($has_adj_req) {
@@ -2252,7 +2259,7 @@ function viewValidatedTransaction(source, id, orNo, txnIdStr) {
             const vs = (data.validation_status || '').toLowerCase();
             let bannerBg='#f0fdf4', bannerClr='#166534', bannerIcon='fa-check-circle', bannerLabel=data.validation_status||'Completed';
             if (vs.includes('void'))   { bannerBg='#fef2f2'; bannerClr='#dc2626'; bannerIcon='fa-ban'; }
-            else if (vs.includes('adjust')) { bannerBg='#faf5ff'; bannerClr='#6b21a8'; bannerIcon='fa-edit'; }
+            else if (vs.includes('adjust')) { bannerBg='#f1f5f9'; bannerClr='#475569'; bannerIcon='fa-sliders-h'; }
             const txnTypeLbl = data.type === 'job_order' ? 'Job Order' : 'Merchandise';
             html += `<div style="background:${bannerBg};border:1px solid ${bannerClr}33;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
                 <i class="fas ${bannerIcon}" style="color:${bannerClr};font-size:18px;flex-shrink:0;"></i>

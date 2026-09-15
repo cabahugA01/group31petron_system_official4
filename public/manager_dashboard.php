@@ -332,9 +332,10 @@ try {
             COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated,
             si.physical_count,
             si.variance
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+        FROM station_inventory si
+        JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ?
+          AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
 
         UNION
 

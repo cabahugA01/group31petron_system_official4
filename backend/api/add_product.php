@@ -67,9 +67,9 @@ try {
         $sku = 'SKU-' . strtoupper(substr(md5($product_name . time()), 0, 8));
     }
 
-    // Check if product already exists with same name/SKU
-    $checkStmt = $pdo->prepare("SELECT id FROM inventory_products WHERE product_name = ? OR (sku = ? AND sku != '') LIMIT 1");
-    $checkStmt->execute([$product_name, $sku]);
+    // Check if product already exists with same name/SKU within this station
+    $checkStmt = $pdo->prepare("SELECT id FROM inventory_products WHERE station_id = ? AND (product_name = ? OR (sku = ? AND sku != '')) LIMIT 1");
+    $checkStmt->execute([$station_id, $product_name, $sku]);
     if ($checkStmt->fetch()) {
         http_response_code(400);
         echo json_encode(['error' => 'A product with this name or SKU already exists.']);
@@ -83,20 +83,30 @@ try {
 
     $pdo->beginTransaction();
 
-    // Insert into inventory_products with status and stock
+    // Insert into inventory_products with status, stock, and station_id
     $stmt = $pdo->prepare("
-        INSERT INTO inventory_products (product_name, sku, category, size, unit_cost, unit_price, stock_quantity, stock, status, created_at, updated_at) 
-        VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, NOW(), NOW())
+        INSERT INTO inventory_products (product_name, sku, category, size, unit_cost, unit_price, stock_quantity, stock, status, station_id, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, NOW(), NOW())
     ");
-    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $status]);
+    $stmt->execute([$product_name, $sku, $category, $size, $unit_cost, $unit_price, $status, $station_id]);
     $product_id = $pdo->lastInsertId();
 
-    // Insert zero-stock entry into station_inventory
+    // Insert zero-stock entry into station_inventory with full price and cost
     $siStmt = $pdo->prepare("
-        INSERT INTO station_inventory (station_id, product_id, stock_level, status, last_updated) 
-        VALUES (?, ?, 0, 'active', NOW())
+        INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated) 
+        VALUES (?, ?, 0, ?, ?, ?, 24, 10, 'active', NOW())
     ");
-    $siStmt->execute([$station_id, $product_id]);
+    $siStmt->execute([$station_id, $product_id, $size ?: 'pcs', $unit_cost, $unit_price]);
+
+    // Also sync products table
+    try {
+        $cat_id = function_exists('ensure_product_category_id') ? ensure_product_category_id($pdo, $category) : null;
+        $pdo->prepare("
+            INSERT INTO products 
+            (id, sku, name, description, category_id, unit, cost, price, created_at, updated_at, min_stock_level, max_stock_level, station_id, current_stock, capacity, status)
+            VALUES (?, ?, ?, '', ?, ?, ?, ?, NOW(), NOW(), 24, 100, ?, 0, 480, 'active')
+        ")->execute([$product_id, $sku, $product_name, $cat_id, $size ?: 'pcs', $unit_cost, $unit_price, $station_id]);
+    } catch (Exception $e) {}
 
     $pdo->commit();
 

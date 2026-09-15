@@ -130,13 +130,9 @@ function update_item() {
 function get_items() {
     global $pdo, $station_id, $role;
     
-    if (in_array($role, ['admin', 'superadmin'])) {
-        // Admin can see all items
-        $stmt = $pdo->query("SELECT * FROM inventory_products ORDER BY category, product_name");
-    } else {
-        // Manager can see items for their station (implementation depends on station-specific inventory)
-        $stmt = $pdo->query("SELECT * FROM inventory_products ORDER BY category, product_name");
-    }
+    // Always filter by station_id — every station sees only its own products
+    $stmt = $pdo->prepare("SELECT * FROM inventory_products WHERE station_id = ? ORDER BY category, product_name");
+    $stmt->execute([$station_id]);
     
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['items' => $items]);

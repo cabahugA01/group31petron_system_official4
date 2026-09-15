@@ -459,9 +459,10 @@ try {
                ON s.id = p.product_id
               AND p.product_type = 'service'
               AND p.status = 'pending'
+        WHERE s.station_id = ?
         ORDER BY s.category ASC, s.service_name ASC
     ");
-    $stmt->execute();
+    $stmt->execute([(int)$station_id]);
     $service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $service_types = [];
@@ -551,9 +552,9 @@ table td {
     white-space: nowrap !important;
 }
 
-/* Vehicles, Amounts, & Dates Never Overlap */
-td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10),
-th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10) {
+/* Customer table specific: Vehicles, Amounts, & Dates */
+.cust-table td:nth-child(3), .cust-table td:nth-child(4), .cust-table td:nth-child(5), .cust-table td:nth-child(6), .cust-table td:nth-child(7), .cust-table td:nth-child(8), .cust-table td:nth-child(9), .cust-table td:nth-child(10),
+.cust-table th:nth-child(3), .cust-table th:nth-child(4), .cust-table th:nth-child(5), .cust-table th:nth-child(6), .cust-table th:nth-child(7), .cust-table th:nth-child(8), .cust-table th:nth-child(9), .cust-table th:nth-child(10) {
     white-space: nowrap !important;
 }
 
@@ -610,7 +611,96 @@ th:nth-child(3), th:nth-child(4), th:nth-child(5), th:nth-child(6), th:nth-child
 .rpt-btn-excel:hover { background: #f0fdf4 !important; color: #166534 !important; }
 .rpt-btn-csv   { color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
 .rpt-btn-csv:hover   { background: #f0fdf4 !important; color: #166534 !important; }
+</style><style>
+/* ══════════════════════════════════════════════════════════════════
+   STRICT ANTI-OVERLAP RULES — GUARANTEE ZERO COLUMN OVERLAPPING
+   ══════════════════════════════════════════════════════════════════ */
+#merchTable,
+#servicePricingTable,
+.pricing-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+}
+
+#merchTable th,
+#merchTable td,
+#servicePricingTable th,
+#servicePricingTable td,
+.pricing-table th,
+.pricing-table td {
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+}
+
+/* Col 2 (Product Name in Merch): Clean multi-line wrap with ZERO overlap */
+#merchTable td:nth-child(2),
+.pricing-table td:nth-child(2) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.35 !important;
+    max-width: 0 !important;
+}
+
+#merchTable td:nth-child(2) strong,
+.pricing-table td:nth-child(2) strong {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    display: block !important;
+    line-height: 1.35 !important;
+}
+
+/* Col 3 (Category) & Col 4 (Brand): Clean text wrap */
+#merchTable td:nth-child(3),
+#merchTable td:nth-child(4) {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.3 !important;
+    max-width: 0 !important;
+}
+
+/* Columns that should remain compact on a single line */
+#merchTable td:nth-child(1),
+#merchTable td:nth-child(5),
+#merchTable td:nth-child(6),
+#merchTable td:nth-child(7),
+#merchTable td:nth-child(8) {
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Col 9 (Actions): Flex row with no line breaks */
+#merchTable td:nth-child(9) {
+    white-space: nowrap !important;
+    overflow: visible !important;
+}
+
+#merchTable .act-btn-wrap,
+.pricing-table .act-btn-wrap {
+    display: inline-flex !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+#merchTable .act-btn,
+.pricing-table .act-btn {
+    width: auto !important;
+    max-width: none !important;
+    padding: 3px 7px !important;
+    font-size: 11px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    margin-bottom: 0 !important;
+}
 </style>
+
 
 
 
@@ -1163,14 +1253,14 @@ body, html { overflow-x: hidden; max-width: 100%; }
         <div class="table-wrap" style="overflow-x:hidden; width:100%;">
             <table class="pricing-table" id="merchTable" style="width:100%; table-layout:fixed;">
                 <colgroup>
-                    <col style="width: 11%;"> <!-- SKU / Code -->
-                    <col style="width: 21%;"> <!-- Product Name -->
-                    <col style="width: 13%;"> <!-- Category -->
-                    <col style="width: 9%;">  <!-- Brand -->
-                    <col style="width: 7%;">  <!-- UOM -->
+                    <col style="width: 10%;"> <!-- SKU / Code -->
+                    <col style="width: 27%;"> <!-- Product Name (expanded for clean wrapping) -->
+                    <col style="width: 12%;"> <!-- Category -->
+                    <col style="width: 8%;">  <!-- Brand -->
+                    <col style="width: 6%;">  <!-- UOM -->
                     <col style="width: 9%;">  <!-- Default Selling Price -->
-                    <col style="width: 7%;">  <!-- Reorder Lvl -->
-                    <col style="width: 9%;">  <!-- Status -->
+                    <col style="width: 6%;">  <!-- Reorder Lvl -->
+                    <col style="width: 8%;">  <!-- Status -->
                     <col style="width: 14%;"> <!-- Actions -->
                 </colgroup>
                 <thead>
@@ -1228,6 +1318,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         }
                     ?>
                     <tr class="merch-row"
+                        data-id="<?php echo (int)($item['id'] ?? 0); ?>"
                         data-name="<?php echo strtolower(htmlspecialchars($item['product_name'] ?? '')); ?>"
                         data-sku="<?php echo strtolower(htmlspecialchars($item['sku'] ?? '')); ?>"
                         data-brand="<?php echo strtolower(htmlspecialchars($item['brand'] ?? '')); ?>"
@@ -1372,12 +1463,12 @@ body, html { overflow-x: hidden; max-width: 100%; }
             <table class="pricing-table" id="servicePricingTable" style="table-layout:fixed; width:100%;">
                 <colgroup>
                     <col style="width: 9%;">   <!-- Code -->
-                    <col style="width: 28%;">  <!-- Service Name -->
-                    <col style="width: 14%;">  <!-- Category -->
-                    <col style="width: 12%;">  <!-- Service Fee -->
-                    <col style="width: 12%;">  <!-- Labor Fee -->
+                    <col style="width: 26%;">  <!-- Service Name -->
+                    <col style="width: 13%;">  <!-- Category -->
+                    <col style="width: 11%;">  <!-- Service Fee -->
+                    <col style="width: 11%;">  <!-- Labor Fee -->
                     <col style="width: 8%;">   <!-- Status -->
-                    <col style="width: 12%;">  <!-- Last Updated -->
+                    <col style="width: 9%;">   <!-- Last Updated -->
                     <col style="width: 13%;">  <!-- Action -->
                 </colgroup>
                 <thead>
@@ -2237,6 +2328,12 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <input type="hidden" id="newMerchCritical" value="0">
       </div>
+      <!-- Row 6: Expiration Date (Optional) -->
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Expiration Date <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="date" id="newMerchExpiry" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        <small style="color:#64748b;font-size:13px;">Leave blank if product has no expiration (e.g. tools, accessories)</small>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
         <button type="button" onclick="closeAddMerchandiseModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
         <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:9px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-check" style="color:#ffffff !important;"></i> Add Product</button>
@@ -2304,6 +2401,12 @@ document.addEventListener('DOMContentLoaded', function() {
           </select>
         </div>
         <input type="hidden" id="editMerchCritical" value="0">
+      </div>
+      <!-- Row: Expiration Date (Optional) -->
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:14px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Expiration Date <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="date" id="editMerchExpiry" style="width:100%;padding:9px 11px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+        <small style="color:#64748b;font-size:13px;">Leave blank for non-perishable products (tools, accessories, etc.)</small>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:16px;">
         <button type="button" onclick="closeEditMerchPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:9px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
@@ -2526,13 +2629,7 @@ document.addEventListener('DOMContentLoaded', function() {
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
             <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
-          <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins) <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
-            <input type="number" id="addSvcDuration" min="5" max="480" step="5"
-              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
-          </div>
-          <div>
+          <div style="grid-column:1/-1;">
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="addSvcMechanics" min="1" max="10"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
@@ -2572,7 +2669,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Approval Notice -->
     <div id="editSvcApprovalNotice" style="display:none;flex-shrink:0;background:#fef3c7;border-bottom:1px solid #fde68a;padding:10px 22px;font-size:14px;color:#92400e;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-exclamation-triangle"></i>
-      <span><strong>Fee changes require Admin approval.</strong> Non-fee fields (name, category, duration, etc.) will save immediately.</span>
+      <span><strong>Fee changes require Admin approval.</strong> Non-fee fields (name, category, mechanics, etc.) will save immediately.</span>
     </div>
     <!-- Form Body -->
     <form id="editServiceForm" style="flex:1 1 auto;overflow-y:auto;padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
@@ -2621,13 +2718,6 @@ document.addEventListener('DOMContentLoaded', function() {
             <small style="color:#94a3b8;font-size:12.5px;">Mechanic labor fee</small>
           </div>
           <div>
-            <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Est. Duration (mins) <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
-            <input type="number" id="editSvcDuration" min="5" max="480" step="5"
-              style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
-              onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-              oninput="this.value = this.value.replace(/[^0-9]/g, '');">
-          </div>
-          <div>
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Required Mechanics <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
             <input type="number" id="editSvcMechanics" min="1" max="10"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;box-sizing:border-box;"
@@ -2641,9 +2731,9 @@ document.addEventListener('DOMContentLoaded', function() {
               <option value="0">Inactive</option>
             </select>
           </div>
-          <div>
+          <div style="grid-column:1/-1;">
             <label style="display:block;font-size:13.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Description</label>
-            <textarea id="editSvcDescription" rows="1"
+            <textarea id="editSvcDescription" rows="2"
               style="width:100%;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:15px;resize:vertical;box-sizing:border-box;"
               onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"></textarea>
           </div>
@@ -2691,7 +2781,6 @@ document.addEventListener('DOMContentLoaded', function() {
           <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Service Fee:</span><br><strong id="viewSvcServiceFee" style="color:#002F6C;font-size:15px;font-weight:800;">₱0.00</strong></div>
           <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Labor Fee:</span><br><strong id="viewSvcLaborFee" style="color:#002F6C;font-size:15px;font-weight:800;">₱0.00</strong></div>
           <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Total Fee:</span><br><strong id="viewSvcTotalFee" style="color:#16a34a;font-size:16px;font-weight:800;">₱0.00</strong></div>
-          <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Est. Duration:</span><br><strong id="viewSvcDuration" style="color:#334155;">-</strong></div>
           <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Required Mechanics:</span><br><strong id="viewSvcMechanics" style="color:#334155;">-</strong></div>
           <div style="grid-column:1/-1;"><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Description:</span><br><span id="viewSvcDesc" style="color:#475569;font-size:14px;line-height:1.5;">-</span></div>
         </div>
@@ -3772,6 +3861,7 @@ function openEditMerchModal(id) {
                 document.getElementById('editMerchReorder').value   = parseInt(i.reorder_level || 24);
                 document.getElementById('editMerchCritical').value  = parseInt(i.critical_level || 10);
                 document.getElementById('editMerchStatus').value    = i.status || 'active';
+                if (document.getElementById('editMerchExpiry')) document.getElementById('editMerchExpiry').value = i.expiration_date || '';
             }
         });
     document.getElementById('editMerchName').focus();
@@ -3950,6 +4040,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     var barcode  = (document.getElementById('newMerchBarcode') ? document.getElementById('newMerchBarcode').value.trim() : '');
     var reorder  = parseInt(document.getElementById('newMerchReorder').value) || 24;
     var critical = parseInt(document.getElementById('newMerchCritical').value) || 10;
+    var expiry   = ((document.getElementById('newMerchExpiry') || {}).value || '').trim();
 
     var placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
     if (!name || placeholders.includes(name.toLowerCase())) {
@@ -3982,6 +4073,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     formData.append('barcode', barcode);
     formData.append('reorder_level', reorder);
     formData.append('critical_level', critical);
+    formData.append('expiration_date', expiry);
 
     fetch('manager_set_prices_handler.php', { method: 'POST', body: formData })
     .then(response => response.json())
@@ -4039,6 +4131,7 @@ safeAddListener('editMerchPriceForm', 'submit', function(e) {
     fd.append('reorder_level',  document.getElementById('editMerchReorder').value);
     fd.append('critical_level', document.getElementById('editMerchCritical').value);
     fd.append('status',         document.getElementById('editMerchStatus').value);
+    fd.append('expiration_date', ((document.getElementById('editMerchExpiry') || {}).value || '').trim());
     fetch('manager_set_prices_handler.php', {method:'POST', body:fd})
         .then(r => r.json()).then(data => {
             if (data.success) {
@@ -4404,8 +4497,6 @@ function openAddServiceModal() {
     if (nameEl) nameEl.value = '';
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
-    var durEl = document.getElementById('addSvcDuration');
-    if (durEl) durEl.value = '';
     var mechEl = document.getElementById('addSvcMechanics');
     if (mechEl) mechEl.value = '';
     var feeEl = document.getElementById('addSvcServiceFee');
@@ -4428,8 +4519,6 @@ function closeAddServiceModal() {
     if (form) form.reset();
     var catEl = document.getElementById('addSvcCategory');
     if (catEl) catEl.value = '';
-    var durEl = document.getElementById('addSvcDuration');
-    if (durEl) durEl.value = '';
     var mechEl = document.getElementById('addSvcMechanics');
     if (mechEl) mechEl.value = '';
     hideSvcCatDrop('add');
@@ -4446,8 +4535,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     if (isNaN(svcFee))   svcFee   = 0;
     if (isNaN(laborFee)) laborFee = 0;
 
-    var durationVal = ((document.getElementById('addSvcDuration')  || {}).value || '').trim();
-    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : null;
     var mechsVal    = ((document.getElementById('addSvcMechanics') || {}).value || '').trim();
     var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : null;
     var desc        = ((document.getElementById('addSvcDescription') || {}).value || '').trim();
@@ -4480,7 +4567,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     fd.append('category',           category);
     fd.append('service_price',      svcFee);
     fd.append('labor_fee',          laborFee);
-    fd.append('estimated_duration', duration !== null ? duration : '');
     fd.append('required_mechanics', mechs    !== null ? mechs    : '');
     fd.append('description',        desc);
 
@@ -4522,9 +4608,7 @@ function openEditServiceModal(svc) {
 
     document.getElementById('editSvcServiceFee').value   = _svcOriginalFee.toFixed(2);
     document.getElementById('editSvcLaborFee').value     = _svcOriginalLabor.toFixed(2);
-    var durVal  = (svc.estimated_duration  !== null && svc.estimated_duration  !== undefined && svc.estimated_duration  !== '') ? svc.estimated_duration  : '';
     var mechVal = (svc.required_mechanics  !== null && svc.required_mechanics  !== undefined && svc.required_mechanics  !== '') ? svc.required_mechanics  : '';
-    document.getElementById('editSvcDuration').value     = durVal;
     document.getElementById('editSvcMechanics').value    = mechVal;
     document.getElementById('editSvcDescription').value  = svc.description || '';
     document.getElementById('editSvcActive').value       = svc.active ? '1' : '0';
@@ -4565,8 +4649,6 @@ safeAddListener('editServiceForm', 'submit', function(e) {
 
     var svcFee      = parseFloat(document.getElementById('editSvcServiceFee').value) || 0;
     var laborFee    = parseFloat(document.getElementById('editSvcLaborFee').value)   || 0;
-    var durationVal = ((document.getElementById('editSvcDuration')  || {}).value || '').trim();
-    var duration    = (durationVal !== '' && !isNaN(parseInt(durationVal))) ? parseInt(durationVal) : null;
     var mechsVal    = ((document.getElementById('editSvcMechanics') || {}).value || '').trim();
     var mechs       = (mechsVal !== '' && !isNaN(parseInt(mechsVal))) ? parseInt(mechsVal) : null;
     var desc        = document.getElementById('editSvcDescription').value || '';
@@ -4594,7 +4676,6 @@ safeAddListener('editServiceForm', 'submit', function(e) {
     fd.append('category',           category);
     fd.append('service_price',      svcFee);
     fd.append('labor_fee',          laborFee);
-    fd.append('estimated_duration', duration !== null ? duration : '');
     fd.append('required_mechanics', mechs    !== null ? mechs    : '');
     fd.append('description',        desc);
     fd.append('active',             active);
@@ -4628,17 +4709,6 @@ function openViewServiceModal(svc) {
     var laborFee = parseFloat(svc.labor_fee)     || 0;
     var total    = svcFee + laborFee;
 
-    var hasDur = svc.estimated_duration !== null && svc.estimated_duration !== undefined && svc.estimated_duration !== '' && svc.estimated_duration !== '0';
-    var durStr;
-    if (hasDur) {
-        var durMin = parseInt(svc.estimated_duration) || 0;
-        var hrs  = Math.floor(durMin / 60);
-        var mins = durMin % 60;
-        durStr = (hrs > 0 ? hrs + 'h ' : '') + (mins > 0 ? mins + 'm' : (hrs === 0 ? '0m' : ''));
-    } else {
-        durStr = 'N/A';
-    }
-
     // Populate
     document.getElementById('viewSvcCodeDisplay').textContent  = svc.service_code ? 'Code: ' + svc.service_code : '';
     document.getElementById('viewSvcName').textContent         = svc.service_name || '';
@@ -4647,7 +4717,6 @@ function openViewServiceModal(svc) {
     document.getElementById('viewSvcServiceFee').textContent   = '₱' + svcFee.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     document.getElementById('viewSvcLaborFee').textContent     = '₱' + laborFee.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     document.getElementById('viewSvcTotalFee').textContent     = '₱' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    document.getElementById('viewSvcDuration').textContent     = durStr;
     var hasMech = svc.required_mechanics !== null && svc.required_mechanics !== undefined && svc.required_mechanics !== '';
     document.getElementById('viewSvcMechanics').textContent    = hasMech ? (parseInt(svc.required_mechanics) + ' mechanic(s)') : 'N/A';
 
@@ -4782,7 +4851,55 @@ function activateService(id, serviceName) {
     );
 }
 
+/* ── Auto-open product modal when navigated from global search ── */
+document.addEventListener('DOMContentLoaded', function () {
+    var urlParams = new URLSearchParams(window.location.search);
+    var pid       = parseInt(urlParams.get('product_id') || '0', 10);
+    var searchQ   = urlParams.get('search') || '';
+    var autoOpen  = urlParams.get('auto_open') === '1';
+
+    if (!autoOpen || !pid) return;
+
+    // Strip auto-open params from URL immediately so refresh won't re-trigger
+    (function() {
+        var clean = new URLSearchParams(window.location.search);
+        ['auto_open','product_id','pid','search_query','search'].forEach(function(k){ clean.delete(k); });
+        var newUrl = window.location.pathname + (clean.toString() ? '?' + clean.toString() : '');
+        history.replaceState(null, '', newUrl);
+    })();
+
+    /* 1. Pre-fill the merchandise search input */
+    var searchEl = document.getElementById('merchSearchInput') || document.getElementById('searchInput');
+    if (searchEl && searchQ) {
+        searchEl.value = searchQ;
+        if (typeof window.filterTable === 'function') {
+            window.filterTable();
+        }
+    }
+
+    /* 2. After short delay (allow table render), find row, highlight only — no modal */
+    setTimeout(function () {
+        var tbody = document.getElementById('merchBody') || document.querySelector('#merch-tab-content table tbody');
+        if (!tbody) return;
+
+        var targetRow = tbody.querySelector('tr.merch-row[data-id="' + pid + '"]');
+        if (targetRow) {
+            // Scroll smoothly to row and highlight it (no modal auto-open)
+            targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            var origOutline    = targetRow.style.outline;
+            var origBackground = targetRow.style.background;
+            targetRow.style.outline    = '3px solid #2563eb';
+            targetRow.style.background = '#eff6ff';
+            setTimeout(function () {
+                targetRow.style.outline    = origOutline;
+                targetRow.style.background = origBackground;
+            }, 2500);
+        }
+    }, 400);
+});
 </script>
+
 
 <!-- Custom Status/Notification Modal Dialog (Replaces native browser alert popups) -->
 <div id="statusNotificationModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:10001;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
@@ -4827,5 +4944,4 @@ function activateService(id, serviceName) {
 }
 </style>
 
-</div> <!-- /.ppm-wrap -->
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -139,30 +139,61 @@ try {
             // Insert into job_order_service_types
             $sStmt = $pdo->prepare("
                 INSERT INTO job_order_service_types
-                    (service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, reviewed_by, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2), 'approved', ?, ?, 1, NOW(), NOW())
+                    (station_id, service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, reviewed_by, active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM job_order_service_types j2 WHERE j2.station_id = ?), 'approved', ?, ?, 1, NOW(), NOW())
             ");
             $sStmt->execute([
+                (int)$req['station_id'],
                 $serviceKey,
                 $serviceName,
                 $payload['category'] ?? 'Others',
                 $suggestedPrice,
                 $payload['estimated_duration'] ?? null,
+                (int)$req['station_id'],
                 $req['requested_by'],
                 $me['id']
             ]);
             $newId = $pdo->lastInsertId();
 
+        } elseif ($category === 'Inspection Item') {
+            $itemName = trim($payload['item_name'] ?? $payload['inspection_name'] ?? '');
+            $description = trim($payload['description'] ?? '');
+            $cat = trim($payload['category'] ?? 'General');
+            $isActive = isset($payload['is_active']) ? (int)$payload['is_active'] : 1;
+
+            $dup = $pdo->prepare("SELECT id FROM vehicle_inspection_items WHERE station_id = ? AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))");
+            $dup->execute([(int)$req['station_id'], $itemName]);
+            $existingId = $dup->fetchColumn();
+
+            if ($existingId) {
+                $newId = (int)$existingId;
+            } else {
+                $iStmt = $pdo->prepare("
+                    INSERT INTO vehicle_inspection_items
+                        (station_id, item_name, description, category, is_active, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ");
+                $iStmt->execute([
+                    !empty($req['station_id']) ? (int)$req['station_id'] : null,
+                    $itemName,
+                    $description ?: null,
+                    $cat ?: 'General',
+                    $isActive,
+                    $req['requested_by']
+                ]);
+                $newId = (int)$pdo->lastInsertId();
+            }
         } elseif ($category === 'Vehicle') {
             $vehicleName = trim(($payload['vehicle_brand'] ?? '') . ' ' . ($payload['vehicle_model'] ?? ''));
 
             // Insert into vehicle_types
             $vStmt = $pdo->prepare("
                 INSERT INTO vehicle_types
-                    (category, vehicle_name, status, submitted_by, reviewed_by, is_active, created_at, updated_at)
-                VALUES (?, ?, 'approved', ?, ?, 1, NOW(), NOW())
+                    (station_id, category, vehicle_name, status, submitted_by, reviewed_by, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, 'approved', ?, ?, 1, NOW(), NOW())
             ");
             $vStmt->execute([
+                !empty($req['station_id']) ? (int)$req['station_id'] : null,
                 $payload['vehicle_type'] ?? 'Sedan',
                 $vehicleName,
                 $req['requested_by'],

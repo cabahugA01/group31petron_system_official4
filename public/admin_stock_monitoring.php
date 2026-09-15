@@ -93,9 +93,10 @@ $stmt = $pdo->prepare("
            COALESCE(ip.unit_price, 0) AS unit_price,
            COALESCE(si.status, 'active') AS item_status,
            COALESCE(si.last_updated, ip.updated_at, ip.created_at) AS last_updated
-    FROM inventory_products ip
-    LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-    WHERE ip.category NOT IN ('fuel', 'fuel products')
+    FROM station_inventory si
+    JOIN inventory_products ip ON ip.id = si.product_id
+    WHERE si.station_id = ?
+      AND ip.category NOT IN ('fuel', 'fuel products')
     ORDER BY ip.category, ip.product_name
 ");
 $stmt->execute([$station_id]);

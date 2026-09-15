@@ -1846,7 +1846,7 @@ function logFailedTransactionAttempt($pdo, $station_id, $me) {
         try {
             $mgr_stmt = $pdo->prepare("
                 SELECT id FROM users
-                WHERE station_id = ? AND role IN ('manager','admin','superadmin') AND status = 'Active'
+                WHERE station_id = ? AND role IN ('manager','admin') AND status = 'Active'
             ");
             $mgr_stmt->execute([$station_id]);
             $managers = $mgr_stmt->fetchAll(PDO::FETCH_ASSOC);

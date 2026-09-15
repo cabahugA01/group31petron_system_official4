@@ -105,13 +105,18 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // ── GET: return approved and pending service types ───────────────────────────
 if ($method === 'GET' || empty($method)) {
-    $rows = $pdo->query("
+    $me_station_id = (int)($me['station_id'] ?? 0);
+    $stmt_get = $pdo->prepare("
         SELECT id, service_key, service_name, category, service_price, min_price, max_price,
                price_description, pricing_notes, icon_class, color_class, status
         FROM   job_order_service_types
-        WHERE  active = 1 AND (status IN ('approved', 'pending') OR status IS NULL OR status = '')
+        WHERE  active = 1
+          AND  station_id = ?
+          AND  (status IN ('approved', 'pending') OR status IS NULL OR status = '')
         ORDER  BY sort_order ASC, service_name ASC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $stmt_get->execute([$me_station_id]);
+    $rows = $stmt_get->fetchAll(PDO::FETCH_ASSOC);
 
     $types = array_map(function($r) {
         $name = $r['service_name'];
@@ -195,8 +200,9 @@ if ($method === 'POST') {
     }
 
     // Duplicate check (case-insensitive)
-    $dup = $pdo->prepare("SELECT id, status FROM job_order_service_types WHERE LOWER(service_name) = LOWER(?)");
-    $dup->execute([$service_name]);
+    $dup_station_id = (int)($me['station_id'] ?? 0);
+    $dup = $pdo->prepare("SELECT id, status FROM job_order_service_types WHERE LOWER(service_name) = LOWER(?) AND station_id = ?");
+    $dup->execute([$service_name, $dup_station_id]);
     $existing = $dup->fetch(PDO::FETCH_ASSOC);
     if ($existing) {
         $msg = $existing['status'] === 'pending'
@@ -219,11 +225,12 @@ if ($method === 'POST') {
 
     $maxSort = (int)$pdo->query("SELECT COALESCE(MAX(sort_order),0) FROM job_order_service_types")->fetchColumn();
 
+    $insert_station_id = (int)($me['station_id'] ?? 0);
     $pdo->prepare("
         INSERT INTO job_order_service_types
-            (service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, active)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 1)
-    ")->execute([$service_key, $service_name, $category, $service_price, $notes ?: null, $maxSort + 1, $me['id']]);
+            (service_key, service_name, category, service_price, pricing_notes, sort_order, status, submitted_by, active, station_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 1, ?)
+    ")->execute([$service_key, $service_name, $category, $service_price, $notes ?: null, $maxSort + 1, $me['id'], $insert_station_id]);
 
     $newId = (int)$pdo->lastInsertId();
     echo json_encode([

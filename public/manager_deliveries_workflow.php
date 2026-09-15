@@ -308,7 +308,9 @@ function generateTransactionID() {
 
 // Get initial data
 $suppliers = $pdo->query("SELECT * FROM suppliers ORDER BY name")->fetchAll();
-$products = $pdo->query("SELECT * FROM inventory_products ORDER BY category, product_name")->fetchAll();
+$_prod_stmt = $pdo->prepare("SELECT * FROM inventory_products WHERE station_id = ? ORDER BY category, product_name");
+$_prod_stmt->execute([$station_id]);
+$products = $_prod_stmt->fetchAll();
 ?>
 
 <!DOCTYPE html>

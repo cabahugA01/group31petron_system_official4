@@ -1146,15 +1146,25 @@ if (count($meter_readings) == 0 && $has_fuel_transactions) {
             FROM fuel_transactions ft
             LEFT JOIN fuel_pumps fp ON fp.id = ft.pump_id AND fp.station_id = ft.station_id
             WHERE (ft.station_id = ? OR ? = 0) 
-              AND (
-                  DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
-                  OR DATE(ft.created_at) BETWEEN ? AND ?
-              )
+              AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
               AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
+              AND EXISTS (
+                  SELECT 1 FROM fuel_sales_closing fsc
+                  WHERE fsc.station_id = ft.station_id
+                    AND fsc.report_date = DATE(COALESCE(ft.transaction_date, ft.created_at))
+                    AND (
+                        fsc.shift_period = ft.shift_period
+                        OR fsc.shift = ft.shift_name
+                        OR fsc.shift = ft.shift_period
+                        OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                        OR ft.shift_period IS NULL OR ft.shift_period = ''
+                    )
+                    AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+              )
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $station_id, $date_from, $date_to, $date_from, $date_to]);
+        $stmt->execute([$station_id, $station_id, $date_from, $date_to]);
         $meter_readings = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
     } catch (Exception $e) {}
@@ -1228,15 +1238,25 @@ if ($has_fuel_transactions) {
                     COALESCE(ft.transaction_date, ft.created_at) AS created_at
             FROM fuel_transactions ft
             WHERE (ft.station_id = ? OR ? = 0)
-              AND (
-                  DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
-                  OR DATE(ft.created_at) BETWEEN ? AND ?
-              )
+              AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN ? AND ?
               AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
+              AND EXISTS (
+                  SELECT 1 FROM fuel_sales_closing fsc
+                  WHERE fsc.station_id = ft.station_id
+                    AND fsc.report_date = DATE(COALESCE(ft.transaction_date, ft.created_at))
+                    AND (
+                        fsc.shift_period = ft.shift_period
+                        OR fsc.shift = ft.shift_name
+                        OR fsc.shift = ft.shift_period
+                        OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                        OR ft.shift_period IS NULL OR ft.shift_period = ''
+                    )
+                    AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+              )
             ORDER BY COALESCE(ft.transaction_date, ft.created_at), ft.id";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$station_id, $station_id, $date_from, $date_to, $date_from, $date_to]);
+        $stmt->execute([$station_id, $station_id, $date_from, $date_to]);
         $fuel_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (!$is_manager_or_admin && !empty($user_current_shift)) {
             $fuel_transactions = array_filter($fuel_transactions, function($trans) use ($user_current_shift) {
@@ -1334,10 +1354,24 @@ try {
                 SUM(liters_sold) AS total_liters,
                 payment_method,
                 COUNT(*) AS transaction_count
-            FROM fuel_transactions
-            WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
+            FROM fuel_transactions ft
+            WHERE ft.station_id = ? AND DATE(ft.transaction_date) BETWEEN ? AND ?
+              AND LOWER(COALESCE(ft.status, '')) IN ('verified','approved','validated')
+              AND EXISTS (
+                  SELECT 1 FROM fuel_sales_closing fsc
+                  WHERE fsc.station_id = ft.station_id
+                    AND (fsc.report_date = DATE(COALESCE(ft.transaction_date, ft.created_at)) OR fsc.report_date = DATE(ft.created_at))
+                    AND (
+                        fsc.shift_period = ft.shift_period
+                        OR fsc.shift = ft.shift_name
+                        OR fsc.shift = ft.shift_period
+                        OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                        OR ft.shift_period IS NULL OR ft.shift_period = ''
+                    )
+                    AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+              )
             {$shiftFilter}
-            GROUP BY shift_period, payment_method
+            GROUP BY ft.shift_period, ft.payment_method
         ");
         $stmt->execute([$station_id, $date_from, $date_to]);
         $fuel_by_shift = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1723,16 +1757,29 @@ foreach ($enhanced_meter_readings as $emr) {
 $total_fuel_liters_sold = array_sum(array_column($enhanced_meter_readings, 'net_volume'));
 $total_fuel_sales_amount = array_sum(array_column($enhanced_meter_readings, 'fuel_sales'));
 
-// Fetch Fuel Sales Closing Record
+// Fetch Fuel Sales Closing Record (Verified / Approved only)
 $closing_record = [];
+$pending_closing_record = null;
 try {
     $stmt_cl_rec = $pdo->prepare("
         SELECT * FROM fuel_sales_closing
         WHERE station_id = ? AND (report_date BETWEEN ? AND ?)
+          AND LOWER(COALESCE(status, '')) IN ('verified','approved','validated')
         ORDER BY id DESC LIMIT 1
     ");
     $stmt_cl_rec->execute([$station_id, $date_from, $date_to]);
     $closing_record = $stmt_cl_rec->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    if (empty($closing_record)) {
+        $stmt_pen_rec = $pdo->prepare("
+            SELECT * FROM fuel_sales_closing
+            WHERE station_id = ? AND (report_date BETWEEN ? AND ?)
+              AND LOWER(COALESCE(status, '')) NOT IN ('rejected','voided')
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt_pen_rec->execute([$station_id, $date_from, $date_to]);
+        $pending_closing_record = $stmt_pen_rec->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
 } catch (Exception $e) {}
 
 // Fetch Tank Inventory Levels
@@ -3638,6 +3685,86 @@ require_once __DIR__ . '/../partials/flash_toast.php';
     .rows-select {
         display: none !important;
     }
+
+    /* ── Petron Downward Custom Dropdowns ── */
+    .petron-dropdown-source { display: none !important; }
+    .petron-dropdown-wrap {
+        position: relative !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+        box-sizing: border-box !important;
+    }
+    .petron-dropdown-wrap.is-open { z-index: 10050 !important; }
+    .petron-dropdown-trigger {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        height: 33px !important;
+        padding: 6px 10px !important;
+        background: #fff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 4px !important;
+        font-size: 13px !important;
+        color: #1e293b !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        gap: 8px !important;
+        white-space: nowrap !important;
+    }
+    .petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+        border-color: #1967d2 !important;
+        box-shadow: 0 0 0 2px rgba(25,103,210,.2) !important;
+    }
+    .petron-dropdown-label {
+        flex: 1 !important;
+        text-align: left !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    .petron-dropdown-arrow {
+        font-size: 10px !important;
+        color: #64748b !important;
+        transition: transform .2s !important;
+        flex-shrink: 0 !important;
+    }
+    .petron-dropdown-wrap.is-open .petron-dropdown-arrow {
+        transform: rotate(180deg) !important;
+    }
+    .petron-dropdown-menu {
+        position: absolute !important;
+        top: calc(100% + 2px) !important;
+        bottom: auto !important;
+        left: 0 !important;
+        z-index: 10051 !important;
+        min-width: 100% !important;
+        background: #fff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+        box-shadow: 0 8px 24px rgba(0,0,0,.15) !important;
+        max-height: 240px !important;
+        overflow-y: auto !important;
+        display: none !important;
+        padding: 4px 0 !important;
+    }
+    .petron-dropdown-wrap.is-open .petron-dropdown-menu {
+        display: block !important;
+    }
+    .petron-dropdown-item {
+        padding: 7px 12px !important;
+        font-size: 13px !important;
+        color: #1e293b !important;
+        background: #fff !important;
+        cursor: pointer !important;
+        white-space: nowrap !important;
+        transition: background .12s, color .12s !important;
+    }
+    .petron-dropdown-item:hover,
+    .petron-dropdown-item.is-selected {
+        background: #1967d2 !important;
+        color: #fff !important;
+    }
 </style>
 
 
@@ -3772,10 +3899,43 @@ require_once __DIR__ . '/../partials/flash_toast.php';
                     <span><strong>Date:</strong> <?= htmlspecialchars($report_period_label) ?></span>
                     <span style="color:#94a3b8;">|</span>
                     <span><strong>Assigned Shift:</strong> <?= htmlspecialchars($shift_label_display) ?></span>
+                    <span style="color:#94a3b8;">|</span>
+                    <span><strong>Closing Status:</strong> 
+                        <?php if (!empty($closing_record)): ?>
+                            <span style="color:#16a34a; font-weight:700;"><i class="fas fa-check-circle"></i> VERIFIED / CLOSED</span>
+                        <?php elseif (!empty($pending_closing_record) && strtoupper($pending_closing_record['status'] ?? '') === 'CLOSING_COMPLETED'): ?>
+                            <span style="color:#d97706; font-weight:700;"><i class="fas fa-clock"></i> PENDING MANAGER APPROVAL</span>
+                        <?php elseif (!empty($pending_closing_record) && strtoupper($pending_closing_record['status'] ?? '') === 'READINGS_SUBMITTED'): ?>
+                            <span style="color:#2563eb; font-weight:700;"><i class="fas fa-edit"></i> PENDING CLOSING</span>
+                        <?php else: ?>
+                            <span style="color:#64748b; font-weight:700;"><i class="fas fa-circle-exclamation"></i> NOT CLOSED</span>
+                        <?php endif; ?>
+                    </span>
                 </div>
             </div>
 
             <div class="content">
+
+                <?php if (!empty($pending_closing_record) && strtoupper($pending_closing_record['status'] ?? '') === 'CLOSING_COMPLETED'): ?>
+                <div class="no-print" style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px; color:#92400e; font-size:13px;">
+                    <i class="fas fa-clock" style="font-size:22px; color:#f59e0b; flex-shrink:0;"></i>
+                    <div>
+                        <strong>Notice — Pending Manager Approval:</strong> Fuel sales closing for this date/shift was submitted by staff and is currently <strong>awaiting Manager Validation</strong>. Sales figures will not be finalized into official report calculations until validated and approved by the Manager.
+                    </div>
+                </div>
+                <?php elseif (!empty($pending_closing_record) && strtoupper($pending_closing_record['status'] ?? '') === 'READINGS_SUBMITTED'): ?>
+                <div class="no-print" style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:10px; color:#1e40af; font-size:13px;">
+                        <i class="fas fa-info-circle" style="font-size:22px; color:#3b82f6; flex-shrink:0;"></i>
+                        <div>
+                            <strong>Notice — Fuel Sales Closing Required:</strong> Meter readings have been encoded, but <strong>Fuel Sales Closing has not been completed yet</strong>. Fuel sales will not reflect in this report until closing is saved.
+                        </div>
+                    </div>
+                    <a href="staff_fuel_sales_closing.php?date=<?= urlencode($date_from) ?>" class="btn btn-sm btn-primary" style="white-space:nowrap; padding:6px 14px; font-size:12px; text-decoration:none;">
+                        <i class="fas fa-calculator me-1"></i> Go to Closing
+                    </a>
+                </div>
+                <?php endif; ?>
 
                 <!-- 1. Fuel Meter Reading Table -->
                 <div class="section-title">FUEL METER READING TABLE</div>
@@ -4446,6 +4606,7 @@ require_once __DIR__ . '/../partials/flash_toast.php';
         const merchFilters = document.getElementById('merch-filters-group');
         if (fuelFilters)  fuelFilters.style.display  = (tabName === 'fuel') ? 'flex' : 'none';
         if (merchFilters) merchFilters.style.display = (tabName === 'merchandise') ? 'flex' : 'none';
+        if (typeof window.setupSfssPetronDD === 'function') window.setupSfssPetronDD();
 
         // Update search placeholder
         const searchInp = document.getElementById('filter_search');
@@ -4691,6 +4852,124 @@ function autoRefreshStaffFuelSalesSummary() {
         .catch(() => {});
 }
 setInterval(autoRefreshStaffFuelSalesSummary, 10000);
+</script>
+
+<script>
+/* ── Petron Downward Custom Dropdowns for Staff Fuel & Sales Summary ── */
+(function() {
+    function setupSfssPetronDD() {
+        var selectors = [
+            '#filter_fuel_type',
+            '#filter_ugt',
+            '#filter_category',
+            '#filter_txn_type',
+            '#filter_pm'
+        ];
+        selectors.forEach(function(selId) {
+            var select = document.querySelector(selId);
+            if (!select || select.dataset.petronDownReady === '1') return;
+            select.dataset.petronDownReady = '1';
+
+            var wrap = document.createElement('div');
+            wrap.className = 'petron-dropdown-wrap';
+            if (select.id === 'filter_fuel_type') wrap.style.minWidth = '140px';
+            else if (select.id === 'filter_ugt') wrap.style.minWidth = '120px';
+            else if (select.id === 'filter_category') wrap.style.minWidth = '160px';
+            else if (select.id === 'filter_txn_type') wrap.style.minWidth = '190px';
+            else if (select.id === 'filter_pm') wrap.style.minWidth = '155px';
+            else wrap.style.minWidth = Math.max(select.offsetWidth || 0, 140) + 'px';
+
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'petron-dropdown-trigger';
+
+            var label = document.createElement('span');
+            label.className = 'petron-dropdown-label';
+
+            var arrow = document.createElement('i');
+            arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+            trigger.appendChild(label);
+            trigger.appendChild(arrow);
+
+            var menu = document.createElement('div');
+            menu.className = 'petron-dropdown-menu';
+
+            Array.from(select.options).forEach(function(option) {
+                if (option.hidden) return;
+                var item = document.createElement('div');
+                item.className = 'petron-dropdown-item';
+                item.dataset.value = option.value;
+                item.textContent = option.textContent;
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    select.value = option.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof select.onchange === 'function') {
+                        select.onchange();
+                    }
+                    syncLabel();
+                    wrap.classList.remove('is-open');
+                });
+                menu.appendChild(item);
+            });
+
+            function syncLabel() {
+                var sel = select.options[select.selectedIndex];
+                label.textContent = sel ? sel.textContent.trim() : '';
+                Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(i) {
+                    i.classList.toggle('is-selected', i.dataset.value === select.value);
+                });
+            }
+
+            trigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var willOpen = !wrap.classList.contains('is-open');
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                if (willOpen) {
+                    var rect = wrap.getBoundingClientRect();
+                    menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                    menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                    wrap.classList.add('is-open');
+                    var s = menu.querySelector('.petron-dropdown-item.is-selected');
+                    if (s) s.scrollIntoView({ block: 'nearest' });
+                }
+            });
+
+            select.addEventListener('change', syncLabel);
+            select.classList.add('petron-dropdown-source');
+            select.style.display = 'none';
+            select.hidden = true;
+            select.parentNode.insertBefore(wrap, select.nextSibling);
+            wrap.appendChild(trigger);
+            wrap.appendChild(menu);
+            syncLabel();
+        });
+
+        if (!window.__petronDownCloseBoundSfss) {
+            window.__petronDownCloseBoundSfss = true;
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.petron-dropdown-wrap')) {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                }
+            });
+        }
+    }
+
+    window.setupSfssPetronDD = setupSfssPetronDD;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupSfssPetronDD);
+    } else {
+        setupSfssPetronDD();
+    }
+    window.addEventListener('load', setupSfssPetronDD);
+})();
 </script>
 <?php require_once __DIR__ . '/../partials/footer.php'; ?>
 

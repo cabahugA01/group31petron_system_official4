@@ -54,7 +54,7 @@ $generated = 0;
 // Keep older unread notifications aligned with current module routes.
 try {
     $redirect_fixes = [
-        'admin_transactions_oversight.php' => 'admin_all_transactions.php',
+        'admin_transactions_oversight.php' => 'manager_validated_transactions.php',
         'purchase_orders.php'             => 'admin_procurement_reports.php?section=po',
         'inventory.php'                   => 'admin_inventory_merchandise.php',
     ];

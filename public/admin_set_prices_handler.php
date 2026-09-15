@@ -179,6 +179,9 @@ try {
                     $me['id']
                 ]);
                 $new_fuel_id = (int)$pdo->lastInsertId();
+                if (function_exists('ensure_fuel_inventory_synced')) {
+                    ensure_fuel_inventory_synced($pdo, (int)$station_id);
+                }
             } catch (PDOException $pdoe) {
                 echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
                 exit;
@@ -223,6 +226,7 @@ try {
             $barcode       = sanitize_optional_field($_POST['barcode'] ?? '');
             $reorder_level = (int)($_POST['reorder_level'] ?? 24);
             $critical_level= (int)($_POST['critical_level'] ?? 10);
+            $expiration_date = !empty($_POST['expiration_date']) ? trim($_POST['expiration_date']) : null;
 
             $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
             if (empty($product_name) || in_array(strtolower($product_name), $placeholders, true)) {
@@ -244,14 +248,14 @@ try {
                 $stmt = $pdo->prepare("
                     INSERT INTO inventory_products
                     (product_name, category, brand, unit_cost, unit_price, sku, barcode, size,
-                     reorder_level, critical_level, stock_quantity, status, created_at, station_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', NOW(), ?)
+                     reorder_level, critical_level, stock_quantity, status, created_at, station_id, expiration_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', NOW(), ?, ?)
                 ");
                 $stmt->execute([$product_name, $category, $brand, $unit_cost, $unit_price,
                                 $sku !== 'N/A' && $sku !== '' ? $sku : null,
                                 $barcode !== 'N/A' && $barcode !== '' ? $barcode : null,
                                 $size !== 'N/A' && $size !== '' ? $size : 'pcs',
-                                $reorder_level, $critical_level, $station_id]);
+                                $reorder_level, $critical_level, $station_id, $expiration_date]);
                 $new_id = (int)$pdo->lastInsertId();
 
                 // Auto-generate SKU if blank or N/A
@@ -303,8 +307,8 @@ try {
                     $stmt = $pdo->prepare("SELECT id FROM station_inventory WHERE station_id=? AND product_id=? LIMIT 1");
                     $stmt->execute([$station_id, $new_id]);
                     if (!$stmt->fetchColumn()) {
-                        $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'active', NOW())")
-                            ->execute([$station_id, $new_id, $unit_value, $unit_cost, $unit_price, $reorder_level, $critical_level]);
+                        $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, expiration_date, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'active', ?, NOW())")
+                            ->execute([$station_id, $new_id, $unit_value, $unit_cost, $unit_price, $reorder_level, $critical_level, $expiration_date]);
                     }
                 } catch (Exception $e) {}
             }
@@ -338,17 +342,6 @@ try {
 
             $user_name = $me['username'] ?? ($me['first_name'] ?? 'Admin');
             try {
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `product_status_history` (
-                    `id` INT AUTO_INCREMENT PRIMARY KEY,
-                    `station_id` INT NOT NULL,
-                    `product_id` INT NOT NULL,
-                    `old_status` VARCHAR(50) NOT NULL,
-                    `new_status` VARCHAR(50) NOT NULL,
-                    `changed_by` INT NULL,
-                    `changed_by_name` VARCHAR(255) NULL,
-                    `reason` TEXT NULL,
-                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
                 $pdo->prepare("INSERT INTO product_status_history (station_id, product_id, old_status, new_status, changed_by, changed_by_name, reason, created_at) VALUES (?, ?, 'active', 'inactive', ?, ?, 'Admin Deactivation', NOW())")
                     ->execute([$station_id, $id, $me['id'], $user_name]);
             } catch (Exception $e) {}
@@ -380,17 +373,6 @@ try {
 
             $user_name = $me['username'] ?? ($me['first_name'] ?? 'Admin');
             try {
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `product_status_history` (
-                    `id` INT AUTO_INCREMENT PRIMARY KEY,
-                    `station_id` INT NOT NULL,
-                    `product_id` INT NOT NULL,
-                    `old_status` VARCHAR(50) NOT NULL,
-                    `new_status` VARCHAR(50) NOT NULL,
-                    `changed_by` INT NULL,
-                    `changed_by_name` VARCHAR(255) NULL,
-                    `reason` TEXT NULL,
-                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
                 $pdo->prepare("INSERT INTO product_status_history (station_id, product_id, old_status, new_status, changed_by, changed_by_name, reason, created_at) VALUES (?, ?, 'inactive', 'active', ?, ?, 'Admin Activation', NOW())")
                     ->execute([$station_id, $id, $me['id'], $user_name]);
             } catch (Exception $e) {}
@@ -636,8 +618,20 @@ try {
         case 'get_merch_details_admin':
             $id = (int)($_GET['id'] ?? 0);
             if ($id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid Product ID']); exit; }
+            session_write_close(); // Read-only — release session lock immediately
 
-            $item = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
+            // Fast indexed single-row lookup
+            $stmt = $pdo->prepare("SELECT id, product_name, sku, category, brand, size as unit, unit_price, reorder_level, critical_level, status, expiration_date FROM inventory_products WHERE id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $item = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$item) {
+                $stmt2 = $pdo->prepare("SELECT p.id, p.name as product_name, p.sku, COALESCE(pc.name, 'Merchandise') as category, p.brand, p.unit, p.price as unit_price, p.min_stock_level as reorder_level, 10 as critical_level, p.status FROM products p LEFT JOIN product_categories pc ON pc.id = p.category_id WHERE p.id = ? LIMIT 1");
+                $stmt2->execute([$id]);
+                $item = $stmt2->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!$item) {
+                $item = find_merchandise_pricing_item($pdo, (int)$station_id, $id);
+            }
             if (!$item) { echo json_encode(['success' => false, 'message' => 'Product not found']); exit; }
 
             echo json_encode(['success' => true, 'item' => $item]);
@@ -660,6 +654,7 @@ try {
             $reorder_level  = (int)($_POST['reorder_level'] ?? 24);
             $critical_level = (int)($_POST['critical_level'] ?? 10);
             $prod_status    = in_array($_POST['status'] ?? '', ['active', 'inactive']) ? $_POST['status'] : 'active';
+            $expiration_date = !empty($_POST['expiration_date']) ? trim($_POST['expiration_date']) : null;
 
             if ($id <= 0 || empty($product_name) || empty($category)) {
                 echo json_encode(['success' => false, 'message' => 'Product name and category are required.']);
@@ -712,18 +707,18 @@ try {
                     $stmt = $pdo->prepare("
                         UPDATE inventory_products
                         SET product_name=?, sku=?, category=?, brand=?, size=?, unit_price=?,
-                            reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                            reorder_level=?, critical_level=?, status=?, expiration_date=?, updated_at=NOW()
                         WHERE id=?
                     ");
-                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $id]);
+                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $expiration_date, $id]);
                 } else {
                     $stmt = $pdo->prepare("
                         UPDATE inventory_products
                         SET product_name=?, sku=?, category=?, brand=?, size=?,
-                            reorder_level=?, critical_level=?, status=?, updated_at=NOW()
+                            reorder_level=?, critical_level=?, status=?, expiration_date=?, updated_at=NOW()
                         WHERE id=?
                     ");
-                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $reorder_level, $critical_level, $prod_status, $id]);
+                    $stmt->execute([$product_name, $sku, $category, $brand, $unit_value, $reorder_level, $critical_level, $prod_status, $expiration_date, $id]);
                 }
             } catch (Exception $e) {}
 
@@ -755,15 +750,15 @@ try {
                 $si_id = (int)($stmt->fetchColumn() ?: 0);
                 if ($si_id > 0) {
                     if ($unit_price >= 0) {
-                        $pdo->prepare("UPDATE station_inventory SET unit=?, price=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
-                            ->execute([$unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $si_id]);
+                        $pdo->prepare("UPDATE station_inventory SET unit=?, price=?, reorder_level=?, critical_level=?, status=?, expiration_date=?, last_updated=NOW() WHERE id=?")
+                            ->execute([$unit_value, $unit_price, $reorder_level, $critical_level, $prod_status, $expiration_date, $si_id]);
                     } else {
-                        $pdo->prepare("UPDATE station_inventory SET unit=?, reorder_level=?, critical_level=?, status=?, last_updated=NOW() WHERE id=?")
-                            ->execute([$unit_value, $reorder_level, $critical_level, $prod_status, $si_id]);
+                        $pdo->prepare("UPDATE station_inventory SET unit=?, reorder_level=?, critical_level=?, status=?, expiration_date=?, last_updated=NOW() WHERE id=?")
+                            ->execute([$unit_value, $reorder_level, $critical_level, $prod_status, $expiration_date, $si_id]);
                     }
                 } else {
-                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, price, reorder_level, critical_level, status, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())")
-                        ->execute([$station_id, $id, $unit_value, max(0, $unit_price), $reorder_level, $critical_level, $prod_status]);
+                    $pdo->prepare("INSERT INTO station_inventory (station_id, product_id, stock_level, unit, price, reorder_level, critical_level, status, expiration_date, last_updated) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NOW())")
+                        ->execute([$station_id, $id, $unit_value, max(0, $unit_price), $reorder_level, $critical_level, $prod_status, $expiration_date]);
                 }
             } catch (Exception $e) {}
 
@@ -936,8 +931,45 @@ try {
                 } catch (Exception $e) {}
             }
 
-            log_activity($pdo, $me['id'], 'Admin Edit Fuel Product', "Admin updated fuel {$fuel['fuel_type']} price: ₱{$old_price} -> ₱{$new_price}, capacity: {$capacity}L");
             echo json_encode(['success' => true, 'message' => 'Fuel product updated successfully! Price synced across all modules.']);
+            break;
+
+        case 'toggle_fuel_status_admin':
+            $id          = (int)($_POST['id'] ?? 0);
+            $new_status  = trim($_POST['status'] ?? 'active');
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid fuel product ID.']);
+                exit;
+            }
+
+            $stmt_f = $pdo->prepare("SELECT * FROM fuel_inventory WHERE id=? AND station_id=? LIMIT 1");
+            $stmt_f->execute([$id, $station_id]);
+            $old_fuel = $stmt_f->fetch(PDO::FETCH_ASSOC);
+
+            if ($old_fuel) {
+                $user_name = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+                $old_st_text = ucfirst(strtolower($old_fuel['status'] ?? 'active'));
+                $new_st_text = ucfirst(strtolower($new_status));
+                $status_label = (strtolower($new_status) === 'active') ? 'Activated' : 'Deactivated';
+                try {
+                    $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Admin Action', ?, ?, NOW())")
+                        ->execute([$station_id, $id, $old_fuel['fuel_type'], $old_st_text, $new_st_text, $status_label, $me['id'], $user_name]);
+                } catch (Exception $e) {}
+
+                $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_fuel['fuel_type']);
+                if (!empty($matching_ids)) {
+                    $in_clause = implode(',', array_fill(0, count($matching_ids), '?'));
+                    $params = array_merge([$new_status], $matching_ids);
+                    $pdo->prepare("UPDATE fuel_inventory SET status = ?, last_updated = NOW() WHERE id IN ($in_clause)")
+                        ->execute($params);
+                }
+                log_activity($pdo, $me['id'], 'Update Fuel Status', "Fuel {$old_fuel['fuel_type']} marked {$new_status}");
+                echo json_encode(['success' => true, 'message' => "Fuel product {$status_label} successfully."]);
+                exit;
+            }
+            echo json_encode(['success' => false, 'message' => 'Fuel product not found.']);
+            exit;
+
         case 'admin_edit_merchandise':
             $id = (int)($_POST['id'] ?? 0);
             $name = trim($_POST['product_name'] ?? ($_POST['name'] ?? ''));
@@ -1009,6 +1041,7 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Invalid ID']);
                 exit;
             }
+            session_write_close(); // Read-only — release session lock immediately
 
             $stmt = $pdo->prepare("
                 SELECT p.id, p.sku, p.barcode, p.name, p.brand, p.unit, p.cost, p.price, p.min_stock_level, p.max_stock_level, p.current_stock, p.status, pc.name as category_name 
@@ -1112,20 +1145,6 @@ try {
 
             $price_history = [];
             try {
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `product_price_history` (
-                    `id` INT AUTO_INCREMENT PRIMARY KEY,
-                    `station_id` INT NOT NULL,
-                    `product_id` INT NOT NULL,
-                    `old_price` DECIMAL(10,2) NOT NULL,
-                    `new_price` DECIMAL(10,2) NOT NULL,
-                    `requested_by` INT NULL,
-                    `requested_by_name` VARCHAR(255) NULL,
-                    `approved_by` INT NULL,
-                    `approved_by_name` VARCHAR(255) NULL,
-                    `status` VARCHAR(50) NOT NULL DEFAULT 'Approved',
-                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
                 $h_stmt = $pdo->prepare("
                     SELECT id, old_price, new_price, requested_by_name, approved_by_name, status, created_at, 'history' as source
                     FROM product_price_history

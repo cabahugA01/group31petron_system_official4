@@ -464,9 +464,9 @@ define('MODULE_MENU_MAP', [
         'mgr_report_joborders', 'rpt_job_orders'
     ],
     'fuel_management'       => [
-        'fuel', 'admin_fuel_management', 'fuel_meter_encoding', 'admin_fuel_oversight', 'admin_fuel_del_oversight',
+        'fuel', 'admin_fuel_management', 'fuel_meter_encoding', 'admin_fuel_oversight',
         'staff_fuel_deliveries_sub', 'staff_fuel_del_history',
-        'staff_fuel_transactions', 'admin_fuel_transactions_oversight', 'admin_fuel_deliveries_oversight',
+        'staff_fuel_transactions', 'admin_fuel_transactions_oversight',
         'admin_fuel_adjustments_oversight', 'admin_pump_master_oversight', 'fuel_transactions_validation',
         'fuel_deliveries_validation', 'fuel_adjustments', 'fuel_pump_master', 'mgr_prod_fuel',
         'admin_inventory_fuel'
@@ -1534,7 +1534,8 @@ function load_merchandise_pricing_catalog(PDO $pdo, int $station_id): array {
                    COALESCE(pa.new_cost, pa.new_value) AS pending_cost,
                    COALESCE(pa.new_price, pa.new_value) AS pending_price,
                    pa.status AS approval_status,
-                   pa.id AS approval_id
+                   pa.id AS approval_id,
+                   COALESCE(si.expiration_date, ip.expiration_date) AS expiration_date
             FROM station_inventory si
             LEFT JOIN inventory_products ip ON ip.id = si.product_id
             LEFT JOIN products p ON p.id = si.product_id
@@ -1599,6 +1600,81 @@ function render_no_station_page(string $back_url = 'admin_dashboard.php'): void 
            style="display:inline-flex;align-items:center;gap:8px;background:#00264D;color:#fff;
                   padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem;">
             <i class="fas fa-arrow-left"></i> Go Back
+        </a>
+    </div>';
+    $footer = __DIR__ . '/../partials/footer.php';
+    if (file_exists($footer)) {
+        require_once $footer;
+    }
+    exit;
+}
+
+/**
+ * Check whether a station has been configured with at least one fuel type (with a set price)
+ * or at least one product. Returns false if station is empty/unconfigured.
+ */
+function is_station_configured(PDO $pdo, int $station_id): bool {
+    if ($station_id <= 0) return false;
+    try {
+        // Check for any fuel inventory entry with a real price set
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND price_per_liter > 0"
+        );
+        $stmt->execute([$station_id]);
+        if ((int)$stmt->fetchColumn() > 0) return true;
+
+        // Check for any products assigned to this station
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM products WHERE station_id = ? AND status != 'deleted'"
+        );
+        $stmt->execute([$station_id]);
+        if ((int)$stmt->fetchColumn() > 0) return true;
+
+        return false;
+    } catch (Exception $e) {
+        return true; // Fail open: don't block if DB error
+    }
+}
+
+/**
+ * Render a "Station Setup Required" page and exit.
+ * Call this after require_login() when the station has no products/fuel configured.
+ */
+function render_station_setup_required_page(string $back_url = 'admin_dashboard.php'): void {
+    if (!headers_sent()) {
+        $header = __DIR__ . '/../partials/header.php';
+        if (file_exists($header)) {
+            require_once $header;
+        }
+    }
+    echo '
+    <div style="max-width:580px;margin:80px auto;text-align:center;padding:40px 36px;
+                background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);">
+        <div style="width:72px;height:72px;background:#FFF3CD;border-radius:50%;display:flex;
+                    align-items:center;justify-content:center;margin:0 auto 20px;">
+            <i class="fas fa-tools" style="font-size:2rem;color:#856404;"></i>
+        </div>
+        <h2 style="color:#00264D;margin:0 0 10px;font-size:1.4rem;">Station Setup Required</h2>
+        <p style="color:#555;font-size:.95rem;line-height:1.7;margin:0 0 20px;">
+            This station has not been configured yet.<br>
+            Please set up your <strong>fuel types</strong> and <strong>products</strong>
+            before performing transactions.
+        </p>
+        <div style="background:#FFF3CD;border:1px solid #FFEAA7;border-radius:10px;
+                    padding:16px 20px;margin-bottom:28px;text-align:left;">
+            <p style="margin:0 0 8px;font-weight:600;color:#856404;font-size:.92rem;">
+                <i class="fas fa-list-check"></i>&nbsp; Setup Checklist
+            </p>
+            <ul style="margin:0;padding-left:18px;color:#666;font-size:.88rem;line-height:1.8;">
+                <li>Add fuel types &amp; set prices in <strong>Fuel Inventory Setup</strong></li>
+                <li>Add merchandise products in <strong>Product Management</strong></li>
+                <li>Configure fuel pumps in <strong>Pump Setup</strong></li>
+            </ul>
+        </div>
+        <a href="' . htmlspecialchars($back_url) . '"
+           style="display:inline-flex;align-items:center;gap:8px;background:#00264D;color:#fff;
+                  padding:10px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.9rem;">
+            <i class="fas fa-arrow-left"></i> Go to Dashboard
         </a>
     </div>';
     $footer = __DIR__ . '/../partials/footer.php';
@@ -2236,6 +2312,22 @@ function record_return_movement(PDO $pdo, int $station_id, $product_id_or_name, 
 }
 }
 
+if (!function_exists('clean_fuel_display_name')) {
+function clean_fuel_display_name($fuel_type) {
+    $name = trim((string)$fuel_type);
+    $name = preg_replace('/\s+\d+\s*-\s*\d+$/', '', $name); // Remove " 1 - 1"
+    $name = preg_replace('/\s*-\s*\d+$/', '', $name);       // Remove " - 1"
+    $name = trim($name);
+    $normalized = strtoupper(preg_replace('/\s+/', ' ', $name));
+    if (strpos($normalized, 'TURBO') !== false && strpos($normalized, 'DIESEL') !== false) return 'Turbo Diesel';
+    if (strpos($normalized, 'KEROSENE') !== false) return 'Kerosene';
+    if (strpos($normalized, 'XCS') !== false) return 'XCS Plus';
+    if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) return 'Xtra UNL';
+    if (strpos($normalized, 'DIESEL') !== false) return 'Diesel';
+    return $name !== '' ? $name : 'Fuel';
+}
+}
+
 if (!function_exists('resolve_fuel_inventory_tank_id')) {
 function resolve_fuel_inventory_tank_id(PDO $pdo, int $station_id, $label, $fuel_type = ''): ?int {
     $raw = strtoupper(trim((string)$label));
@@ -2283,9 +2375,27 @@ function resolve_fuel_inventory_tank_id(PDO $pdo, int $station_id, $label, $fuel
         if ($tid) return (int)$tid;
     }
 
-    $clean = function_exists('clean_fuel_display_name') ? clean_fuel_display_name($fuel_type ?: $label) : ($fuel_type ?: $label);
-    $stmt2 = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) LIKE ? ORDER BY id ASC LIMIT 1");
-    $stmt2->execute([$station_id, '%' . strtolower(trim($clean)) . '%']);
+    $clean = trim((string)($fuel_type ?: $label));
+    $clean_stripped = trim(preg_replace('/\s*-\s*\d+$/', '', preg_replace('/\s+\d+\s*-\s*\d+$/', '', $clean)));
+
+    $stmt2 = $pdo->prepare("
+        SELECT id FROM fuel_inventory 
+        WHERE station_id = ? 
+          AND (
+              LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+              OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))
+              OR LOWER(TRIM(fuel_type)) LIKE ?
+              OR ? LIKE CONCAT('%', LOWER(TRIM(fuel_type)), '%')
+          )
+        ORDER BY id ASC LIMIT 1
+    ");
+    $stmt2->execute([
+        $station_id, 
+        $clean, 
+        $clean_stripped, 
+        '%' . strtolower(trim($clean_stripped)) . '%',
+        strtolower(trim($clean_stripped))
+    ]);
     $tid2 = $stmt2->fetchColumn();
     return $tid2 ? (int)$tid2 : null;
 }
@@ -2315,6 +2425,175 @@ if (!function_exists('refund_fuel_inventory_stock')) {
 function refund_fuel_inventory_stock(PDO $pdo, int $station_id, $label, $fuel_type, float $liters, int $user_id = 0): bool {
     if (abs($liters) < 0.0001) return true;
     return deduct_fuel_inventory_stock($pdo, $station_id, $label, $fuel_type, -$liters, $user_id);
+}
+}
+
+// ── Ensure all merchandise products from Pricing/Catalog are in station_inventory ──
+if (!function_exists('ensure_station_inventory_synced')) {
+function ensure_station_inventory_synced(PDO $pdo, int $station_id): void {
+    if ($station_id <= 0) return;
+    // ── NATIONWIDE RULE: ONLY station 1253 (Vamenta Carmen) has master demo data ──
+    // Other 1,411 stations must start completely empty and configure their own products.
+    // Never auto-copy products from the global template to new stations.
+    if ($station_id !== 1253) {
+        return;
+    }
+    try {
+        // 1. Sync any inventory_products not yet in station_inventory for this station
+        $pdo->prepare("
+            INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, expiration_date, last_updated)
+            SELECT 
+                ?, 
+                ip.id, 
+                COALESCE(ip.stock_quantity, ip.stock, 0), 
+                COALESCE(NULLIF(TRIM(ip.size),''), 'pcs'), 
+                COALESCE(ip.unit_cost, 0), 
+                COALESCE(ip.unit_price, 0), 
+                COALESCE(ip.reorder_level, 24), 
+                COALESCE(ip.critical_level, 10), 
+                COALESCE(ip.status, 'active'), 
+                ip.expiration_date, 
+                NOW()
+            FROM inventory_products ip
+            WHERE (ip.station_id = ? OR ip.station_id IS NULL)
+              AND LOWER(COALESCE(ip.category, '')) NOT IN ('fuel', 'fuel products', 'services', 'service')
+              AND LOWER(COALESCE(ip.status, 'active')) NOT IN ('deleted', 'archived')
+              AND ip.id NOT IN (SELECT product_id FROM station_inventory WHERE station_id = ?)
+        ")->execute([$station_id, $station_id, $station_id]);
+
+        // 2. Sync any products not yet in station_inventory
+        $pdo->prepare("
+            INSERT INTO station_inventory (station_id, product_id, stock_level, unit, cost, price, reorder_level, critical_level, status, last_updated)
+            SELECT 
+                ?, 
+                p.id, 
+                COALESCE(p.current_stock, 0), 
+                COALESCE(NULLIF(TRIM(p.unit),''), 'pcs'), 
+                COALESCE(p.cost, 0), 
+                COALESCE(p.price, 0), 
+                COALESCE(p.min_stock_level, 24), 
+                COALESCE(p.max_stock_level, 10), 
+                COALESCE(p.status, 'active'), 
+                NOW()
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            WHERE (p.station_id = ? OR p.station_id IS NULL)
+              AND LOWER(COALESCE(pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service')
+              AND LOWER(COALESCE(p.status, 'active')) NOT IN ('deleted', 'archived')
+              AND p.id NOT IN (SELECT product_id FROM station_inventory WHERE station_id = ?)
+              AND p.id NOT IN (SELECT id FROM inventory_products)
+        ")->execute([$station_id, $station_id, $station_id]);
+
+        // 3. Backfill/update empty or zero prices and costs in station_inventory from inventory_products
+        $pdo->prepare("
+            UPDATE station_inventory si
+            JOIN inventory_products ip ON ip.id = si.product_id
+            SET si.price = ip.unit_price,
+                si.cost  = COALESCE(NULLIF(NULLIF(TRIM(si.cost), ''), '0'), ip.unit_cost, 0)
+            WHERE si.station_id = ?
+              AND (TRIM(COALESCE(si.price, '')) = '' OR si.price = '0' OR si.price = 0 OR si.price IS NULL)
+              AND ip.unit_price > 0
+        ")->execute([$station_id]);
+
+        // 4. Backfill/update empty or zero prices and costs from products table
+        $pdo->prepare("
+            UPDATE station_inventory si
+            JOIN products p ON p.id = si.product_id
+            SET si.price = p.price,
+                si.cost  = COALESCE(NULLIF(NULLIF(TRIM(si.cost), ''), '0'), p.cost, 0)
+            WHERE si.station_id = ?
+              AND (TRIM(COALESCE(si.price, '')) = '' OR si.price = '0' OR si.price = 0 OR si.price IS NULL)
+              AND p.price > 0
+        ")->execute([$station_id]);
+    } catch (Exception $e) {
+        error_log('ensure_station_inventory_synced error: ' . $e->getMessage());
+    }
+}
+}
+
+// ── Ensure fuel products from Product & Pricing/Inventory/Fuel Types are synced ──
+if (!function_exists('ensure_fuel_inventory_synced')) {
+function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
+    if ($station_id <= 0) return;
+    try {
+        // ── NATIONWIDE RULE: Only sync stations that have already been configured ──
+        // If this station has NO fuel_inventory rows with a real price set,
+        // it is an unconfigured station — do NOT auto-create records.
+        // Each station admin must configure their own fuel setup from scratch.
+        $has_setup_stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND price_per_liter > 0"
+        );
+        $has_setup_stmt->execute([$station_id]);
+        if ((int)$has_setup_stmt->fetchColumn() === 0) {
+            return; // Station not configured yet — leave it empty
+        }
+
+        // A. If fuel exists in fuel_inventory, ensure it exists in fuel_types and inventory_products
+        $fi_types = $pdo->prepare("SELECT DISTINCT fuel_type, price_per_liter FROM fuel_inventory WHERE station_id = ? AND fuel_type IS NOT NULL AND fuel_type != ''");
+        $fi_types->execute([$station_id]);
+        foreach ($fi_types->fetchAll(PDO::FETCH_ASSOC) as $fi) {
+            $fname = trim($fi['fuel_type']);
+            $fprice = (float)($fi['price_per_liter'] ?? 0);
+
+            // Ensure in fuel_types
+            $chk_ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+            $chk_ft->execute([$fname]);
+            if (!$chk_ft->fetchColumn()) {
+                $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$fname, $fprice]);
+            }
+
+            // Ensure in inventory_products as Fuel
+            $chk_ip = $pdo->prepare("SELECT id, unit_price FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') LIMIT 1");
+            $chk_ip->execute([$station_id, $fname]);
+            $existing_ip = $chk_ip->fetch(PDO::FETCH_ASSOC);
+            if (!$existing_ip) {
+                $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, stock, status, created_at) VALUES (?, ?, 'Fuel', ?, ?, 0, 'active', NOW())")
+                    ->execute([$station_id, $fname, $fprice, $fprice]);
+            } elseif ((float)$existing_ip['unit_price'] <= 0 && $fprice > 0) {
+                $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?")
+                    ->execute([$fprice, $fprice, $existing_ip['id']]);
+            }
+        }
+
+        // B. If fuel was added in inventory_products (category Fuel) with this specific station_id,
+        //    ensure it exists in fuel_types and fuel_inventory.
+        //    NOTE: Do NOT use (station_id = ? OR station_id IS NULL) — the OR NULL clause
+        //    causes global/shared templates to seed tanks into every unconfigured station.
+        $ip_fuels = $pdo->prepare("SELECT id, product_name, unit_cost, unit_price, stock FROM inventory_products WHERE station_id = ? AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') AND LOWER(COALESCE(status,'active')) NOT IN ('deleted', 'archived')");
+        $ip_fuels->execute([$station_id]);
+        foreach ($ip_fuels->fetchAll(PDO::FETCH_ASSOC) as $ip) {
+            $fname = trim($ip['product_name']);
+            if (empty($fname)) continue;
+            $fprice = (float)($ip['unit_price'] ?: $ip['unit_cost'] ?: 0);
+
+            // Ensure in fuel_types
+            $chk_ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+            $chk_ft->execute([$fname]);
+            $ft_id = $chk_ft->fetchColumn();
+            if (!$ft_id) {
+                $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$fname, $fprice]);
+                $ft_id = (int)$pdo->lastInsertId();
+            }
+
+            // Ensure in fuel_inventory
+            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+            $chk_fi->execute([$station_id, $fname]);
+            if (!$chk_fi->fetchColumn()) {
+                $max_ugt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
+                $max_ugt->execute([$station_id]);
+                $ugt_count = (int)$max_ugt->fetchColumn() + 1;
+                $ugt_no = 'UGT-' . str_pad($ugt_count, 2, '0', STR_PAD_LEFT);
+
+                $pdo->prepare("
+                    INSERT INTO fuel_inventory 
+                    (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level, current_level, current_stock, status, last_updated)
+                    VALUES (?, ?, ?, ?, ?, 14000, 2100, 2800, ?, ?, 'Normal', NOW())
+                ")->execute([$station_id, $ft_id, $fname, $ugt_no, $fprice, (float)($ip['stock'] ?? 0), (float)($ip['stock'] ?? 0)]);
+            }
+        }
+    } catch (Exception $e) {
+        error_log('ensure_fuel_inventory_synced error: ' . $e->getMessage());
+    }
 }
 }
 
@@ -3250,8 +3529,8 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
         ],
         'job_order' => [
             'staff'    => "job_order_detail.php{$id}",
-            'manager'  => "manager_job_orders.php{$id}",
-            'admin'    => "manager_job_orders.php{$id}",
+            'manager'  => "manager_validated_transactions.php{$id}",
+            'admin'    => "manager_validated_transactions.php{$id}",
         ],
         'purchase_order' => [
             'staff'    => "admin_stock_confirmation.php{$id}",

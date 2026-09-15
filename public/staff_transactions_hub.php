@@ -118,6 +118,9 @@ $mh_variance_alert_count = 0;
 // ── Fuel types for this station — DB-driven, no hardcoded exclusions ─────────
 $fuel_types = [];
 try {
+    if (function_exists('ensure_fuel_inventory_synced')) {
+        ensure_fuel_inventory_synced($pdo, (int)$station_id);
+    }
     // Pull excluded fuel type names from system_settings (key: excluded_fuel_types, comma-separated)
     $excl_setting = '';
     try {
@@ -129,9 +132,10 @@ try {
 
     $ft_sql = "
         SELECT fi.fuel_type,
+               COALESCE(fi.status, 'active') AS status,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_level,
 
-               -- Price: strictly fuel_inventory.price_per_liter
+                -- Price: strictly fuel_inventory.price_per_liter
                COALESCE(fi.price_per_liter, 0) AS price_per_liter,
 
                -- Calibration: fuel_calibration_records table (technician record, active) -> fuel_inventory fallback
@@ -179,6 +183,11 @@ try {
 // ── Merchandise products for this station ────────────────────────────────────
 $merch_products = [];
 try {
+    // Ensure all merchandise items from Pricing & Catalog are populated in station_inventory
+    if (function_exists('ensure_station_inventory_synced')) {
+        ensure_station_inventory_synced($pdo, (int)$station_id);
+    }
+
     // ── Unified merchandise catalog — same source as Pricing/Inventory modules ──
     $stmt = $pdo->prepare("
         SELECT ip.id                                                          AS product_id,
@@ -186,13 +195,14 @@ try {
                COALESCE(NULLIF(TRIM(ip.sku),''), CONCAT('P', LPAD(ip.id,4,'0'))) AS sku,
                COALESCE(NULLIF(TRIM(ip.category),''),'General')              AS category,
                COALESCE(NULLIF(TRIM(ip.size),''),'')                         AS size,
-               COALESCE(si.price, ip.unit_price, 0)                          AS unit_price,
+               COALESCE(NULLIF(NULLIF(TRIM(si.price),''),'0'), ip.unit_price, 0) AS unit_price,
                COALESCE(si.stock_level, ip.stock_quantity, ip.stock, 0)      AS stock_level,
                COALESCE(NULLIF(TRIM(si.unit),''), NULLIF(TRIM(ip.size),''), 'pcs') AS unit
-        FROM inventory_products ip
-        LEFT JOIN station_inventory si ON si.product_id = ip.id AND si.station_id = ?
-        WHERE LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
-          AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
+        FROM station_inventory si
+        JOIN inventory_products ip ON ip.id = si.product_id
+        WHERE si.station_id = ?
+            AND LOWER(COALESCE(ip.category,'')) NOT IN ('fuel', 'fuel products')
+            AND LOWER(COALESCE(ip.status,'active')) NOT IN ('archived','deleted','inactive')
 
         UNION
 
@@ -201,19 +211,20 @@ try {
                COALESCE(NULLIF(TRIM(p.sku),''), CONCAT('P', LPAD(p.id,4,'0'))) AS sku,
                COALESCE(pc.name,'General')                                    AS category,
                COALESCE(NULLIF(p.unit,''),'')                                 AS size,
-               COALESCE(si2.price, p.price, si2.cost, p.cost, 0)             AS unit_price,
+               COALESCE(NULLIF(NULLIF(TRIM(si2.price),''),'0'), p.price, NULLIF(NULLIF(TRIM(si2.cost),''),'0'), p.cost, 0) AS unit_price,
                COALESCE(si2.stock_level, p.current_stock, 0)                 AS stock_level,
                COALESCE(NULLIF(p.unit,''), NULLIF(si2.unit,''), 'pcs')       AS unit
         FROM products p
         LEFT JOIN product_categories pc ON pc.id = p.category_id
-        LEFT JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
+        INNER JOIN station_inventory si2 ON si2.product_id = p.id AND si2.station_id = ?
         WHERE LOWER(COALESCE(pc.name,'')) NOT IN ('fuel','fuel products','services','service')
-          AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
-          AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuel products'))
+            AND LOWER(COALESCE(p.status,'active')) NOT IN ('deleted','archived')
+            AND p.station_id = ?
+            AND p.id NOT IN (SELECT id FROM inventory_products WHERE LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND LOWER(COALESCE(category,'')) NOT IN ('fuel','fuel products'))
 
         ORDER BY category, product_name
     ");
-    $stmt->execute([$station_id, $station_id]);
+    $stmt->execute([$station_id, $station_id, $station_id]);
     $merch_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $merch_products = []; }
 
@@ -404,52 +415,46 @@ $is_closing_completed = false;
 try {
     $shift_like_val = '%' . strtolower($fuel_shift_key) . '%';
     $stmt_cstat = $pdo->prepare("
-        SELECT status FROM fuel_sales_closing
+        SELECT id, status, total_fuel_sales, net_sales, total_cash, total_cash_bank,
+               cash_shift1, cash_shift2, ar_shift1, ar_shift2, total_ar, checked_by, verified_by
+        FROM fuel_sales_closing
         WHERE station_id = ? AND report_date = ? AND (shift = ? OR shift_period = ? OR LOWER(shift) LIKE ?)
         ORDER BY id DESC LIMIT 1
     ");
     $stmt_cstat->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key, $shift_like_val]);
-    $found_cstat = $stmt_cstat->fetchColumn();
-    if ($found_cstat) {
-        $current_shift_status = strtoupper(trim($found_cstat));
+    $found_closing = $stmt_cstat->fetch(PDO::FETCH_ASSOC);
+    if ($found_closing && !empty($found_closing['status'])) {
+        $current_shift_status = strtoupper(trim($found_closing['status']));
     }
 } catch (Exception $e) {}
 
-// Check if closing is already completed for today's shift (either in DB or via query flag)
-if (in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED', 'VERIFIED', 'APPROVED', 'VALIDATED']) || isset($_GET['closing_saved'])) {
+// A closing is truly completed ONLY if actual financial data was submitted/saved OR ?closing_saved is present.
+// Note: Stubs created during meter reading encoding have 0.00 sales and are NOT completed closings!
+$has_closing_data = false;
+if (!empty($found_closing)) {
+    $has_closing_data = (
+        (float)($found_closing['total_fuel_sales'] ?? 0) > 0 ||
+        (float)($found_closing['net_sales'] ?? 0) > 0 ||
+        (float)($found_closing['total_cash'] ?? 0) > 0 ||
+        (float)($found_closing['total_cash_bank'] ?? 0) > 0 ||
+        (float)($found_closing['cash_shift1'] ?? 0) > 0 ||
+        (float)($found_closing['cash_shift2'] ?? 0) > 0 ||
+        (float)($found_closing['ar_shift1'] ?? 0) > 0 ||
+        (float)($found_closing['ar_shift2'] ?? 0) > 0 ||
+        (float)($found_closing['total_ar'] ?? 0) > 0 ||
+        !empty(trim($found_closing['checked_by'] ?? ''))
+    );
+}
+
+if (isset($_GET['closing_saved']) || ($has_closing_data && in_array($current_shift_status, ['CLOSING_COMPLETED', 'SAVED', 'REPORTED', 'VERIFIED', 'APPROVED', 'VALIDATED']))) {
     $is_closing_completed = true;
     $current_shift_status = 'CLOSING_COMPLETED';
 } else {
-    try {
-        $stmt_chk_done = $pdo->prepare("
-            SELECT COUNT(*) FROM fuel_sales_closing
-            WHERE station_id = ? AND report_date = ?
-              AND (shift = ? OR shift_period = ? OR LOWER(shift) LIKE ?)
-              AND status IN ('CLOSING_COMPLETED', 'VERIFIED', 'APPROVED', 'VALIDATED', 'SAVED', 'REPORTED')
-        ");
-        $stmt_chk_done->execute([$station_id, $today_date, $fuel_shift_name, $fuel_shift_key, '%' . strtolower($fuel_shift_key) . '%']);
-        if ((int)$stmt_chk_done->fetchColumn() > 0) {
-            $is_closing_completed = true;
-            $current_shift_status = 'CLOSING_COMPLETED';
-        }
-    } catch (Exception $e) {}
-}
-
-// Also check fuel_transactions if closing is completed
-if (!$is_closing_completed) {
-    try {
-        $stmt_tx_closed = $pdo->prepare("
-            SELECT COUNT(*) FROM fuel_transactions
-            WHERE station_id = ? AND DATE(transaction_date) = ?
-              AND (shift_period = ? OR shift_name = ?)
-              AND status IN ('CLOSING_COMPLETED', 'VERIFIED', 'APPROVED', 'VALIDATED')
-        ");
-        $stmt_tx_closed->execute([$station_id, $today_date, $fuel_shift_key, $fuel_shift_name]);
-        if ((int)$stmt_tx_closed->fetchColumn() > 0) {
-            $is_closing_completed = true;
-            $current_shift_status = 'CLOSING_COMPLETED';
-        }
-    } catch (Exception $e) {}
+    $is_closing_completed = false;
+    if ($current_shift_status === 'CLOSING_COMPLETED' || $current_shift_status === 'VERIFIED') {
+        // If it was just an empty stub marked Verified/Completed without closing figures, treat status as READINGS_SUBMITTED
+        $current_shift_status = 'READINGS_SUBMITTED';
+    }
 }
 
 if (!$is_closing_completed && ($current_shift_status === 'DRAFT' || empty($current_shift_status))) {
@@ -491,14 +496,28 @@ try {
 } catch (Exception $e) {}
 
 // Check if current shift has submitted readings awaiting closing input
-// The Fuel Sales Closing button only appears when readings have been submitted AND closing is not completed!
+// The Fuel Sales Closing button appears when readings have been submitted AND closing is not completed!
 $has_submitted_readings_unclosed = false;
 if (!$is_closing_completed) {
-    foreach ($today_saved_readings as $sr) {
-        if ((float)($sr['present_reading'] ?? 0) > 0) {
-            $has_submitted_readings_unclosed = true;
-            break;
+    if (!empty($saved_rows)) {
+        foreach ($saved_rows as $sr) {
+            if ((float)($sr['present_reading'] ?? 0) > 0) {
+                $has_submitted_readings_unclosed = true;
+                break;
+            }
         }
+    }
+    if (!$has_submitted_readings_unclosed && !empty($today_saved_readings)) {
+        foreach ($today_saved_readings as $sr) {
+            if ((float)($sr['present_reading'] ?? 0) > 0) {
+                $has_submitted_readings_unclosed = true;
+                break;
+            }
+        }
+    }
+    // Also if a closing stub exists without completed financial data
+    if (!$has_submitted_readings_unclosed && !empty($found_closing)) {
+        $has_submitted_readings_unclosed = true;
     }
 }
 
@@ -662,12 +681,13 @@ if ($section === 'merchandise') {
         // Fetch categories for filters
         $mh_categories = [];
         try {
-            $stmt_cat = $pdo->query("
+            $stmt_cat = $pdo->prepare("
                 SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), 'General') AS category 
                 FROM inventory_products 
-                WHERE category != 'Fuel' AND category IS NOT NULL AND TRIM(category) <> ''
+                WHERE station_id = ? AND category != 'Fuel' AND category IS NOT NULL AND TRIM(category) <> ''
                 ORDER BY category
             ");
+            $stmt_cat->execute([$station_id]);
             if ($stmt_cat) {
                 $mh_categories = $stmt_cat->fetchAll(PDO::FETCH_COLUMN);
             }
@@ -2157,15 +2177,18 @@ if ($section === 'merchandise') {
 // ── Service types (for job order encode form) ─────────────────────────────────
 $jo_service_types = [];
 try {
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT id, service_key AS `key`, service_name AS `name`, category,
                service_price AS price, min_price AS min, max_price AS max,
                price_description AS `desc`, pricing_notes AS notes,
                icon_class AS icon, color_class AS color
         FROM job_order_service_types
-        WHERE active = 1 AND (status IN ('approved', 'pending') OR status IS NULL OR status = '')
+        WHERE active = 1
+          AND station_id = ?
+          AND (status IN ('approved', 'pending') OR status IS NULL OR status = '')
         ORDER BY sort_order ASC, service_name ASC
     ");
+    $stmt->execute([(int)$station_id]);
     $jo_service_types = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($jo_service_types as &$st_item) {
         $st_item['id']    = (int)$st_item['id'];
@@ -2249,6 +2272,7 @@ window.isAnyModalOpen = function() {
         'addServiceModal',
         'addVehicleModal',
         'addProductModal',
+        'addInspectionModal',
         'fuelDetailsModal',
         'readingEditModal',
         'readingVoidModal',
@@ -3781,6 +3805,75 @@ textarea.txn-input {
 .cart-item-remove:hover { background: #fee2e2; }
 .cart-empty { text-align: center; padding: 20px 14px; color: #94a3b8; font-size: 12px; }
 .cart-empty i { font-size: 22px; display: block; margin-bottom: 6px; }
+/* ── Petron Downward Custom Dropdowns ── */
+.petron-dropdown-source { display: none !important; }
+.petron-dropdown-wrap {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+    min-width: 140px !important;
+}
+.petron-dropdown-wrap.is-open { z-index: 10050 !important; }
+.petron-dropdown-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 7px 10px !important;
+    background: #fff !important;
+    border: 1.5px solid #e2e8f0 !important;
+    border-radius: 7px !important;
+    font-size: 12px !important;
+    color: #1e293b !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-trigger {
+    border-color: #1967d2 !important;
+    box-shadow: 0 0 0 2px rgba(25,103,210,.2) !important;
+}
+.petron-dropdown-label { flex: 1 !important; text-align: left !important; }
+.petron-dropdown-arrow {
+    font-size: 10px !important;
+    color: #64748b !important;
+    transition: transform .2s !important;
+    flex-shrink: 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-arrow { transform: rotate(180deg) !important; }
+.petron-dropdown-menu {
+    position: absolute !important;
+    top: calc(100% + 2px) !important;
+    bottom: auto !important;
+    left: 0 !important;
+    z-index: 10051 !important;
+    min-width: 100% !important;
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 7px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.13) !important;
+    max-height: 220px !important;
+    overflow-y: auto !important;
+    display: none !important;
+    padding: 4px 0 !important;
+}
+.petron-dropdown-wrap.is-open .petron-dropdown-menu { display: block !important; }
+.petron-dropdown-item {
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    background: #fff !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: background .12s, color .12s !important;
+}
+.petron-dropdown-item:hover,
+.petron-dropdown-item.is-selected {
+    background: #1967d2 !important;
+    color: #fff !important;
+}
 </style>
 
 <?php if ($flash_success): ?>
@@ -4120,6 +4213,21 @@ setTimeout(function() {
         <?php if (isset($_GET['closing_saved']) && $_GET['closing_saved'] == '1'): ?>
         <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Immediately hide the Fuel Sales Closing buttons — closing is done
+            var _b1 = document.getElementById('fuelSalesClosingBtn');
+            var _b2 = document.getElementById('fuelSalesClosingBtnReadings');
+            if (_b1) _b1.style.display = 'none';
+            if (_b2) _b2.style.display = 'none';
+            // Also apply via the dedicated function if available
+            if (typeof window._applyClosingBtnState === 'function') {
+                window._applyClosingBtnState(false);
+            }
+            // Clear sessionStorage flags
+            try {
+                sessionStorage.removeItem('petron_fuel_readings_submitted');
+                sessionStorage.removeItem('petron_fuel_reading_shift');
+                sessionStorage.removeItem('petron_fuel_reading_date');
+            } catch(e) {}
             if (typeof showToast === 'function') {
                 showToast('Fuel Sales Closing saved successfully!', 'success');
             }
@@ -4457,6 +4565,7 @@ setTimeout(function() {
                     foreach ($fuel_types as $idx => $ft):
                         $ft_lower = strtolower(trim($ft['fuel_type']));
                         $price_per_liter = (float)$ft['price_per_liter'];
+                        $is_deactivated = in_array(strtolower(trim($ft['status'] ?? 'active')), ['inactive', 'deactivated', 'disabled']);
                         
                         // Get tanker configuration for this fuel type
                         $config_groups = null;
@@ -4524,10 +4633,15 @@ setTimeout(function() {
                                 $saved_calib_val  = '0.00';
                                 $has_prev_reading = true;
                     ?>
-                    <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;">
+                    <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;<?= $is_deactivated ? 'background:#fcfcfd;opacity:0.75;' : '' ?>">
                         <!-- NAME Column (plain text, no icon) -->
                         <td style="border:1px solid #e2e8f0;padding:6px 8px;">
-                            <span style="font-weight:700;font-size:12.5px;color:#002F70;"><?= $display_name ?></span>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <span style="font-weight:700;font-size:12.5px;color:<?= $is_deactivated ? '#64748b' : '#002F70' ?>;"><?= $display_name ?></span>
+                                <?php if ($is_deactivated): ?>
+                                <span class="badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;"><i class="fas fa-ban"></i> DEACTIVATED</span>
+                                <?php endif; ?>
+                            </div>
                         </td>
 
                         <!-- BEGINNING Column — Auto-carried over from previous Ending Reading (Strictly Read-Only) -->
@@ -4549,16 +4663,16 @@ setTimeout(function() {
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="ending_reading"
                                    id="ending_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:2px solid #2563eb;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:#0f172a;"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:<?= $is_deactivated ? '1.5px solid #cbd5e1' : '2px solid #2563eb' ?>;border-radius:6px;text-align:right;font-weight:800;font-family:monospace;color:<?= $is_deactivated ? '#94a3b8' : '#0f172a' ?>;<?= $is_deactivated ? 'background:#f8fafc;cursor:not-allowed;' : '' ?>"
                                    value="<?= htmlspecialchars($saved_ending_val) ?>"
                                    placeholder="0.00"
-                                   required
+                                   <?= $is_deactivated ? 'disabled' : 'required' ?>
                                    autocomplete="off"
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onkeydown="handleMeterKeydown(event, this)"
                                    onfocus="this.select()"
-                                   title="Required: Enter the Ending meter reading">
+                                   title="<?= $is_deactivated ? 'Tank is deactivated in Product & Pricing. Meter encoding is disabled.' : 'Required: Enter the Ending meter reading' ?>">
                         </td>
 
                         <!-- CALIBRATION Column (Default = 0.00) -->
@@ -4567,11 +4681,12 @@ setTimeout(function() {
                                    form="fuelForm_<?= $ft_id ?>"
                                    name="calibration"
                                    id="cal_<?= $ft_id ?>"
-                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;font-family:monospace;color:#334155;"
+                                   style="width:100%;box-sizing:border-box;padding:7px 8px;font-size:12.5px;height:34px;border:1.5px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;font-family:monospace;color:<?= $is_deactivated ? '#94a3b8' : '#334155' ?>;<?= $is_deactivated ? 'background:#f8fafc;cursor:not-allowed;' : '' ?>"
                                    value="<?= htmlspecialchars($saved_calib_val) ?>"
                                    placeholder="0.00"
+                                   <?= $is_deactivated ? 'disabled' : '' ?>
                                    autocomplete="off"
-                                   title="Calibration correction (default 0.00). Cannot exceed Gross Volume."
+                                   title="<?= $is_deactivated ? 'Tank is deactivated.' : 'Calibration correction (default 0.00). Cannot exceed Gross Volume.' ?>"
                                    oninput="formatOnInput(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onblur="formatOnBlur(this); updateFuelCalc('<?= $ft_id ?>')"
                                    onkeydown="handleMeterKeydown(event, this)"
@@ -4800,16 +4915,14 @@ setTimeout(function() {
                         class="fet-reset-btn">
                     <i class="fas fa-undo"></i> Reset All
                 </button>
-                <?php if (!empty($has_submitted_readings_unclosed) && empty($is_closing_completed)): ?>
                 <a href="staff_fuel_sales_closing.php?date=<?= date('Y-m-d') ?>&shift=<?= urlencode($fuel_shift_name) ?>"
                    id="fuelSalesClosingBtn"
-                   style="background:#002F70; color:#ffffff; padding:10px 20px; border:none; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; text-decoration:none; box-shadow:0 2px 6px rgba(0,47,112,0.25); transition:all 0.2s;"
+                   style="background:#002F70; color:#ffffff; padding:10px 20px; border:none; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; display:<?= (!empty($has_submitted_readings_unclosed) && empty($is_closing_completed)) ? 'inline-flex' : 'none' ?>; align-items:center; gap:8px; text-decoration:none; box-shadow:0 2px 6px rgba(0,47,112,0.25); transition:all 0.2s;"
                    onmouseover="this.style.background='#001f4d'"
                    onmouseout="this.style.background='#002F70'"
                    title="Meter readings submitted. Click to continue to Fuel Sales Closing form">
                     <i class="fas fa-calculator"></i> Fuel Sales Closing
                 </a>
-                <?php endif; ?>
                 <button type="button"
                         onclick="submitAllFuelRows()"
                         class="fet-submit-btn">
@@ -4855,6 +4968,14 @@ setTimeout(function() {
                     <h3 style="font-size:16px; font-weight:700; color:#0f172a; margin:0;">Meter Reading History</h3>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <a href="staff_fuel_sales_closing.php?date=<?= date('Y-m-d') ?>&shift=<?= urlencode($fuel_shift_name) ?>"
+                       id="fuelSalesClosingBtnReadings"
+                       style="background:#002F70; color:#ffffff; padding:8px 16px; border:none; border-radius:6px; font-weight:700; font-size:12.5px; cursor:pointer; display:<?= (!empty($has_submitted_readings_unclosed) && empty($is_closing_completed)) ? 'inline-flex' : 'none' ?>; align-items:center; gap:6px; text-decoration:none; box-shadow:0 2px 6px rgba(0,47,112,0.25); transition:all 0.2s;"
+                       onmouseover="this.style.background='#001f4d'"
+                       onmouseout="this.style.background='#002F70'"
+                       title="Click to continue to Fuel Sales Closing form">
+                        <i class="fas fa-calculator"></i> Fuel Sales Closing
+                    </a>
                     <button type="button" onclick="window.location.href='staff_dashboard.php'" 
                             class="txn-btn secondary" title="Back to Staff Dashboard">
                         <i class="fas fa-arrow-left"></i> <span>Back</span>
@@ -4956,7 +5077,12 @@ setTimeout(function() {
             readingsBtn.className = 'txn-subtab-btn blue ' + (isReadings ? 'active'   : 'inactive');
 
             // Load history when switching to readings tab
-            if (isReadings) refreshTodayEntries();
+            if (isReadings) {
+                refreshTodayEntries();
+                if (typeof window.setupPetronDownwardDropdowns === 'function') {
+                    window.setupPetronDownwardDropdowns(['#subtab_shift']);
+                }
+            }
 
             // Persist active tab in URL without reload
             if (window.history && window.history.replaceState) {
@@ -4971,10 +5097,100 @@ setTimeout(function() {
         }
         window.switchFuelSubTab = switchFuelSubTab;
 
+        // ── Fuel Sales Closing Button — Live Auto-Detection ─────────────────────────
+        // Queries the server to check if closing is pending/completed for today's shift.
+        // Runs on: page load, browser back (pageshow), tab focus (visibilitychange), every 45s.
+        (function() {
+            var _closing_check_url = window.location.pathname.replace(/[^\\/]+$/, '') + 'staff_fuel_sales_closing_handler.php';
+            var _closing_shift     = '<?= htmlspecialchars($fuel_shift_name, ENT_QUOTES) ?>';
+            var _closing_date      = '<?= date('Y-m-d') ?>';
+            var _closing_timer     = null;
+
+            function _applyClosingBtnState(showBtn) {
+                var b1 = document.getElementById('fuelSalesClosingBtn');
+                var b2 = document.getElementById('fuelSalesClosingBtnReadings');
+                var display = showBtn ? 'inline-flex' : 'none';
+                if (b1) b1.style.display = display;
+                if (b2) b2.style.display = display;
+                if (!showBtn) {
+                    try {
+                        sessionStorage.removeItem('petron_fuel_readings_submitted');
+                        sessionStorage.removeItem('petron_fuel_reading_shift');
+                        sessionStorage.removeItem('petron_fuel_reading_date');
+                    } catch(e) {}
+                }
+            }
+
+            function _checkClosingStatus(silent) {
+                // Quick local checks first (no network call needed)
+                if (window.location.search.indexOf('closing_saved=1') !== -1) {
+                    _applyClosingBtnState(false);
+                    return;
+                }
+
+                var url = _closing_check_url
+                    + '?action=check_closing_status'
+                    + '&date=' + encodeURIComponent(_closing_date)
+                    + '&shift=' + encodeURIComponent(_closing_shift)
+                    + '&_=' + Date.now();
+
+                fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data || !data.success) return;
+                        _applyClosingBtnState(!!data.show_button);
+                        // Persist pending flag in sessionStorage for bfcache resilience
+                        try {
+                            if (data.show_button) {
+                                sessionStorage.setItem('petron_fuel_readings_submitted', '1');
+                            }
+                        } catch(e) {}
+                    })
+                    .catch(function() {
+                        // Network error — fall back to sessionStorage + PHP-baked flags
+                        var isCompletedPhp = <?= !empty($is_closing_completed) ? 'true' : 'false' ?>;
+                        var hasUnclosedPhp = <?= !empty($has_submitted_readings_unclosed) ? 'true' : 'false' ?>;
+                        var sessionPending = false;
+                        try { sessionPending = sessionStorage.getItem('petron_fuel_readings_submitted') === '1'; } catch(e) {}
+                        _applyClosingBtnState(!isCompletedPhp && (hasUnclosedPhp || sessionPending));
+                    });
+            }
+
+            // Start periodic check every 45 s while tab is visible
+            function _startPolling() {
+                _stopPolling();
+                _closing_timer = setInterval(function() {
+                    if (!document.hidden) _checkClosingStatus(true);
+                }, 45000);
+            }
+            function _stopPolling() {
+                if (_closing_timer) { clearInterval(_closing_timer); _closing_timer = null; }
+            }
+
+            // Run on page show (including bfcache restore from browser back button)
+            window.addEventListener('pageshow', function(e) {
+                _checkClosingStatus(false);
+                _startPolling();
+            });
+
+            // Run when user switches back to this browser tab
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) _checkClosingStatus(true);
+            });
+
+            // Expose so external code (e.g. after submit) can trigger it
+            window.refreshFuelClosingStatus = _checkClosingStatus;
+            window._applyClosingBtnState    = _applyClosingBtnState;
+        })();
+
         // Initialize correct tab on page load
         document.addEventListener('DOMContentLoaded', function() {
             var defaultTab = '<?= $fuel_tab_default ?>';
             switchFuelSubTab(defaultTab);
+            // Initial check on DOMContentLoaded (pageshow may fire before scripts)
+            if (typeof window.refreshFuelClosingStatus === 'function') {
+                window.refreshFuelClosingStatus(false);
+            }
         });
 
         // ── Fuel Transaction Filters ───────────────────────────────────────────
@@ -5466,6 +5682,24 @@ setTimeout(function() {
                 if (window.PetronDraft) {
                     window.PetronDraft.clear('fuel_meter_readings');
                     window.PetronDraft.clear('fuel_meter_readings_fuel');
+                }
+
+                // Mark sessionStorage so if user navigates back the button re-appears
+                try {
+                    sessionStorage.setItem('petron_fuel_readings_submitted', '1');
+                    sessionStorage.setItem('petron_fuel_reading_shift', '<?= htmlspecialchars($fuel_shift_name, ENT_QUOTES) ?>');
+                    sessionStorage.setItem('petron_fuel_reading_date', new Date().toISOString().split('T')[0]);
+                } catch(e) {}
+
+                // Show closing buttons immediately (before AJAX round-trip)
+                const cbtn1 = document.getElementById('fuelSalesClosingBtn');
+                const cbtn2 = document.getElementById('fuelSalesClosingBtnReadings');
+                if (cbtn1) cbtn1.style.display = 'inline-flex';
+                if (cbtn2) cbtn2.style.display = 'inline-flex';
+
+                // Also trigger live AJAX check to confirm server state
+                if (typeof window.refreshFuelClosingStatus === 'function') {
+                    window.refreshFuelClosingStatus(true);
                 }
 
                 showToast('Meter readings submitted! Redirecting to Fuel Sales Closing...', 'success');
@@ -6307,7 +6541,14 @@ setTimeout(function() {
                             <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;">
                                 <i class="fas fa-clipboard-check" style="margin-right:5px;"></i>Vehicle Inspection
                             </div>
-                            <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <button type="button"
+                                        onclick="openAddInspectionModal()"
+                                        title="Add Inspection Item"
+                                        class="txn-icon-btn blue"
+                                        style="position:relative;z-index:10;width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;">
+                                    <i class="fas fa-plus"></i>
+                                </button>
                                 <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11.5px;font-weight:700;color:#92400e;background:#fef3c7;padding:3px 10px;border-radius:6px;border:1px solid #fde68a;transition:all .15s;"
                                        onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'">
                                     <input type="checkbox" id="joInspectSelectAll" onchange="toggleAllVehicleInspections(this.checked)"
@@ -6317,29 +6558,35 @@ setTimeout(function() {
                             </div>
                         </div>
                         <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:8px;">
-                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;margin-bottom:8px;">
+                            <div id="joInspectionGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;margin-bottom:8px;">
                                 <?php
                                 try {
-                                    $db_insp_stmt = $pdo->query("SELECT item_name FROM vehicle_inspection_items WHERE is_active=1 ORDER BY id ASC");
+                                    $station_id_scope = (int)user_station_id();
+                                    $db_insp_stmt = $pdo->prepare("SELECT item_name FROM vehicle_inspection_items WHERE is_active=1 AND station_id = ? ORDER BY id ASC");
+                                    $db_insp_stmt->execute([$station_id_scope]);
                                     $inspection_items = $db_insp_stmt->fetchAll(PDO::FETCH_COLUMN);
                                 } catch (Exception $e) {
                                     $inspection_items = [];
                                 }
-                                if (empty($inspection_items)) {
-                                    $inspection_items = ['Engine','Battery','Tires','Brakes','Lights','Cooling System','Suspension','Transmission Fluid','Air Filter','Wipers & Washers','Belts & Hoses','Steering System','Exhaust System','Others'];
-                                }
-                                foreach ($inspection_items as $insp_item):
-                                    $insp_id = 'joInspect_' . str_replace([' ', '&', '/'], '_', $insp_item);
                                 ?>
-                                <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b;padding:4px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;"
-                                       onmouseover="this.style.background='#fef9c3'"
-                                       onmouseout="var cb=this.querySelector('input[type=checkbox]'); if(!cb || !cb.checked){ this.style.background='#fff'; }">
-                                    <input type="checkbox" id="<?= $insp_id ?>" name="jo_inspection[]" value="<?= htmlspecialchars($insp_item) ?>"
-                                           onchange="updateInspectionSelectAllState()"
-                                           style="accent-color:#b45309;width:16px;height:16px;flex-shrink:0;">
-                                    <?= htmlspecialchars($insp_item) ?>
-                                </label>
-                                <?php endforeach; ?>
+                                <?php if (empty($inspection_items)): ?>
+                                    <div id="joNoInspectionMsg" style="grid-column:1/-1;padding:16px 12px;text-align:center;color:#64748b;font-size:12.5px;font-weight:600;background:#fff;border-radius:6px;border:1px dashed #cbd5e1;">
+                                        <i class="fas fa-clipboard-check" style="color:#b45309;margin-right:6px;font-size:14px;"></i> No inspection checklist items configured for this station yet. Click the <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#00264D;color:#fff;border-radius:4px;font-size:10px;vertical-align:middle;margin:0 2px;"><i class="fas fa-plus"></i></span> button above to add inspection items.
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($inspection_items as $insp_item):
+                                        $insp_id = 'joInspect_' . str_replace([' ', '&', '/'], '_', $insp_item);
+                                    ?>
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b;padding:4px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;"
+                                           onmouseover="this.style.background='#fef9c3'"
+                                           onmouseout="var cb=this.querySelector('input[type=checkbox]'); if(!cb || !cb.checked){ this.style.background='#fff'; }">
+                                        <input type="checkbox" id="<?= $insp_id ?>" name="jo_inspection[]" value="<?= htmlspecialchars($insp_item) ?>"
+                                               onchange="updateInspectionSelectAllState()"
+                                               style="accent-color:#b45309;width:16px;height:16px;flex-shrink:0;">
+                                        <?= htmlspecialchars($insp_item) ?>
+                                    </label>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
                             <div>
                                 <label style="font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:3px;">Remarks</label>
@@ -6523,9 +6770,6 @@ setTimeout(function() {
                                                     color:#1e293b;border-bottom:1px solid #f1f5f9;
                                                     transition:background .12s;">
                                             <?= htmlspecialchars($mech['full_name']) ?>
-                                            <?php if (!empty($mech['specialization'])): ?>
-                                            <span style="color:#64748b;font-size:11px;"> — <?= htmlspecialchars($mech['specialization']) ?></span>
-                                            <?php endif; ?>
                                         </div>
                                         <?php endforeach; ?>
                                         <?php if (empty($mechanics)): ?>
@@ -6749,7 +6993,7 @@ setTimeout(function() {
                                          style="display:none;position:absolute;top:100%;left:0;right:0;
                                                 background:#fff;border:1.5px solid #e2e8f0;border-top:none;
                                                 border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,.18);
-                                                z-index:9999;max-height:220px;overflow-y:auto;">
+                                                z-index:9990;max-height:220px;overflow-y:auto;">
                                         <?php if (empty($merch_products)): ?>
                                         <div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px;">
                                             No products found for this station.
@@ -6898,7 +7142,7 @@ setTimeout(function() {
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Category</label>
-                                    <select name="mh_category" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                    <select id="mhCategorySelect" name="mh_category" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
                                         <option value="">All Categories</option>
                                         <?php foreach ($mh_categories as $cat): ?>
                                         <option value="<?= htmlspecialchars($cat) ?>" <?= $mh_filter_category === $cat ? 'selected' : '' ?>>
@@ -6909,7 +7153,7 @@ setTimeout(function() {
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Product</label>
-                                    <select name="mh_product" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
+                                    <select id="mhProductSelect" name="mh_product" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;max-width:180px;">
                                         <option value="">All Products</option>
                                         <?php foreach ($merch_products as $prod): ?>
                                         <option value="<?= (int)$prod['product_id'] ?>" <?= $mh_filter_product == $prod['product_id'] ? 'selected' : '' ?>>
@@ -6920,7 +7164,7 @@ setTimeout(function() {
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">Status</label>
-                                    <select name="mh_status" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
+                                    <select id="mhStatusSelect" name="mh_status" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;">
                                         <option value="">All Statuses</option>
                                         <option value="Completed" <?= ($_GET['mh_status'] ?? '') === 'Completed' ? 'selected' : '' ?>>Completed</option>
                                         <option value="Pending" <?= ($_GET['mh_status'] ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
@@ -7281,7 +7525,7 @@ setTimeout(function() {
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.3px;">Status</label>
-                                    <select name="jom_status" style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;height:38px;box-sizing:border-box;cursor:pointer;">
+                                    <select id="jomStatusSelect" name="jom_status" style="padding:8px 12px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13.5px;font-weight:600;color:#0f172a;background:#fff;outline:none;height:38px;box-sizing:border-box;cursor:pointer;">
                                         <option value="">All Statuses</option>
                                         <option value="Completed" <?= $jom_filter_status === 'Completed' ? 'selected' : '' ?>>Completed</option>
                                         <option value="Adjusted"  <?= $jom_filter_status === 'Adjusted'  ? 'selected' : '' ?>>Adjusted</option>
@@ -8095,7 +8339,7 @@ setTimeout(function() {
 
         <!-- ══ ADD SERVICE TYPE MODAL ═══════════════════════════════════════ -->
         <div id="addServiceModal"
-             style="display:none;position:fixed;inset:0;z-index:10000;
+             style="display:none;position:fixed;inset:0;z-index:100000;
                     background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;
                         width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.25);
@@ -8232,9 +8476,120 @@ setTimeout(function() {
             </div>
         </div>
 
+        <!-- ══ ADD INSPECTION ITEM MODAL ══════════════════════════════════════ -->
+        <div id="addInspectionModal"
+             style="display:none;position:fixed;inset:0;z-index:100000;
+                    background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;
+                        width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25);
+                        position:relative;margin:16px;">
+                <!-- Header -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+                    <div style="width:36px;height:36px;background:#fffbeb;border-radius:8px;
+                                display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fas fa-clipboard-check" style="color:#b45309;font-size:15px;"></i>
+                    </div>
+                    <div>
+                        <div style="font-size:14px;font-weight:700;color:#1e293b;"><?= in_array($role, ['admin','superadmin']) ? 'Add Inspection Item' : 'Request Inspection Item' ?></div>
+                        <div style="font-size:11px;color:#64748b;"><?= in_array($role, ['admin','superadmin']) ? 'Directly added to master data checklist' : 'Submitted for manager approval' ?></div>
+                    </div>
+                </div>
+
+                <!-- Inspection Name -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Inspection Name <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="text"
+                           id="newInspectionName"
+                           class="txn-input"
+                           placeholder="e.g. Engine, Battery, Tires..."
+                           oninput="resetInspectionInputValidation(this);"
+                           style="font-size:13px;"
+                           autocomplete="off"
+                           maxlength="100">
+                </div>
+
+                <!-- Description -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Description
+                    </label>
+                    <textarea id="newInspectionDescription"
+                              class="txn-input"
+                              placeholder="Optional description or notes..."
+                              rows="2"
+                              maxlength="500"
+                              oninput="resetInspectionInputValidation(this);"
+                              style="font-size:13px;resize:vertical;"></textarea>
+                </div>
+
+                <!-- Category -->
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Category
+                    </label>
+                    <input type="text"
+                           id="newInspectionCategory"
+                           class="txn-input"
+                           list="inspectionCategoryList"
+                           placeholder="e.g. General, Electrical, Engine..."
+                           oninput="resetInspectionInputValidation(this);"
+                           style="font-size:13px;"
+                           autocomplete="off">
+                    <datalist id="inspectionCategoryList">
+                        <option value="General">
+                        <option value="Engine">
+                        <option value="Electrical">
+                        <option value="Brakes">
+                        <option value="Suspension">
+                        <option value="Cooling System">
+                        <option value="Transmission">
+                        <option value="Exterior">
+                        <option value="Interior">
+                        <option value="Safety">
+                        <option value="Others">
+                    </datalist>
+                </div>
+
+                <!-- Status -->
+                <div style="margin-bottom:18px;">
+                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
+                        Status
+                    </label>
+                    <select id="newInspectionStatus" class="txn-select" style="font-size:13px;width:100%;">
+                        <option value="1" selected>Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
+                </div>
+
+                <!-- Error message -->
+                <div id="addInspectionError"
+                     style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;
+                            padding:9px 12px;margin-bottom:14px;font-size:12px;color:#991b1b;
+                            align-items:center;gap:7px;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="addInspectionErrorText"></span>
+                </div>
+
+                <!-- Buttons -->
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button type="button" onclick="closeAddInspectionModal()"
+                            class="txn-btn secondary">
+                        Cancel
+                    </button>
+                    <button type="button" id="addInspectionSubmitBtn"
+                            onclick="submitNewInspectionItem()"
+                            class="txn-btn primary">
+                        <i class="fas <?= in_array($role, ['admin','superadmin']) ? 'fa-plus-circle' : 'fa-paper-plane' ?>"></i> <?= in_array($role, ['admin','superadmin']) ? 'Save Inspection' : 'Submit for Approval' ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- ══ ADD VEHICLE TYPE MODAL ══════════════════════════════════════ -->
         <div id="addVehicleModal"
-             style="display:none;position:fixed;inset:0;z-index:10000;
+             style="display:none;position:fixed;inset:0;z-index:100000;
                     background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:12px;padding:28px 28px 24px;
                         width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25);
@@ -8358,7 +8713,7 @@ setTimeout(function() {
 
         <!-- ══ ADD PRODUCT MODAL ════════════════════════════════════════════ -->
         <div id="addProductModal"
-             style="display:none;position:fixed;inset:0;z-index:10000;
+             style="display:none;position:fixed;inset:0;z-index:100000;
                     background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:16px;padding:26px;
                         max-width:460px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
@@ -8699,8 +9054,8 @@ setTimeout(function() {
             if (list.parentElement !== document.body) {
                 document.body.appendChild(list);
                 list.style.position = 'fixed';
-                list.style.zIndex   = '99999';
             }
+            list.style.zIndex = '9990';
             repositionProductDropdown();
             list.classList.add('is-open');
             list.style.display = 'block';
@@ -8941,10 +9296,13 @@ setTimeout(function() {
             closeProductDropdown();
         }
 
-        // Close dropdown when clicking outside
+        // Close dropdown when clicking outside or clicking any modal trigger
         document.addEventListener('click', function(e) {
             const wrap = document.getElementById('productDropdownWrap');
-            if (wrap && !wrap.contains(e.target)) closeProductDropdown();
+            const isAddBtn = e.target.closest('button[onclick*="openAddProductModal"]') || e.target.closest('button[onclick*="openAdd"]');
+            if (isAddBtn || (wrap && !wrap.contains(e.target))) {
+                closeProductDropdown();
+            }
         });
 
         // Keyboard navigation for product search
@@ -9626,6 +9984,8 @@ setTimeout(function() {
 
         // ── Add Service Type modal ────────────────────────────────────────────
         function openAddServiceModal() {
+            closeProductDropdown();
+            if (typeof hideVehicleDropdown === 'function') hideVehicleDropdown();
             const nameEl  = document.getElementById('newServiceName');
             const priceEl = document.getElementById('newServicePrice');
             const catEl   = document.getElementById('newServiceCategory');
@@ -10611,7 +10971,11 @@ setTimeout(function() {
                     v.category.toLowerCase().includes(q));
 
             if (matches.length === 0) {
-                dd.innerHTML = '<div style="padding:10px 14px;font-size:12px;color:#94a3b8;">No matches found</div>';
+                if (_vehicleTypesAll.length === 0) {
+                    dd.innerHTML = '<div style="padding:14px 16px;font-size:12px;color:#64748b;font-weight:600;text-align:center;"><i class="fas fa-car" style="margin-right:6px;color:#94a3b8;"></i> No vehicle types configured for this station yet.<br><span style="font-size:11px;color:#94a3b8;font-weight:400;">Click <strong>+</strong> to add vehicle types.</span></div>';
+                } else {
+                    dd.innerHTML = '<div style="padding:10px 14px;font-size:12px;color:#94a3b8;text-align:center;">No matches found</div>';
+                }
                 dd.style.display = 'block';
                 return;
             }
@@ -10690,8 +11054,161 @@ setTimeout(function() {
             }
         }
 
+        // ── Add Inspection Item modal ─────────────────────────────────────────
+        function openAddInspectionModal() {
+            closeProductDropdown();
+            if (typeof hideVehicleDropdown === 'function') hideVehicleDropdown();
+            const nameEl = document.getElementById('newInspectionName');
+            const descEl = document.getElementById('newInspectionDescription');
+            const catEl  = document.getElementById('newInspectionCategory');
+            const statEl = document.getElementById('newInspectionStatus');
+            if (nameEl) nameEl.value = '';
+            if (descEl) descEl.value = '';
+            if (catEl)  catEl.value  = '';
+            if (statEl) statEl.value = '1';
+
+            const errDiv = document.getElementById('addInspectionError');
+            if (errDiv) errDiv.style.display = 'none';
+
+            const isAdm = <?= json_encode(in_array($role, ['admin','superadmin'])) ?>;
+            const btn = document.getElementById('addInspectionSubmitBtn');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = isAdm ? '<i class="fas fa-plus-circle"></i> Save Inspection' : '<i class="fas fa-paper-plane"></i> Submit for Approval';
+            }
+
+            const modal = document.getElementById('addInspectionModal');
+            if (modal) { modal.style.display = 'flex'; setTimeout(function() { if (nameEl) nameEl.focus(); }, 80); }
+        }
+
+        function closeAddInspectionModal() {
+            const modal = document.getElementById('addInspectionModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function resetInspectionInputValidation(el) {
+            if (!el) return;
+            el.style.borderColor = '';
+            const errDiv = document.getElementById('addInspectionError');
+            if (errDiv) errDiv.style.display = 'none';
+        }
+
+        function setAddInspectionError(msg) {
+            const errDiv  = document.getElementById('addInspectionError');
+            const errText = document.getElementById('addInspectionErrorText');
+            if (errDiv)  { errDiv.style.display = 'flex'; }
+            if (errText) { errText.textContent = msg; }
+        }
+
+        async function submitNewInspectionItem() {
+            const nameEl = document.getElementById('newInspectionName');
+            const descEl = document.getElementById('newInspectionDescription');
+            const catEl  = document.getElementById('newInspectionCategory');
+            const statEl = document.getElementById('newInspectionStatus');
+            const btn    = document.getElementById('addInspectionSubmitBtn');
+
+            const name   = (nameEl?.value || '').trim();
+            const desc   = (descEl?.value || '').trim();
+            const cat    = (catEl?.value || '').trim() || 'General';
+            const status = statEl?.value || '1';
+            const isAdm  = <?= json_encode(in_array($role, ['admin','superadmin'])) ?>;
+
+            if (!name) {
+                if (nameEl) nameEl.style.borderColor = '#dc2626';
+                setAddInspectionError('Inspection name is required.');
+                nameEl?.focus();
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (isAdm ? 'Saving...' : 'Submitting...');
+            }
+
+            try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+                const resp = await fetch('../backend/api/submit_master_data_request.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        request_type: 'inspection_item',
+                        request_data: {
+                            item_name: name,
+                            inspection_name: name,
+                            description: desc,
+                            category: cat,
+                            is_active: parseInt(status)
+                        },
+                        reason: desc || ('Request to add ' + name + ' to vehicle inspection checklist')
+                    })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    closeAddInspectionModal();
+
+                    if (data.auto_approved) {
+                        showTxnAlert('<i class="fas fa-check-circle"></i> Inspection item "' + name + '" added and approved successfully!', 'success');
+
+                        // Dynamically add the new checkbox to the checklist grid
+                        const grid = document.querySelector('div[id="joInspectionGrid"]');
+                        if (grid && name) {
+                            const emptyMsg = document.getElementById('joNoInspectionMsg');
+                            if (emptyMsg) emptyMsg.remove();
+
+                            const insp_id = 'joInspect_' + name.replace(/[\s&\/]/g, '_');
+                            if (!document.getElementById(insp_id)) {
+                                const lbl = document.createElement('label');
+                                lbl.style.cssText = 'display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;font-weight:600;color:#1e293b;padding:4px 8px;border-radius:6px;background:#fff;border:1px solid #e2e8f0;transition:all .15s;';
+                                lbl.onmouseover = function() { this.style.background = '#fef9c3'; };
+                                lbl.onmouseout  = function() { var cb = this.querySelector('input[type=checkbox]'); if (!cb || !cb.checked) { this.style.background = '#fff'; } };
+                                const cb = document.createElement('input');
+                                cb.type      = 'checkbox';
+                                cb.id        = insp_id;
+                                cb.name      = 'jo_inspection[]';
+                                cb.value     = name;
+                                cb.onchange  = window.updateInspectionSelectAllState;
+                                cb.style.cssText = 'accent-color:#b45309;width:16px;height:16px;flex-shrink:0;';
+                                const txt = document.createTextNode(name);
+                                lbl.appendChild(cb);
+                                lbl.appendChild(txt);
+                                grid.appendChild(lbl);
+                                if (window.updateInspectionSelectAllState) window.updateInspectionSelectAllState();
+                            }
+                        }
+                    } else {
+                        const reqMsg = 'Request submitted successfully! Request ID: #' + (data.request_no || data.request_id) + '. Status: Pending Manager Approval.';
+                        showTxnAlert(reqMsg, 'info');
+                    }
+                } else {
+                    setAddInspectionError(data.error || 'Failed to submit inspection item.');
+                }
+            } catch (err) {
+                setAddInspectionError('Network error: ' + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = isAdm ? '<i class="fas fa-plus-circle"></i> Save Inspection' : '<i class="fas fa-paper-plane"></i> Submit for Approval';
+                }
+            }
+        }
+
+        // Close inspection modal on backdrop click
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('addInspectionModal');
+            if (modal && e.target === modal) closeAddInspectionModal();
+        });
+
         // ── Add Vehicle Type modal ────────────────────────────────────────────
         function openAddVehicleModal() {
+            closeProductDropdown();
+            if (typeof hideVehicleDropdown === 'function') hideVehicleDropdown();
             const brandEl  = document.getElementById('newVehicleBrand');
             const modelEl  = document.getElementById('newVehicleModel');
             const typeEl   = document.getElementById('newVehicleType');
@@ -10814,6 +11331,10 @@ setTimeout(function() {
                     const displayName = brand + ' ' + model;
                     if (vehicleInput) vehicleInput.value = displayName;
                     
+                    if (data.auto_approved && window.loadVehicleTypes) {
+                        window.loadVehicleTypes(displayName);
+                    }
+                    
                     const vehMsg = data.auto_approved ? ('<i class="fas fa-check-circle"></i> Vehicle "' + displayName + '" processed and added successfully!') : ('Request submitted successfully! Request ID: #' + data.request_id + '. Status: Pending Manager Approval. You can use "' + displayName + '" now.');
                     showTxnAlert(vehMsg, 'success');
                 } else {
@@ -10822,7 +11343,11 @@ setTimeout(function() {
             } catch (err) {
                 setAddVehicleError('Network error: ' + err.message);
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit for Approval'; }
+                if (btn) {
+                    btn.disabled = false;
+                    const isAdm = <?= json_encode(in_array($role, ['admin','superadmin'])) ?>;
+                    btn.innerHTML = isAdm ? '<i class="fas fa-plus-circle"></i> Add Vehicle' : '<i class="fas fa-paper-plane"></i> Submit for Approval';
+                }
             }
         }
 
@@ -10834,6 +11359,8 @@ setTimeout(function() {
 
         // ── Add Product modal ────────────────────────────────────────────────
         function openAddProductModal() {
+            closeProductDropdown();
+            if (typeof hideVehicleDropdown === 'function') hideVehicleDropdown();
             const nameEl   = document.getElementById('newProductName');
             const catEl    = document.getElementById('newProductCategory');
             const skuEl    = document.getElementById('newProductSKU');
@@ -13259,7 +13786,10 @@ setTimeout(function() {
             var ids = ['joFilterType','joFilterStatus','joFilterMechanic','joFilterServiceType'];
             ids.forEach(function(id) {
                 var el = document.getElementById(id);
-                if (el) el.value = el.options[0].value;
+                if (el) {
+                    el.value = el.options[0].value;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             });
             ['joFilterStartDate','joFilterEndDate'].forEach(function(id) {
                 var el = document.getElementById(id);
@@ -13411,6 +13941,119 @@ setTimeout(function() {
 
         // Run auto-refresh every 10 seconds
         setInterval(autoRefreshJobOrderTracker, 10000);
+
+        // ── Petron Downward Custom Dropdowns ──
+        function setupPetronDownwardDropdowns(selectors) {
+            var selects = [];
+            selectors.forEach(function(selector) {
+                var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+                if (el) selects.push(el);
+            });
+            selects.forEach(function(select) {
+                if (!select || select.dataset.petronDownReady === '1') return;
+                select.dataset.petronDownReady = '1';
+
+                var wrap = document.createElement('div');
+                wrap.className = 'petron-dropdown-wrap';
+                wrap.style.minWidth = Math.max(select.offsetWidth, 140) + 'px';
+
+                var trigger = document.createElement('button');
+                trigger.type = 'button';
+                trigger.className = 'petron-dropdown-trigger';
+
+                var label = document.createElement('span');
+                label.className = 'petron-dropdown-label';
+
+                var arrow = document.createElement('i');
+                arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+
+                trigger.appendChild(label);
+                trigger.appendChild(arrow);
+
+                var menu = document.createElement('div');
+                menu.className = 'petron-dropdown-menu';
+
+                Array.from(select.options).forEach(function(option) {
+                    if (option.hidden) return;
+                    var item = document.createElement('div');
+                    item.className = 'petron-dropdown-item';
+                    item.dataset.value = option.value;
+                    item.textContent = option.textContent;
+                    item.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        select.value = option.value;
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        syncLabel();
+                        wrap.classList.remove('is-open');
+                    });
+                    menu.appendChild(item);
+                });
+
+                function syncLabel() {
+                    var selected = select.options[select.selectedIndex];
+                    label.textContent = selected ? selected.textContent.trim() : '';
+                    Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(item) {
+                        item.classList.toggle('is-selected', item.dataset.value === select.value);
+                    });
+                }
+
+                trigger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var willOpen = !wrap.classList.contains('is-open');
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                        w.classList.remove('is-open');
+                    });
+                    if (willOpen) {
+                        var rect = wrap.getBoundingClientRect();
+                        menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                        menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                        wrap.classList.add('is-open');
+                        var sel = menu.querySelector('.petron-dropdown-item.is-selected');
+                        if (sel) sel.scrollIntoView({ block: 'nearest' });
+                    }
+                });
+
+                select.addEventListener('change', syncLabel);
+                select.classList.add('petron-dropdown-source');
+                select.style.display = 'none';
+                select.hidden = true;
+                select.parentNode.insertBefore(wrap, select.nextSibling);
+                wrap.appendChild(trigger);
+                wrap.appendChild(menu);
+                syncLabel();
+            });
+
+            if (!window.__petronDownCloseBound) {
+                window.__petronDownCloseBound = true;
+                document.addEventListener('click', function(e) {
+                    if (!e.target.closest('.petron-dropdown-wrap')) {
+                        document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                            w.classList.remove('is-open');
+                        });
+                    }
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) {
+                            w.classList.remove('is-open');
+                        });
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setupPetronDownwardDropdowns([
+                '#joFilterType',
+                '#joFilterStatus',
+                '#joFilterMechanic',
+                '#joFilterServiceType',
+                '#mhCategorySelect',
+                '#mhProductSelect',
+                '#mhStatusSelect',
+                '#jomStatusSelect'
+            ]);
+        });
         </script>
 
         </div><!-- /innerTab_tracker -->
@@ -15842,7 +16485,8 @@ document.addEventListener('DOMContentLoaded', function() {
         'globalRemarksModal',
         'addServiceModal',
         'addVehicleModal',
-        'addProductModal'
+        'addProductModal',
+        'addInspectionModal'
     ];
     modalIds.forEach(function(id) {
         var m = document.getElementById(id);
@@ -16007,3 +16651,146 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <?php endif; ?>
+
+<script>
+/* ── Global Petron Dropdown Init for All Filters ── */
+(function() {
+    function _setupPetronDD(selectors) {
+        selectors.forEach(function(selector) {
+            var select = typeof selector === 'string' ? document.querySelector(selector) : selector;
+            if (!select || select.dataset.petronDownReady === '1') return;
+            select.dataset.petronDownReady = '1';
+
+            var wrap = document.createElement('div');
+            wrap.className = 'petron-dropdown-wrap';
+            if (select.id === 'subtab_shift') {
+                wrap.style.minWidth = '220px';
+            } else if (select.name === 'txn_type') {
+                wrap.style.minWidth = '190px';
+            } else if (select.name === 'payment') {
+                wrap.style.minWidth = '155px';
+            } else if (select.name === 'pstatus') {
+                wrap.style.minWidth = '140px';
+            } else if (select.name === 'vstatus') {
+                wrap.style.minWidth = '130px';
+            } else {
+                wrap.style.minWidth = Math.max(select.offsetWidth || 0, 140) + 'px';
+            }
+
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'petron-dropdown-trigger';
+            if (select.id === 'subtab_shift') {
+                trigger.style.height = '38px';
+                trigger.style.fontSize = '14px';
+                trigger.style.fontWeight = '600';
+                trigger.style.color = '#0f172a';
+                trigger.style.borderColor = '#cbd5e1';
+                trigger.style.borderRadius = '6px';
+            }
+
+            var label = document.createElement('span');
+            label.className = 'petron-dropdown-label';
+
+            var arrow = document.createElement('i');
+            arrow.className = 'fas fa-chevron-down petron-dropdown-arrow';
+            trigger.appendChild(label);
+            trigger.appendChild(arrow);
+
+            var menu = document.createElement('div');
+            menu.className = 'petron-dropdown-menu';
+
+            Array.from(select.options).forEach(function(option) {
+                if (option.hidden) return;
+                var item = document.createElement('div');
+                item.className = 'petron-dropdown-item';
+                item.dataset.value = option.value;
+                item.textContent = option.textContent;
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    select.value = option.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof select.onchange === 'function') {
+                        select.onchange();
+                    }
+                    syncLabel();
+                    wrap.classList.remove('is-open');
+                });
+                menu.appendChild(item);
+            });
+
+            function syncLabel() {
+                var sel = select.options[select.selectedIndex];
+                label.textContent = sel ? sel.textContent.trim() : '';
+                Array.from(menu.querySelectorAll('.petron-dropdown-item')).forEach(function(i) {
+                    i.classList.toggle('is-selected', i.dataset.value === select.value);
+                });
+            }
+
+            trigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var willOpen = !wrap.classList.contains('is-open');
+                document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+                if (willOpen) {
+                    var rect = wrap.getBoundingClientRect();
+                    menu.style.left = (rect.right + 10 > window.innerWidth) ? 'auto' : '0';
+                    menu.style.right = (rect.right + 10 > window.innerWidth) ? '0' : 'auto';
+                    wrap.classList.add('is-open');
+                    var s = menu.querySelector('.petron-dropdown-item.is-selected');
+                    if (s) s.scrollIntoView({ block: 'nearest' });
+                }
+            });
+
+            select.addEventListener('change', syncLabel);
+            select.classList.add('petron-dropdown-source');
+            select.style.display = 'none';
+            select.hidden = true;
+            select.parentNode.insertBefore(wrap, select.nextSibling);
+            wrap.appendChild(trigger);
+            wrap.appendChild(menu);
+            syncLabel();
+        });
+
+        if (!window.__petronDownCloseBound) {
+            window.__petronDownCloseBound = true;
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.petron-dropdown-wrap'))
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape')
+                    document.querySelectorAll('.petron-dropdown-wrap.is-open').forEach(function(w) { w.classList.remove('is-open'); });
+            });
+        }
+    }
+
+    window.setupPetronDownwardDropdowns = _setupPetronDD;
+
+    function initAllPetronDropdowns() {
+        _setupPetronDD([
+            '#mhCategorySelect',
+            '#mhProductSelect',
+            '#mhStatusSelect',
+            '#jomStatusSelect',
+            '#joFilterType',
+            '#joFilterStatus',
+            '#joFilterMechanic',
+            '#joFilterServiceType',
+            '#histFilterTxnType',
+            '#histFilterCustType',
+            '#histFilterPayment',
+            '#histFilterPstatus',
+            '#histFilterVstatus',
+            '#histFilterShift',
+            '#subtab_shift'
+        ]);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAllPetronDropdowns);
+    } else {
+        initAllPetronDropdowns();
+    }
+    window.addEventListener('load', initAllPetronDropdowns);
+})();
+</script>

@@ -347,13 +347,12 @@ if ($tab === 'fuel') {
 } elseif ($tab === 'services') {
     $report_title = 'SERVICE TYPES & PRICING REPORT';
     $table_headers = [
-        ['label' => 'CODE', 'width' => '9%', 'align' => 'left'],
-        ['label' => 'SERVICE NAME', 'width' => '24%', 'align' => 'left'],
-        ['label' => 'CATEGORY', 'width' => '13%', 'align' => 'left'],
-        ['label' => 'SERVICE FEE', 'width' => '11%', 'align' => 'right'],
-        ['label' => 'LABOR FEE', 'width' => '11%', 'align' => 'right'],
-        ['label' => 'TOTAL FEE', 'width' => '11%', 'align' => 'right'],
-        ['label' => 'DURATION', 'width' => '11%', 'align' => 'center'],
+        ['label' => 'CODE', 'width' => '10%', 'align' => 'left'],
+        ['label' => 'SERVICE NAME', 'width' => '28%', 'align' => 'left'],
+        ['label' => 'CATEGORY', 'width' => '16%', 'align' => 'left'],
+        ['label' => 'SERVICE FEE', 'width' => '12%', 'align' => 'right'],
+        ['label' => 'LABOR FEE', 'width' => '12%', 'align' => 'right'],
+        ['label' => 'TOTAL FEE', 'width' => '12%', 'align' => 'right'],
         ['label' => 'STATUS', 'width' => '10%', 'align' => 'center']
     ];
 
@@ -373,7 +372,6 @@ if ($tab === 'fuel') {
         $svcFee     = (float)($svc['service_price'] ?? 0);
         $labFee     = (float)($svc['labor_fee'] ?? 0);
         $totalFee   = $svcFee + $labFee;
-        $duration   = (int)($svc['estimated_duration'] ?? 60);
         $isActive   = (int)($svc['active'] ?? 1) === 1;
         $status_label = $isActive ? 'Active' : 'Inactive';
 
@@ -402,7 +400,6 @@ if ($tab === 'fuel') {
             'service_fee' => number_format($svcFee, 2),
             'labor_fee'   => number_format($labFee, 2),
             'total_fee'   => number_format($totalFee, 2),
-            'duration'    => $duration . ' mins',
             'status'      => $status_label,
             '_is_active'  => $isActive
         ];

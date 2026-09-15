@@ -281,9 +281,14 @@ function manager_list_customers(): void {
     $validTypes = ['walk-in', 'regular', 'credit', 'fleet', 'corporate'];
     $validStatuses = ['active', 'inactive', 'archived'];
 
+    $station_id_scope = (int)user_station_id();
     $where = [];
     $params = [];
     $expr = manager_customer_select_sql();
+
+    // ── Station isolation: only show this station's customers ──
+    $where[] = "c.station_id = ?";
+    $params[] = $station_id_scope;
 
     if ($tab === 'archived') {
         $where[] = "LOWER({$expr['status']}) = 'archived'";
@@ -297,9 +302,21 @@ function manager_list_customers(): void {
     }
 
     if ($search !== '') {
-        $where[] = "({$expr['customer_id']} LIKE ? OR {$expr['display_name']} LIKE ? OR {$expr['contact']} LIKE ? OR {$expr['vehicle_plate']} LIKE ?)";
+        $words = array_filter(preg_split('/\s+/', trim($search)));
         $s = "%$search%";
-        array_push($params, $s, $s, $s, $s);
+        $searchCond = "({$expr['customer_id']} LIKE ? OR {$expr['display_name']} LIKE ? OR c.name LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR {$expr['contact']} LIKE ? OR {$expr['vehicle_plate']} LIKE ?)";
+        array_push($params, $s, $s, $s, $s, $s, $s, $s);
+
+        if (count($words) > 1) {
+            $wSub = [];
+            foreach ($words as $w) {
+                $sw = "%{$w}%";
+                $wSub[] = "({$expr['display_name']} LIKE ? OR c.name LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR {$expr['customer_id']} LIKE ? OR {$expr['contact']} LIKE ? OR {$expr['vehicle_plate']} LIKE ?)";
+                array_push($params, $sw, $sw, $sw, $sw, $sw, $sw, $sw);
+            }
+            $searchCond = "({$searchCond} OR (" . implode(' AND ', $wSub) . "))";
+        }
+        $where[] = $searchCond;
     }
 
     if ($type !== '' && in_array($type, $validTypes, true)) {
@@ -386,7 +403,7 @@ function manager_list_customers(): void {
 
     $firstDayMonth = date('Y-m-01');
 
-    $statsStmt = $pdo->query("
+    $statsStmt = $pdo->prepare("
         SELECT
             COUNT(CASE WHEN {$expr['status']} != 'archived' THEN 1 END) AS total,
             SUM(CASE WHEN {$expr['status']} = 'active' THEN 1 ELSE 0 END) AS active,
@@ -395,7 +412,9 @@ function manager_list_customers(): void {
             SUM(CASE WHEN {$expr['type']} = 'credit' AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS credit,
             SUM(CASE WHEN DATE({$expr['registered_at']}) >= '$firstDayMonth' AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS new_this_month
         FROM customers c
+        WHERE c.station_id = ?
     ");
+    $statsStmt->execute([$station_id_scope]);
     $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: manager_empty_stats();
     $stats['pending_requests'] = manager_count_pending_requests();
 
@@ -1095,7 +1114,9 @@ function manager_count_pending_requests(): int {
     }
 
     try {
-        $stmt = $pdo->query("SELECT COUNT(*) FROM customer_requests WHERE LOWER(status) = 'pending'");
+        $sid = (int)user_station_id();
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM customer_requests WHERE LOWER(status) = 'pending' AND station_id = ?");
+        $stmt->execute([$sid]);
         return (int)$stmt->fetchColumn();
     } catch (Throwable $e) {
         return 0;
@@ -1109,16 +1130,18 @@ function manager_list_customer_requests(): void {
         manager_send_json(['success' => true, 'requests' => []]);
     }
 
-    $stmt = $pdo->query("
+    $sid = (int)user_station_id();
+    $stmt = $pdo->prepare("
         SELECT
             cr.*,
             TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS requested_by_name
         FROM customer_requests cr
         LEFT JOIN users u ON u.id = cr.requested_by
-        WHERE LOWER(cr.status) = 'pending'
+        WHERE LOWER(cr.status) = 'pending' AND cr.station_id = ?
         ORDER BY cr.created_at DESC, cr.id DESC
         LIMIT 100
     ");
+    $stmt->execute([$sid]);
     manager_send_json(['success' => true, 'requests' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 

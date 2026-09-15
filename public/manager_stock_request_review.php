@@ -175,6 +175,54 @@ function manager_notify_users(PDO $pdo, array $user_ids, string $title, string $
 
 manager_procurement_prepare_schema($pdo);
 
+// Handle AJAX Catalog Fetch for Direct PO Creation
+if (isset($_GET['action']) && $_GET['action'] === 'get_direct_po_catalog') {
+    header('Content-Type: application/json');
+    try {
+        $stmt = $pdo->prepare("
+            SELECT
+                COALESCE(ip.id, p.id, si.product_id) AS id,
+                COALESCE(ip.product_name, p.name, 'Unknown Product') AS product_name,
+                COALESCE(ip.category, pc.name, 'Merchandise') AS category,
+                COALESCE(si.cost, ip.unit_cost, p.cost, 0) AS unit_cost,
+                COALESCE(si.price, ip.unit_price, p.price, 0) AS price,
+                COALESCE(ip.sku, p.sku, CONCAT('P', LPAD(si.product_id,4,'0'))) AS sku,
+                COALESCE(si.stock_level, 0) AS current_stock,
+                COALESCE(si.capacity, ip.max_stock, p.capacity, 480) AS capacity,
+                COALESCE(si.reorder_level, ip.min_stock, p.min_stock_level, 24) AS reorder_level,
+                COALESCE(si.critical_level, 10) AS critical_level,
+                COALESCE(si.unit, ip.size, p.unit, 'pcs') AS unit
+            FROM station_inventory si
+            LEFT JOIN inventory_products ip ON ip.id = si.product_id
+            LEFT JOIN products p ON p.id = si.product_id
+            LEFT JOIN product_categories pc ON pc.id = p.category_id
+            WHERE si.station_id = ?
+              AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
+            ORDER BY category, product_name
+        ");
+        $stmt->execute([$station_id]);
+        $merch = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt2 = $pdo->prepare("
+            SELECT fi.id AS fi_id, fi.fuel_type_id, fi.fuel_type, fi.current_level, fi.capacity, fi.ugt_no,
+                   COALESCE(fi.reorder_level, 5000) AS reorder_level,
+                   COALESCE(fi.critical_level, 2000) AS critical_level,
+                   COALESCE((SELECT fp.price_per_liter FROM fuel_pricing fp WHERE fp.fuel_type_id = fi.fuel_type_id AND fp.station_id = fi.station_id AND fp.is_active = 1 ORDER BY fp.effective_date DESC LIMIT 1), ft.price_per_liter, fi.price_per_liter, 0) AS current_price
+            FROM fuel_inventory fi
+            LEFT JOIN fuel_types ft ON fi.fuel_type_id = ft.id
+            WHERE fi.station_id = ?
+            ORDER BY fi.fuel_type_id ASC
+        ");
+        $stmt2->execute([$station_id]);
+        $fuel = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(['success' => true, 'merch' => $merch, 'fuel' => $fuel]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
 //  Handle POST Actions 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -3018,22 +3066,43 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==========================================
 // DIRECT CREATE PURCHASE ORDER JS LOGIC
 // ==========================================
-const directMerchCatalog = <?= json_encode($direct_merch_products, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
-const directFuelCatalog = <?= json_encode($direct_fuel_types, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+let directMerchCatalog = <?= json_encode($direct_merch_products, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+let directFuelCatalog = <?= json_encode($direct_fuel_types, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
-function openDirectPoModal() {
+function openDirectPoModal(targetTab) {
     openModal('directPoModal');
-    // Start clean — order items column only appears when user clicks "+ Add Item"
-    const merchTbody = document.getElementById('directMerchTbody');
-    if (merchTbody) merchTbody.innerHTML = '';
-    calcDirectMerchTotal();
+    // Automatically pre-populate low stock and out of stock items (matches Staff Stock Request behavior)
+    autoPopulateLowStockRows();
+    autoPopulateLowStockFuelRows();
 
-    const fuelTbody = document.getElementById('directFuelTbody');
-    if (fuelTbody) fuelTbody.innerHTML = '';
-    calcDirectFuelTotal();
+    if (targetTab) {
+        switchDirectPoType(targetTab);
+    } else {
+        switchDirectPoType('merch');
+    }
+
+    // Live refresh catalog in background to ensure real-time stock reflection
+    fetch('manager_stock_request_review.php?action=get_direct_po_catalog')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.success) {
+                if (data.merch && Array.isArray(data.merch)) directMerchCatalog = data.merch;
+                if (data.fuel && Array.isArray(data.fuel)) directFuelCatalog = data.fuel;
+                // Only re-render if user is not actively editing an input
+                const merchTbody = document.getElementById('directMerchTbody');
+                if (merchTbody && !merchTbody.querySelector('input:focus')) {
+                    autoPopulateLowStockRows();
+                }
+                const fuelTbody = document.getElementById('directFuelTbody');
+                if (fuelTbody && !fuelTbody.querySelector('input:focus')) {
+                    autoPopulateLowStockFuelRows();
+                }
+            }
+        })
+        .catch(err => console.warn('Catalog refresh notice:', err));
 }
 
-// Auto-fill Order Items with LOW STOCK & OUT OF STOCK products
+// Auto-fill Order Items with LOW STOCK & OUT OF STOCK products (same as staff stock request)
 function autoPopulateLowStockRows() {
     const tbody = document.getElementById('directMerchTbody');
     if (!tbody) return;
@@ -3041,19 +3110,32 @@ function autoPopulateLowStockRows() {
 
     const lowStockItems = directMerchCatalog.filter(function(p) {
         const stock   = parseFloat(p.current_stock  || 0);
-        const reorder = parseFloat(p.reorder_level  || 24);
-        return stock <= reorder; // low stock or out of stock
+        let reorder   = parseFloat(p.reorder_level  || 24);
+        if (reorder <= 0) reorder = 24;
+        return stock <= reorder || stock <= 0; // low stock or out of stock
     });
 
     if (lowStockItems.length === 0) {
-        // No low stock — show one blank row as fallback
-        addDirectMerchRow();
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="padding: 24px; text-align: center; background: #f0fdf4;">
+                    <div style="font-weight: 700; color: #166534; font-size: 13.5px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fas fa-check-circle" style="color: #22c55e;"></i> All Merchandise Products Have Optimal / Normal Stock Levels
+                    </div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+                        No low stock or out of stock merchandise detected. Click <strong>"+ Add Item"</strong> above if you wish to order products manually.
+                    </div>
+                </td>
+            </tr>
+        `;
+        calcDirectMerchTotal();
         return;
     }
 
     lowStockItems.forEach(function(p) {
-        const stock    = parseFloat(p.current_stock || 0);
-        const capacity = parseFloat(p.capacity      || 480);
+        const stock    = Math.max(0, parseFloat(p.current_stock || 0));
+        let capacity   = parseFloat(p.capacity || 480);
+        if (capacity <= 0) capacity = 480;
         const suggestQty = Math.max(1, Math.ceil(capacity - stock)); // suggest enough to fill to capacity
         const statusLabel = stock <= 0 ? '⚠ OUT OF STOCK' : '↓ LOW STOCK';
         const statusColor = stock <= 0 ? '#dc2626' : '#d97706';
@@ -3073,13 +3155,13 @@ function autoPopulateLowStockRows() {
             <td style="padding:10px 12px;text-align:center;color:#64748b;font-weight:600;">${p.unit || 'pcs'}</td>
             <td style="padding:10px 12px;text-align:right;">
                 <input type="number" step="0.01" min="0.01" name="unit_costs[]"
-                    oninput="calcDirectMerchTotal()" class="direct-merch-cost-input"
+                    oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-cost-input"
                     style="width:100%;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-weight:600;box-sizing:border-box;"
                     value="${parseFloat(p.unit_cost || p.price || 0).toFixed(2)}" placeholder="0.00" required>
             </td>
             <td style="padding:10px 12px;text-align:center;">
                 <input type="number" step="1" min="1" name="quantities[]"
-                    value="${suggestQty}" oninput="calcDirectMerchTotal()" class="direct-merch-qty-input"
+                    value="${suggestQty}" oninput="calcDirectMerchTotal()" onchange="calcDirectMerchTotal()" onkeyup="calcDirectMerchTotal()" class="direct-merch-qty-input"
                     style="width:100%;padding:7px 8px;border:1px solid #cbd5e1;border-radius:6px;text-align:center;font-weight:700;color:#002F6C;box-sizing:border-box;" required>
             </td>
             <td style="padding:10px 18px 10px 8px;text-align:right;font-weight:700;color:#002F6C;font-family:monospace;" class="direct-merch-line-total">
@@ -3109,13 +3191,23 @@ function switchDirectPoType(type) {
         fuelForm.style.display  = 'none';
         merchBtn.classList.add('active');
         fuelBtn.classList.remove('active');
-        calcDirectMerchTotal();
+        const merchTbody = document.getElementById('directMerchTbody');
+        if (!merchTbody || merchTbody.querySelectorAll('tr').length === 0) {
+            autoPopulateLowStockRows();
+        } else {
+            calcDirectMerchTotal();
+        }
     } else {
         merchForm.style.display = 'none';
         fuelForm.style.display  = 'block';
         fuelBtn.classList.add('active');
         merchBtn.classList.remove('active');
-        calcDirectFuelTotal();
+        const fuelTbody = document.getElementById('directFuelTbody');
+        if (!fuelTbody || fuelTbody.querySelectorAll('tr').length === 0) {
+            autoPopulateLowStockFuelRows();
+        } else {
+            calcDirectFuelTotal();
+        }
     }
 }
 
@@ -3306,7 +3398,8 @@ function autoPopulateLowStockFuelRows() {
 
     const lowStockFuels = directFuelCatalog.filter(function(ft) {
         const cur = parseFloat(ft.current_level || 0);
-        const reorder = parseFloat(ft.reorder_level || 5000);
+        let reorder = parseFloat(ft.reorder_level || 5000);
+        if (reorder <= 0) reorder = 5000;
         return cur <= reorder || cur <= 0;
     });
 
