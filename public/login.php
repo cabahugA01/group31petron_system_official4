@@ -1858,10 +1858,11 @@ $_asset_base = $_login_base . '/assets';
             width: 100%;
         }
 
-        /* Line-separated contact row — no icons, plain text only */
+        /* Line-separated contact row with elegant icons */
         .stationery-row {
             display: flex;
             align-items: flex-start;
+            gap: 14px;
             padding: 13px 2px;
             border-bottom: 1.2px solid rgba(15, 23, 42, 0.22);
             transition: border-color 0.2s, padding-left 0.2s;
@@ -1870,6 +1871,22 @@ $_asset_base = $_login_base . '/assets';
         .stationery-row:hover {
             border-bottom-color: #002F6C;
             padding-left: 4px;
+        }
+
+        .stationery-icon {
+            font-size: 16px;
+            color: #002F6C;
+            margin-top: 4px;
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+            opacity: 0.85;
+            transition: color 0.2s, transform 0.2s;
+        }
+
+        .stationery-row:hover .stationery-icon {
+            color: #E30613;
+            transform: scale(1.12);
         }
 
         .stationery-content {
@@ -2313,6 +2330,7 @@ $_asset_base = $_login_base . '/assets';
                     <div class="stationery-rows">
                         <!-- Location Row -->
                         <div class="stationery-row">
+                            <i class="fas fa-map-marker-alt stationery-icon"></i>
                             <div class="stationery-content">
                                 9 Vamenta Boulevard, corner Max Y. Suniel Street,<br>
                                 Barangay Carmen, Cagayan de Oro City,<br>
@@ -2321,18 +2339,21 @@ $_asset_base = $_login_base . '/assets';
                         </div>
                         <!-- Phone Row 1 -->
                         <div class="stationery-row">
+                            <i class="fas fa-phone-alt stationery-icon"></i>
                             <div class="stationery-content">
                                 <a href="tel:+639989525625">+63 998-952-5625</a>
                             </div>
                         </div>
                         <!-- Phone Row 2 -->
                         <div class="stationery-row">
+                            <i class="fas fa-phone-alt stationery-icon"></i>
                             <div class="stationery-content">
                                 <a href="tel:+639177918140">+63 917-791-8140</a>
                             </div>
                         </div>
                         <!-- Email Row -->
                         <div class="stationery-row">
+                            <i class="fas fa-envelope stationery-icon"></i>
                             <div class="stationery-content">
                                 <a href="mailto:rtpepito.coc@phinmaed.com">rtpepito.coc@phinmaed.com</a>
                             </div>
@@ -2349,6 +2370,7 @@ $_asset_base = $_login_base . '/assets';
                         <h3 class="stationery-name">Amie Cabahug</h3>
                         <div class="stationery-rows">
                             <div class="stationery-row">
+                                <i class="fas fa-phone-alt stationery-icon"></i>
                                 <div class="stationery-content">
                                     <a href="tel:+639851743073">+63 985-174-3073</a>
                                 </div>
@@ -2361,11 +2383,13 @@ $_asset_base = $_login_base . '/assets';
                         <h3 class="stationery-name">Christian Valencia</h3>
                         <div class="stationery-rows">
                             <div class="stationery-row">
+                                <i class="fas fa-phone-alt stationery-icon"></i>
                                 <div class="stationery-content">
                                     <a href="tel:+639936406090">+63 993-640-6090</a>
                                 </div>
                             </div>
                             <div class="stationery-row">
+                                <i class="fas fa-envelope stationery-icon"></i>
                                 <div class="stationery-content">
                                     <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
                                 </div>

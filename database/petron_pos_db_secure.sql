@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 16, 2026 at 10:51 AM
+-- Generation Time: Sep 16, 2026 at 05:32 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -48,7 +48,16 @@ INSERT INTO `activity_logs` (`id`, `user_id`, `action`, `details`, `reference`, 
 (3, 3, 'Logout', 'Edgar Eslit (Manager) logged out', NULL, '::1', '2026-09-16 16:41:00', '2026-09-16 16:41:00'),
 (4, 9, 'Logout', 'Judy Lastimosa (Staff) logged out', NULL, '::1', '2026-09-16 16:46:29', '2026-09-16 16:46:29'),
 (5, 9, 'Login', 'Judy Lastimosa (Staff) logged in via Email', NULL, '::1', '2026-09-16 16:46:35', '2026-09-16 16:46:35'),
-(6, 9, 'Clock In', 'Auto clock-in on login - Station 1253 - Second Shift: 2:00 PM - 12:00 Midnight', NULL, '::1', '2026-09-16 16:46:35', '2026-09-16 16:46:35');
+(6, 9, 'Clock In', 'Auto clock-in on login - Station 1253 - Second Shift: 2:00 PM - 12:00 Midnight', NULL, '::1', '2026-09-16 16:46:35', '2026-09-16 16:46:35'),
+(7, 9, 'Logout', 'Judy Lastimosa (Staff) logged out', NULL, '::1', '2026-09-16 16:54:50', '2026-09-16 16:54:50'),
+(8, 9, 'Clock Out', 'Auto clock-out on logout', NULL, '::1', '2026-09-16 16:54:50', '2026-09-16 16:54:50'),
+(9, 9, 'Login', 'Judy Lastimosa (Staff) logged in via Email', NULL, '::1', '2026-09-16 20:49:16', '2026-09-16 20:49:16'),
+(10, 9, 'Clock In', 'Auto clock-in on login - Station 1253 - Second Shift: 2:00 PM - 12:00 Midnight', NULL, '::1', '2026-09-16 20:49:16', '2026-09-16 20:49:16'),
+(11, 9, 'Logout', 'Judy Lastimosa (Staff) logged out', NULL, '::1', '2026-09-16 22:44:01', '2026-09-16 22:44:01'),
+(12, 9, 'Clock Out', 'Auto clock-out on logout', NULL, '::1', '2026-09-16 22:44:01', '2026-09-16 22:44:01'),
+(13, 4, 'Password Reset Request', 'Password reset requested for: amda.cabahug.coc@phinmaed.com', NULL, '::1', '2026-09-16 23:30:18', '2026-09-16 23:30:18'),
+(14, 4, 'Auth: PASSWORD_RESET_REQUESTED', 'Password reset OTP requested for: amda.cabahug.coc@phinmaed.com', NULL, '::1', '2026-09-16 23:30:18', '2026-09-16 23:30:18'),
+(15, 4, 'Auth: PASSWORD_RESET_OTP_SENT', 'OTP email delivered to: amda.cabahug.coc@phinmaed.com', NULL, '::1', '2026-09-16 23:30:23', '2026-09-16 23:30:23');
 
 -- --------------------------------------------------------
 
@@ -149,7 +158,12 @@ INSERT INTO `audit_logs` (`id`, `user_id`, `log_type`, `action_type`, `action_de
 (2, 4, 'user', 'Logout', 'Romeca Katherine Jane Tello Pepito (Admin) logged out', 'users', 4, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36', 'Success', NULL, '2026-09-16 08:40:59'),
 (3, 3, 'user', 'Logout', 'Edgar Eslit (Manager) logged out', 'users', 3, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36', 'Success', NULL, '2026-09-16 08:41:00'),
 (4, 9, 'user', 'Logout', 'Judy Lastimosa (Staff) logged out', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 08:46:29'),
-(5, 9, 'user', 'Login', 'Judy Lastimosa (Staff) logged in via Email', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 08:46:35');
+(5, 9, 'user', 'Login', 'Judy Lastimosa (Staff) logged in via Email', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 08:46:35'),
+(6, 9, 'user', 'Logout', 'Judy Lastimosa (Staff) logged out', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 08:54:50'),
+(7, 9, 'user', 'Login', 'Judy Lastimosa (Staff) logged in via Email', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 12:49:16'),
+(8, 9, 'user', 'Logout', 'Judy Lastimosa (Staff) logged out', 'users', 9, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', 'Success', NULL, '2026-09-16 14:44:01'),
+(9, 4, 'authentication', 'PASSWORD_RESET_REQUESTED', 'Password reset OTP requested for: amda.cabahug.coc@phinmaed.com', 'users', 4, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36', 'SUCCESS', NULL, '2026-09-16 15:30:18'),
+(10, 4, 'authentication', 'PASSWORD_RESET_OTP_SENT', 'OTP email delivered to: amda.cabahug.coc@phinmaed.com', 'users', 4, NULL, NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36', 'SUCCESS', NULL, '2026-09-16 15:30:23');
 
 -- --------------------------------------------------------
 
@@ -698,8 +712,6 @@ INSERT INTO `fuel_inventory` (`id`, `station_id`, `fuel_type_id`, `current_stock
 (32, 1253, 29, 14000.00, 'XCS Plus (UGT #3)', 14000.00, 14000.00, 5000.00, 2500.00, 79.50, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', 9, 'UGT #3'),
 (33, 1253, 30, 7000.00, 'Xtra UNL 1 (UGT #4)', 7000.00, 7000.00, 2000.00, 1000.00, 74.80, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', 9, 'UGT #4'),
 (34, 1253, 31, 14000.00, 'Xtra UNL 2 (UGT #6)', 14000.00, 14000.00, 5000.00, 2500.00, 74.80, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', 9, 'UGT #6'),
-(9921, 1253, 33, 10000.00, 'Test Fuel A', 10000.00, 10000.00, 4000.00, 2000.00, 100.00, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', 9, 'UGT‑99'),
-(9922, 1253, 34, 15000.00, 'Test Fuel B', 15000.00, 15000.00, 5000.00, 2500.00, 100.00, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', 9, 'UGT #9'),
 (9923, 1253, 11, 14000.00, 'Turbo Diesel', 14000.00, 14000.00, 2800.00, 2100.00, 0.00, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', NULL, 'UGT-10'),
 (9924, 1253, 42, 14000.00, 'XCS', 14000.00, 14000.00, 2800.00, 2100.00, 0.00, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', NULL, 'UGT-11'),
 (9925, 1253, 43, 14000.00, 'Xtra Advance', 14000.00, 14000.00, 2800.00, 2100.00, 0.00, 0.00, NULL, NULL, 'active', '2026-09-16 07:42:51', NULL, 'UGT-12'),
@@ -1171,8 +1183,6 @@ INSERT INTO `fuel_types` (`id`, `category_id`, `name`, `description`, `price_per
 (30, 1, 'Xtra UNL 1', 'Petron Fuel: Xtra UNL 1', 74.80),
 (31, 1, 'Xtra UNL 2', 'Petron Fuel: Xtra UNL 2', 74.80),
 (32, 1, 'XTRA UNL', NULL, 74.80),
-(33, 1, 'Test Fuel A', NULL, 0.00),
-(34, 1, 'Test Fuel B', NULL, 100.00),
 (35, 1, 'Diesel', NULL, 80.00),
 (36, 1, 'Turbo Diesel (UGT #5)', NULL, 90.00),
 (37, 1, 'Kerosene (UGT #7)', NULL, 84.50),
@@ -1616,15 +1626,12 @@ INSERT INTO `inventory_products` (`id`, `product_name`, `sku`, `barcode`, `categ
 (1030, 'Bosch Clear Advantage Wiper Blade 20 Inches', 'BOSCH-WIPER-20', NULL, 'Car Accessories', 3, 'Bosch', NULL, 'Piece (pc)', NULL, 220.00, 330.00, 220.00, 330.00, 480, 480, 24, 480, 24, 10, 1253, 'active', '2026-08-22 22:10:34', '2026-09-16 15:42:51', NULL),
 (1031, 'Bosch Clear Advantage Wiper Blade 24 Inches', 'BOSCH-WIPER-24', NULL, 'Car Accessories', 3, 'Bosch', NULL, 'Piece (pc)', NULL, 260.00, 380.00, 260.00, 380.00, 480, 480, 24, 480, 24, 10, 1253, 'active', '2026-08-22 22:10:34', '2026-09-16 15:42:51', NULL),
 (1032, 'Piattos Cheese 85g Pack', 'PIATTOS-85G', NULL, 'Snacks', NULL, NULL, NULL, 'pcs', NULL, 0.00, 30.00, 21.00, 30.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-11 15:34:11', '2026-09-16 15:42:51', NULL),
-(1033, 'test', 'ITEM001', 'N/A', 'Drinks', NULL, 'test', 'Bottle', 'pcs', NULL, 0.00, 65.00, 0.00, 0.00, 100, 100, 5, 100, 24, 10, 1253, 'active', '2026-09-12 23:44:11', '2026-09-16 15:42:51', NULL),
 (1034, 'Turbo Diesel (UGT #5)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 90.00, 90.00, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
 (1035, 'Kerosene (UGT #7)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 84.50, 84.50, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
 (1036, 'Diesel 2 (UGT #2)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 80.00, 80.00, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
 (1037, 'XCS Plus (UGT #3)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 79.50, 79.50, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
 (1038, 'Xtra UNL 1 (UGT #4)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 74.80, 74.80, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
-(1039, 'Xtra UNL 2 (UGT #6)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 74.80, 74.80, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
-(1040, 'Test Fuel A', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 100.00, 100.00, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL),
-(1041, 'Test Fuel B', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 100.00, 100.00, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL);
+(1039, 'Xtra UNL 2 (UGT #6)', NULL, NULL, 'Fuel', NULL, NULL, NULL, 'pcs', NULL, 0.00, 74.80, 74.80, 0.00, 100, 100, 5, 100, 5, 10, 1253, 'active', '2026-09-14 15:07:56', '2026-09-16 15:42:51', NULL);
 
 -- --------------------------------------------------------
 
@@ -1757,7 +1764,6 @@ CREATE TABLE `job_order_service_types` (
 --
 
 INSERT INTO `job_order_service_types` (`id`, `service_code`, `service_key`, `service_name`, `category`, `base_rate_per_hour`, `icon_class`, `color_class`, `allows_custom_input`, `allows_manual_parts`, `active`, `sort_order`, `status`, `submitted_by`, `reviewed_by`, `review_note`, `created_at`, `updated_at`, `service_price`, `labor_fee`, `estimated_duration`, `required_mechanics`, `description`, `station_id`, `created_by`, `min_price`, `max_price`, `price_description`, `pricing_notes`) VALUES
-(103, 'SVC-0001', 'test', 'test', 'Electrical', 0.00, NULL, NULL, 0, 1, 1, 0, 'approved', NULL, NULL, NULL, '2026-09-12 17:39:23', '2026-09-15 11:51:40', 1000.00, 100.00, NULL, NULL, 'N/A', 1253, 3, 0.00, 0.00, NULL, NULL),
 (104, 'SVC-0002', 'basic_pms', 'Basic PMS', 'Preventive Maintenance', 0.00, NULL, NULL, 0, 1, 1, 0, 'approved', NULL, NULL, NULL, '2026-09-15 11:51:39', '2026-09-15 11:51:40', 2500.00, 0.00, 60, 1, NULL, 1253, NULL, 0.00, 0.00, NULL, NULL),
 (105, 'SVC-0003', 'regular_pms', 'Regular PMS', 'Preventive Maintenance', 0.00, NULL, NULL, 0, 1, 1, 0, 'approved', NULL, NULL, NULL, '2026-09-15 11:51:39', '2026-09-15 11:51:40', 4500.00, 0.00, 60, 1, NULL, 1253, NULL, 0.00, 0.00, NULL, NULL),
 (106, 'SVC-0004', 'major_pms', 'Major PMS', 'Preventive Maintenance', 0.00, NULL, NULL, 0, 1, 1, 0, 'approved', NULL, NULL, NULL, '2026-09-15 11:51:39', '2026-09-15 11:51:40', 8500.00, 0.00, 60, 1, NULL, 1253, NULL, 0.00, 0.00, NULL, NULL),
@@ -1883,7 +1889,8 @@ CREATE TABLE `labor_sessions` (
 --
 
 INSERT INTO `labor_sessions` (`id`, `user_id`, `station_id`, `start_time`, `end_time`, `hours_worked`, `created_at`, `shift_period`, `shift_name`) VALUES
-(1, 9, 1253, '2026-09-16 16:46:35', NULL, 0.00, '2026-09-16 08:46:35', 'second', 'Second Shift: 2:00 PM - 12:00 Midnight');
+(1, 9, 1253, '2026-09-16 16:46:35', '2026-09-16 16:54:50', 0.13, '2026-09-16 08:46:35', 'second', 'Second Shift: 2:00 PM - 12:00 Midnight'),
+(2, 9, 1253, '2026-09-16 20:49:16', '2026-09-16 22:44:01', 1.90, '2026-09-16 12:49:16', 'second', 'Second Shift: 2:00 PM - 12:00 Midnight');
 
 -- --------------------------------------------------------
 
@@ -1908,7 +1915,8 @@ CREATE TABLE `login_attempts` (
 --
 
 INSERT INTO `login_attempts` (`id`, `user_id`, `username`, `ip_address`, `user_agent`, `attempt_time`, `status`, `failure_reason`, `attempts_count`) VALUES
-(1, 9, 'amiecabahug2020@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', '2026-09-16 16:46:35', 'success', NULL, 1);
+(1, 9, 'amiecabahug2020@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', '2026-09-16 16:46:35', 'success', NULL, 1),
+(2, 9, 'amiecabahug2020@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0', '2026-09-16 20:49:16', 'success', NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -2543,6 +2551,13 @@ CREATE TABLE `password_reset_tokens` (
   `attempts` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `password_reset_tokens`
+--
+
+INSERT INTO `password_reset_tokens` (`id`, `user_id`, `token`, `token_type`, `expires_at`, `used_at`, `ip_address`, `is_used`, `created_at`, `attempts`) VALUES
+(1, 4, 'b78c006df75c2ef17e0a0194fe130851921ce76fe6389d545ee7c4b3d21fe6b9', 'reset', '2026-09-16 23:35:18', NULL, '::1', 0, '2026-09-16 23:30:18', 0);
+
 -- --------------------------------------------------------
 
 --
@@ -2960,8 +2975,7 @@ INSERT INTO `products` (`id`, `sku`, `barcode`, `name`, `brand`, `description`, 
 (1028, 'BOSCH-WIPER-16', NULL, 'Bosch Clear Advantage Wiper Blade 16 Inches', 'Bosch', NULL, NULL, NULL, 5, 2, 200.00, 290.00, '2026-08-22 22:10:34', '2026-09-16 15:42:51', 5.00, NULL, 1253, 480.00, 'Piece (pc)', 0.00, 'active', NULL),
 (1029, 'BOSCH-WIPER-18', NULL, 'Bosch Clear Advantage Wiper Blade 18 Inches', 'Bosch', NULL, NULL, NULL, 5, 2, 210.00, 310.00, '2026-08-22 22:10:34', '2026-09-16 15:42:51', 5.00, NULL, 1253, 480.00, 'Piece (pc)', 0.00, 'active', NULL),
 (1030, 'BOSCH-WIPER-20', NULL, 'Bosch Clear Advantage Wiper Blade 20 Inches', 'Bosch', NULL, NULL, NULL, 5, 2, 220.00, 330.00, '2026-08-22 22:10:34', '2026-09-16 15:42:51', 5.00, NULL, 1253, 480.00, 'Piece (pc)', 0.00, 'active', NULL),
-(1031, 'BOSCH-WIPER-24', NULL, 'Bosch Clear Advantage Wiper Blade 24 Inches', 'Bosch', NULL, NULL, NULL, 5, 2, 260.00, 380.00, '2026-08-22 22:10:34', '2026-09-16 15:42:51', 5.00, NULL, 1253, 480.00, 'Piece (pc)', 0.00, 'active', NULL),
-(1033, 'ITEM001', NULL, 'test', 'test', '', NULL, NULL, 23, NULL, 0.00, 65.00, '2026-09-12 23:44:11', '2026-09-16 15:42:51', 24.00, 10.00, 1253, 10.00, 'Bottle', 480.00, 'active', NULL);
+(1031, 'BOSCH-WIPER-24', NULL, 'Bosch Clear Advantage Wiper Blade 24 Inches', 'Bosch', NULL, NULL, NULL, 5, 2, 260.00, 380.00, '2026-08-22 22:10:34', '2026-09-16 15:42:51', 5.00, NULL, 1253, 480.00, 'Piece (pc)', 0.00, 'active', NULL);
 
 -- --------------------------------------------------------
 
@@ -5223,8 +5237,7 @@ INSERT INTO `station_inventory` (`id`, `station_id`, `product_id`, `stock_level`
 (356, 1253, 1029, 480.00, 210.00, 310.00, 480.00, NULL, NULL, 24, 10, 480.00, 'Piece (pc)', 'active', '2026-09-16 15:42:51', 480.00, 0.00, NULL),
 (357, 1253, 1030, 480.00, 220.00, 330.00, 480.00, NULL, NULL, 24, 10, 480.00, 'Piece (pc)', 'active', '2026-09-16 15:42:51', 480.00, 0.00, NULL),
 (358, 1253, 1031, 480.00, 260.00, 380.00, 480.00, NULL, NULL, 24, 10, 480.00, 'Piece (pc)', 'active', '2026-09-16 15:42:51', 480.00, 0.00, NULL),
-(359, 1253, 1032, 10000.00, 21.00, 30.00, 10000.00, NULL, NULL, 0, 10, 10000.00, NULL, 'active', '2026-09-16 15:42:51', 10000.00, 0.00, NULL),
-(360, 1253, 1033, 10000.00, 0.00, 65.00, 10000.00, NULL, NULL, 24, 10, 10000.00, 'Bottle', 'active', '2026-09-16 15:42:51', 10000.00, 0.00, NULL);
+(359, 1253, 1032, 10000.00, 21.00, 30.00, 10000.00, NULL, NULL, 0, 10, 10000.00, NULL, 'active', '2026-09-16 15:42:51', 10000.00, 0.00, NULL);
 
 -- --------------------------------------------------------
 
@@ -5575,7 +5588,7 @@ INSERT INTO `users` (`id`, `employee_id`, `first_name`, `last_name`, `username`,
 (1, 'SA-001', 'Yang', '', 'developer', '$2y$10$bX1k5n/d6dK79mzuklqXPOKAGjRD3Y9kklnOcrggMmaCD0TNS5BgC', 'superadmin', NULL, NULL, NULL, NULL, 'yangc.developer@gmail.com', '', 1253, 'Active', '2026-02-16 16:04:29', '2026-09-16 15:45:13', 'uploads/profiles/profile_1_1787315400.jpg', NULL),
 (3, 'MGR-001', 'Edgar', 'Eslit', 'cabahug.amiedamas@gmail.com', '$2y$10$cju0zN9JgAEeHkZOIdnxMOEp8PHqvj4e6jtFPP8L7JG9xNeb2/bRW', 'manager', NULL, NULL, NULL, NULL, 'cabahug.amiedamas@gmail.com', 'N/A', 1253, 'Active', '2026-02-27 12:47:29', '2026-09-16 14:32:40', 'uploads/profiles/profile_3_1783273496.jpg', NULL),
 (4, 'ADM-001', 'Romeca Katherine Jane', 'Tello Pepito', 'pepito', '$2y$10$83qOKdC3LJOp0YK6WmLpfOyba3dD96HIXdgzBP8hTtCQHmwXG1En6', 'admin', NULL, NULL, NULL, NULL, 'amda.cabahug.coc@phinmaed.com', '+63 917 791 8140', 1253, 'Active', '2026-03-09 14:41:02', '2026-09-16 15:36:23', 'uploads/profiles/profile_4_1786900100.jpg', NULL),
-(9, 'STF-003', 'Judy', 'Lastimosa', 'judy', '$2y$10$ISMiDK.VvfQuytyt/zF21OlySx/SKtwGfeKICL1gfiQ7bVFnB8R9K', 'staff', NULL, NULL, '14:00:00', '00:00:00', 'amiecabahug2020@gmail.com', '09452136587', 1253, 'Active', '2026-06-30 21:55:43', '2026-09-16 16:46:35', 'uploads/profiles/profile_9_1787063034.jpg', NULL);
+(9, 'STF-003', 'Judy', 'Lastimosa', 'judy', '$2y$10$ISMiDK.VvfQuytyt/zF21OlySx/SKtwGfeKICL1gfiQ7bVFnB8R9K', 'staff', NULL, NULL, '14:00:00', '00:00:00', 'amiecabahug2020@gmail.com', '09452136587', 1253, 'Active', '2026-06-30 21:55:43', '2026-09-16 20:49:16', 'uploads/profiles/profile_9_1787063034.jpg', NULL);
 
 -- --------------------------------------------------------
 
@@ -5610,7 +5623,7 @@ INSERT INTO `user_form_drafts` (`id`, `user_id`, `station_id`, `module_key`, `dr
 (8, 3, 1253, 'form_manager_inventory_merchandise_11', 'draft_3_form_manager_inventory_merchandise_11', '{\"action\":\"create_stock_request\",\"srProductId\":\"\",\"srRequestedQty\":\"\",\"remarks\":\"\"}', 'draft', '2026-09-16 15:49:55', '2026-09-16 15:50:04'),
 (65, 4, 1253, 'user_creation_form', 'draft_4_user_creation_form', '{\"action\":\"add_user\",\"add_first_name\":\"\",\"add_last_name\":\"\",\"add_contact_number\":\"\",\"add_email\":\"\",\"add_username\":\"\",\"user_role_add\":\"\",\"new_password\":\"\"}', 'draft', '2026-09-16 15:51:37', '2026-09-16 15:59:17'),
 (66, 4, 1253, 'form_users_3', 'draft_4_form_users_3', '{\"action\":\"reset_password\",\"reset_user_id\":\"\",\"reset_password_field\":\"\"}', 'draft', '2026-09-16 15:51:37', '2026-09-16 15:59:17'),
-(79, 9, 1253, 'transaction_adjustment', 'draft_9_transaction_adjustment', '{\"adj_product_id\":\"\",\"adj_type\":\"\",\"adj_action\":\"Decrease\",\"adj_manual_direction\":\"Decrease\",\"adj_quantity\":\"\",\"adj_reason\":\"\",\"adj_remarks\":\"\"}', 'draft', '2026-09-16 16:46:42', '2026-09-16 16:46:42');
+(79, 9, 1253, 'transaction_adjustment', 'draft_9_transaction_adjustment', '{\"adj_product_id\":\"\",\"adj_type\":\"\",\"adj_action\":\"Decrease\",\"adj_manual_direction\":\"Decrease\",\"adj_quantity\":\"\",\"adj_reason\":\"\",\"adj_remarks\":\"\"}', 'draft', '2026-09-16 16:46:42', '2026-09-16 22:15:47');
 
 -- --------------------------------------------------------
 
@@ -5638,7 +5651,7 @@ INSERT INTO `user_preferences` (`id`, `user_id`, `preference_key`, `preference_v
 (16, 3, 'badge_seen_fuel_transactions_validation', '2026-09-16 15:29:21', '2026-08-21 05:35:13', '2026-09-16 07:29:21'),
 (27, 4, 'badge_seen_admin_fuel_transactions_oversight', '2026-09-14 00:36:02', '2026-08-21 06:07:07', '2026-09-13 16:36:02'),
 (48, 3, 'badge_seen_mgr_stock_review', '2026-09-16 15:10:28', '2026-08-21 13:41:01', '2026-09-16 07:10:28'),
-(136, 9, 'badge_seen_staff_new_transaction', '2026-09-16 15:18:27', '2026-08-24 07:31:59', '2026-09-16 07:18:27'),
+(136, 9, 'badge_seen_staff_new_transaction', '2026-09-16 22:15:56', '2026-08-24 07:31:59', '2026-09-16 14:15:56'),
 (445, 9, 'badge_seen_inventory', '2026-09-15 19:09:05', '2026-08-31 07:04:00', '2026-09-15 11:09:05'),
 (446, 9, 'badge_seen_admin_inventory', '2026-09-15 19:09:05', '2026-08-31 07:04:00', '2026-09-15 11:09:05'),
 (447, 9, 'badge_seen_inv_merch', '2026-09-15 19:09:05', '2026-08-31 07:04:00', '2026-09-15 11:09:05'),
@@ -5660,11 +5673,11 @@ INSERT INTO `user_preferences` (`id`, `user_id`, `preference_key`, `preference_v
 (719, 3, 'badge_seen_fuel', '2026-09-15 19:34:03', '2026-08-31 07:53:48', '2026-09-15 11:34:03'),
 (720, 3, 'badge_seen_admin_fuel', '2026-09-15 19:34:03', '2026-08-31 07:53:48', '2026-09-15 11:34:03'),
 (721, 3, 'badge_seen_admin_fuel_management', '2026-09-15 19:34:03', '2026-08-31 07:53:48', '2026-09-15 11:34:03'),
-(725, 9, 'badge_seen_fuel', '2026-09-16 16:46:42', '2026-08-31 07:55:10', '2026-09-16 08:46:42'),
-(726, 9, 'badge_seen_admin_fuel', '2026-09-16 16:46:42', '2026-08-31 07:55:10', '2026-09-16 08:46:42'),
-(727, 9, 'badge_seen_admin_fuel_management', '2026-09-16 16:46:42', '2026-08-31 07:55:10', '2026-09-16 08:46:42'),
-(734, 9, 'badge_seen_transactions', '2026-09-16 15:38:06', '2026-08-31 08:54:51', '2026-09-16 07:38:06'),
-(735, 9, 'badge_seen_admin_transactions', '2026-09-16 15:38:06', '2026-08-31 08:54:51', '2026-09-16 07:38:06'),
+(725, 9, 'badge_seen_fuel', '2026-09-16 20:57:13', '2026-08-31 07:55:10', '2026-09-16 12:57:13'),
+(726, 9, 'badge_seen_admin_fuel', '2026-09-16 20:57:13', '2026-08-31 07:55:10', '2026-09-16 12:57:13'),
+(727, 9, 'badge_seen_admin_fuel_management', '2026-09-16 20:57:13', '2026-08-31 07:55:10', '2026-09-16 12:57:13'),
+(734, 9, 'badge_seen_transactions', '2026-09-16 22:15:57', '2026-08-31 08:54:51', '2026-09-16 14:15:57'),
+(735, 9, 'badge_seen_admin_transactions', '2026-09-16 22:15:57', '2026-08-31 08:54:51', '2026-09-16 14:15:57'),
 (895, 4, 'badge_seen_fuel', '2026-09-15 15:06:03', '2026-08-31 12:39:29', '2026-09-15 07:06:03'),
 (896, 4, 'badge_seen_admin_fuel', '2026-09-15 15:06:03', '2026-08-31 12:39:29', '2026-09-15 07:06:03'),
 (897, 4, 'badge_seen_admin_fuel_management', '2026-09-15 15:06:03', '2026-08-31 12:39:29', '2026-09-15 07:06:03'),
@@ -6925,7 +6938,7 @@ ALTER TABLE `voided_transactions`
 -- AUTO_INCREMENT for table `activity_logs`
 --
 ALTER TABLE `activity_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `adjustment_history`
@@ -6949,7 +6962,7 @@ ALTER TABLE `admin_compliance_deadlines`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `audit_trail`
@@ -7189,13 +7202,13 @@ ALTER TABLE `job_order_service_types`
 -- AUTO_INCREMENT for table `labor_sessions`
 --
 ALTER TABLE `labor_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `login_attempts`
 --
 ALTER TABLE `login_attempts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `loyalty_accounts`
@@ -7309,7 +7322,7 @@ ALTER TABLE `notifications`
 -- AUTO_INCREMENT for table `password_reset_tokens`
 --
 ALTER TABLE `password_reset_tokens`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `payment_audit_log`
@@ -7441,7 +7454,7 @@ ALTER TABLE `staff_color_config`
 -- AUTO_INCREMENT for table `staff_event_types`
 --
 ALTER TABLE `staff_event_types`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30757;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30769;
 
 --
 -- AUTO_INCREMENT for table `stations`
@@ -7531,13 +7544,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `user_form_drafts`
 --
 ALTER TABLE `user_form_drafts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=82;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=107;
 
 --
 -- AUTO_INCREMENT for table `user_preferences`
 --
 ALTER TABLE `user_preferences`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21777;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21846;
 
 --
 -- AUTO_INCREMENT for table `variance_alerts`
