@@ -26,6 +26,7 @@ if (in_array($_section_early, ['fuel', 'fuel_history'])) {
 $me         = current_user();
 $station_id = user_station_id();
 $role       = role_key($me['role'] ?? '');
+$enable_void_transaction = function_exists('get_module_setting') ? (bool) get_module_setting('transactions', 'enable_void_transaction', true) : true;
 
 customer_ensure_optional_columns($pdo);
 customer_ensure_request_table($pdo);
@@ -7444,23 +7445,25 @@ setTimeout(function() {
                                                         </button>
                                                     <?php endif; ?>
 
-                                                    <?php if ($mh_void_req): ?>
-                                                        <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
-                                                    <?php else: ?>
-                                                        <button type="button"
-                                                                data-jo-id="<?= (int)$txn['mt_id'] ?>"
-                                                                data-jo-source="merchandise_transactions"
-                                                                data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
-                                                                data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
-                                                                data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Completed') ?>"
-                                                                data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
-                                                                data-jo-total="<?= (float)$total_amount ?>"
-                                                                onclick="return openRequestVoidModal(event, this);"
-                                                                class="void-btn"
-                                                                style="width:100%;"
-                                                                title="Request Void">
-                                                            <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
-                                                        </button>
+                                                    <?php if ($enable_void_transaction): ?>
+                                                        <?php if ($mh_void_req): ?>
+                                                            <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                        <?php else: ?>
+                                                            <button type="button"
+                                                                    data-jo-id="<?= (int)$txn['mt_id'] ?>"
+                                                                    data-jo-source="merchandise_transactions"
+                                                                    data-jo-ref="<?= htmlspecialchars($txn['transaction_id'] ?? ('#'.$txn['mt_id'])) ?>"
+                                                                    data-jo-customer="<?= htmlspecialchars($txn['customer_name'] ?? 'Walk-in Customer') ?>"
+                                                                    data-jo-status="<?= htmlspecialchars($txn['validation_status'] ?? 'Completed') ?>"
+                                                                    data-jo-paystatus="<?= htmlspecialchars($txn['payment_status'] ?? 'Paid') ?>"
+                                                                    data-jo-total="<?= (float)$total_amount ?>"
+                                                                    onclick="return openRequestVoidModal(event, this);"
+                                                                    class="void-btn"
+                                                                    style="width:100%;"
+                                                                    title="Request Void">
+                                                                <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php endif; ?>
@@ -7727,26 +7730,28 @@ setTimeout(function() {
                                                         </button>
                                                     <?php endif; ?>
 
-                                                    <?php if ($jom_void_req): ?>
-                                                        <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
-                                                    <?php else: ?>
-                                                        <button type="button"
-                                                                data-jom-id="<?= $jom_id ?>"
-                                                                data-jom-tid="<?= $jom_tid ?>"
-                                                                data-jom-customer="<?= $jom_cname ?>"
-                                                                data-jom-status="<?= htmlspecialchars($jom['validation_status'] ?? 'Completed') ?>"
-                                                                data-jom-paystatus="<?= htmlspecialchars($jom_pstatus) ?>"
-                                                                data-jom-total="<?= (float)$jom_total_amt ?>"
-                                                                data-jom-service="<?= $jom_service ?>"
-                                                                data-jom-plate="<?= $jom_plate ?>"
-                                                                data-jom-mechanic="<?= $jom_mechanic ?>"
-                                                                data-jom-merch="<?= $jom_merch_sum ?>"
-                                                                onclick="return openCombinedVoidModal(event, this);"
-                                                                class="void-btn"
-                                                                style="width:100%;"
-                                                                title="Request Combined Void">
-                                                            <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
-                                                        </button>
+                                                    <?php if ($enable_void_transaction): ?>
+                                                        <?php if ($jom_void_req): ?>
+                                                            <span style="width:100%;font-size:10.5px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;padding:3px 2px;border-radius:4px;font-weight:800;text-align:center;white-space:nowrap;" title="Void request pending"><i class="fas fa-clock"></i> Void Req</span>
+                                                        <?php else: ?>
+                                                            <button type="button"
+                                                                    data-jom-id="<?= $jom_id ?>"
+                                                                    data-jom-tid="<?= $jom_tid ?>"
+                                                                    data-jom-customer="<?= $jom_cname ?>"
+                                                                    data-jom-status="<?= htmlspecialchars($jom['validation_status'] ?? 'Completed') ?>"
+                                                                    data-jom-paystatus="<?= htmlspecialchars($jom_pstatus) ?>"
+                                                                    data-jom-total="<?= (float)$jom_total_amt ?>"
+                                                                    data-jom-service="<?= $jom_service ?>"
+                                                                    data-jom-plate="<?= $jom_plate ?>"
+                                                                    data-jom-mechanic="<?= $jom_mechanic ?>"
+                                                                    data-jom-merch="<?= $jom_merch_sum ?>"
+                                                                    onclick="return openCombinedVoidModal(event, this);"
+                                                                    class="void-btn"
+                                                                    style="width:100%;"
+                                                                    title="Request Combined Void">
+                                                                <i class="fas fa-ban"></i> <span><?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Req. Void' ?></span>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php endif; ?>
@@ -8522,34 +8527,6 @@ setTimeout(function() {
                               maxlength="500"
                               oninput="resetInspectionInputValidation(this);"
                               style="font-size:13px;resize:vertical;"></textarea>
-                </div>
-
-                <!-- Category -->
-                <div style="margin-bottom:14px;">
-                    <label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:5px;">
-                        Category
-                    </label>
-                    <input type="text"
-                           id="newInspectionCategory"
-                           class="txn-input"
-                           list="inspectionCategoryList"
-                           placeholder="e.g. General, Electrical, Engine..."
-                           oninput="resetInspectionInputValidation(this);"
-                           style="font-size:13px;"
-                           autocomplete="off">
-                    <datalist id="inspectionCategoryList">
-                        <option value="General">
-                        <option value="Engine">
-                        <option value="Electrical">
-                        <option value="Brakes">
-                        <option value="Suspension">
-                        <option value="Cooling System">
-                        <option value="Transmission">
-                        <option value="Exterior">
-                        <option value="Interior">
-                        <option value="Safety">
-                        <option value="Others">
-                    </datalist>
                 </div>
 
                 <!-- Status -->
@@ -11060,11 +11037,9 @@ setTimeout(function() {
             if (typeof hideVehicleDropdown === 'function') hideVehicleDropdown();
             const nameEl = document.getElementById('newInspectionName');
             const descEl = document.getElementById('newInspectionDescription');
-            const catEl  = document.getElementById('newInspectionCategory');
             const statEl = document.getElementById('newInspectionStatus');
             if (nameEl) nameEl.value = '';
             if (descEl) descEl.value = '';
-            if (catEl)  catEl.value  = '';
             if (statEl) statEl.value = '1';
 
             const errDiv = document.getElementById('addInspectionError');
@@ -11103,13 +11078,12 @@ setTimeout(function() {
         async function submitNewInspectionItem() {
             const nameEl = document.getElementById('newInspectionName');
             const descEl = document.getElementById('newInspectionDescription');
-            const catEl  = document.getElementById('newInspectionCategory');
             const statEl = document.getElementById('newInspectionStatus');
             const btn    = document.getElementById('addInspectionSubmitBtn');
 
             const name   = (nameEl?.value || '').trim();
             const desc   = (descEl?.value || '').trim();
-            const cat    = (catEl?.value || '').trim() || 'General';
+            const cat    = 'General';
             const status = statEl?.value || '1';
             const isAdm  = <?= json_encode(in_array($role, ['admin','superadmin'])) ?>;
 
@@ -11184,7 +11158,7 @@ setTimeout(function() {
                         }
                     } else {
                         const reqMsg = 'Request submitted successfully! Request ID: #' + (data.request_no || data.request_id) + '. Status: Pending Manager Approval.';
-                        showTxnAlert(reqMsg, 'info');
+                        showTxnAlert(reqMsg, 'success');
                     }
                 } else {
                     setAddInspectionError(data.error || 'Failed to submit inspection item.');
@@ -13529,6 +13503,7 @@ setTimeout(function() {
                                                 class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                             <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                         </button>
+                                        <?php if ($enable_void_transaction): ?>
                                         <button type="button"
                                                 data-jo-id="<?= (int)$job['id'] ?>"
                                                 data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
@@ -13540,6 +13515,7 @@ setTimeout(function() {
                                                 class="void-btn" >
                                             <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                         </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
 
                                 <?php elseif ($wf_status === 'Released'): ?>
@@ -13595,6 +13571,7 @@ setTimeout(function() {
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
+                                    <?php if ($enable_void_transaction): ?>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
                                             data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
@@ -13606,6 +13583,7 @@ setTimeout(function() {
                                             class="void-btn" >
                                         <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
+                                    <?php endif; ?>
 
                                 <?php elseif ($wf_status === 'In Progress'): ?>
                                     <?php if ($pay_status === 'Paid'): ?>
@@ -13645,6 +13623,7 @@ setTimeout(function() {
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
+                                    <?php if ($enable_void_transaction): ?>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
                                             data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
@@ -13656,6 +13635,7 @@ setTimeout(function() {
                                             class="void-btn" >
                                         <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
+                                    <?php endif; ?>
 
                                 <?php else: ?>
                                     <?php if ($wf_status !== 'In Progress' && $val_status !== 'Pending Validation'): ?>
@@ -13689,6 +13669,7 @@ setTimeout(function() {
                                             class="txn-btn secondary" style="width:100%;padding:4px 6px;font-size:11px !important;font-weight:700 !important;box-sizing:border-box;text-align:center;justify-content:center;cursor:pointer;">
                                         <i class="fas fa-sliders-h"></i> <?= in_array($role, ['admin','superadmin']) ? 'Adjust' : 'Request Adjust' ?>
                                     </button>
+                                    <?php if ($enable_void_transaction): ?>
                                     <button type="button"
                                             data-jo-id="<?= (int)$job['id'] ?>"
                                             data-jo-source="<?= htmlspecialchars($job['_source'] ?? 'job_orders') ?>"
@@ -13700,6 +13681,7 @@ setTimeout(function() {
                                             class="void-btn" >
                                         <i class="fas fa-ban"></i> <?= in_array($role, ['admin','superadmin']) ? 'Void' : 'Request Void' ?>
                                     </button>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -15703,11 +15685,13 @@ setTimeout(function() {
                   </button>
 
                   <!-- Request Void Button -->
+                  <?php if ($enable_void_transaction): ?>
                   <button type="button" id="viewMTVoidBtn" onclick="onViewMTVoidClick(event)"
                           class="txn-btn danger"
                           style="padding:6px 12px !important;border-radius:6px !important;font-size:12px !important;font-weight:700 !important;background:#dc2626 !important;color:#ffffff !important;border:none !important;cursor:pointer !important;">
                     <i class="fas fa-ban" style="margin-right:5px;"></i> Request Void
                   </button>
+                  <?php endif; ?>
                 </div>
 
                 <!-- Status Badges in Action Bar -->

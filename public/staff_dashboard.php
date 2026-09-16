@@ -46,6 +46,9 @@ if ($display_name === '') {
 }
 $station_label = htmlspecialchars($me['station_name'] ?? 'Station #' . $station_id);
 
+$enable_kpi_cards     = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+$enable_quick_actions = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+
 // ── Notification Click Handler (Auto-mark read and redirect) ─────────────────
 if (isset($_GET['open_notif']) && (int)$_GET['open_notif'] > 0) {
     $notif_id = (int)$_GET['open_notif'];
@@ -1345,6 +1348,7 @@ require_once __DIR__ . '/../partials/header.php';
     </div>
 
     <!-- 1. 8 KPI CARDS (Fuel + Merchandise + Job Orders + Inventory + Requests) -->
+    <?php if ($enable_kpi_cards): ?>
     <div class="stf-kpi-grid">
         <!-- 1. Fuel Sales Today -->
         <div class="stf-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: #002F6C;">
@@ -1426,6 +1430,7 @@ require_once __DIR__ . '/../partials/header.php';
             <div class="stf-kpi-sub">Waiting for manager review</div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- ROW 1: CURRENT SHIFT SUMMARY & SHIFT TURNOVER STATUS (2-COL) -->
     <div class="stf-grid-2col">
@@ -2151,6 +2156,7 @@ require_once __DIR__ . '/../partials/header.php';
         </div>
     </div>
 
+    <?php if ($enable_quick_actions): ?>
     <!-- ROW 9: 15. STAFF OPERATIONAL QUICK ACTIONS (Full Width Grid) -->
     <div class="stf-card" style="margin-bottom:24px;">
         <div class="stf-card-header">
@@ -2190,6 +2196,7 @@ require_once __DIR__ . '/../partials/header.php';
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- ========================================================================= -->

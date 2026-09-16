@@ -44,7 +44,7 @@ try {
                mt.created_at
         FROM merchandise_transactions mt
         WHERE mt.job_order_mechanic_id = ?
-          AND COALESCE(mt.workflow_status, '') NOT IN ('Completed', 'Rejected', 'Cancelled')
+          AND COALESCE(mt.workflow_status, '') NOT IN ('Completed', 'Released', 'Voided', 'Rejected', 'Cancelled')
           AND mt.transaction_type IN ('job_order', 'combined')
         ORDER BY mt.created_at DESC
         LIMIT 5

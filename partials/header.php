@@ -4547,7 +4547,7 @@ require_once __DIR__ . '/rbac_menu.php';
         }
         ?>
         </div><!-- /.header-left -->
-        <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px; <?php if (!$show_search_bar) echo 'visibility: hidden; pointer-events: none; opacity: 0;'; ?>">
+        <div class="header-center" style="display: flex; align-items: center; justify-content: center; flex: 1; margin: 0 20px; <?php if (!$show_search_bar) echo 'display: none !important;'; ?>">
             <div id="searchWrapper" style="position: relative; width: 100%; max-width: 440px; pointer-events: auto;">
                 <form autocomplete="off" onsubmit="return false;" style="margin:0; padding:0; width:100%;">
                     <!-- Hidden decoy inputs to deflect browser identity/credential autofill -->

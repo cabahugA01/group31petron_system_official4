@@ -62,6 +62,10 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) { $date_from = date('Y-m-d
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to))   { $date_to   = date('Y-m-d'); }
 if ($date_to < $date_from) { $date_to = $date_from; }
 
+$enable_kpi_cards            = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+$enable_quick_actions        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+$enable_notifications_widget = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_notifications_widget', true) : true;
+
 function mgr_h($value): string {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
@@ -1522,6 +1526,7 @@ if (typeof Chart === 'undefined') {
     </div>
 
     <!-- 1. 11 KPI CARDS -->
+    <?php if ($enable_kpi_cards): ?>
     <div class="mgr-kpi-grid">
         <!-- 1. Fuel Sales Today -->
         <div class="mgr-kpi-card" style="--icon-bg: #EFF6FF; --icon-color: #002F6C;">
@@ -1643,6 +1648,7 @@ if (typeof Chart === 'undefined') {
             <div class="mgr-kpi-sub">Customer Module &bull; Overdue: <?= mgr_money($ar_overdue_amount) ?></div>
         </a>
     </div>
+    <?php endif; ?>
 
     <!-- 2. BRANCH SALES OVERVIEW & OPERATIONAL STATUS (4 WIDGETS) -->
     <div class="mgr-grid-4col">
@@ -2089,7 +2095,7 @@ if (typeof Chart === 'undefined') {
     </div>
 
     <!-- 7. RECENT TRANSACTIONS, INVENTORY MOVEMENTS, NOTIFICATIONS (3-COL) -->
-    <div class="mgr-grid-3col">
+    <div class="mgr-grid-3col"<?= !$enable_notifications_widget ? ' style="grid-template-columns: repeat(2, minmax(0, 1fr));"' : '' ?>>
         <!-- 17. Recent Transactions -->
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
@@ -2186,6 +2192,7 @@ if (typeof Chart === 'undefined') {
             </div>
         </div>
 
+        <?php if ($enable_notifications_widget): ?>
         <!-- 19. Notification Preview -->
         <div class="mgr-card" style="margin-bottom: 0;">
             <div class="mgr-card-header">
@@ -2241,6 +2248,7 @@ if (typeof Chart === 'undefined') {
                 <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
     </div>
 
     <!-- 8. 20. STAFF ACTIVITY OVERVIEW -->
@@ -2291,6 +2299,7 @@ if (typeof Chart === 'undefined') {
         </div>
     </div>
 
+    <?php if ($enable_quick_actions): ?>
     <!-- 9. 21. REPORT SHORTCUTS -->
     <div class="mgr-card">
         <div class="mgr-card-header">
@@ -2374,8 +2383,11 @@ if (typeof Chart === 'undefined') {
                 <a href="manager_request_data_management.php" class="mgr-quick-btn">
                     <div class="mgr-quick-icon"><i class="fas fa-database"></i></div>
                     <span>Review Master Data Requests</span>
+                </a>
+            </div>
+        </div>
     </div>
-</div>
+    <?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- MANAGER MERCHANDISE INVENTORY MODAL -->

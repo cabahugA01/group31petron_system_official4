@@ -1457,6 +1457,13 @@ include __DIR__ . '/../partials/header.php';
         </form>
     </div>
 
+    <?php 
+    $enable_kpi_cards            = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_kpi_cards', true) : true;
+    $enable_quick_actions        = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_quick_actions', true) : true;
+    $enable_notifications_widget = function_exists('get_module_setting') ? (bool) get_module_setting('dashboard', 'enable_notifications_widget', true) : true;
+    ?>
+
+    <?php if ($enable_kpi_cards): ?>
     <!-- ========================================================================= -->
     <!-- 1. 12 KPI CARDS (ALL STREAMS: FUEL + MERCHANDISE + JOBS + INVENTORY + AR) -->
     <!-- ========================================================================= -->
@@ -1569,6 +1576,7 @@ include __DIR__ . '/../partials/header.php';
             <div class="adm-kpi-value" id="kpi_ar_val"><?= adm_money($total_ar_outstanding) ?></div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- ========================================================================= -->
     <!-- 2. BRANCH SALES OVERVIEW & 3. FUEL MANAGEMENT OVERVIEW (2-COL) -->
@@ -2201,6 +2209,7 @@ include __DIR__ . '/../partials/header.php';
     <!-- 19. NOTIFICATION HUB, 20. REPORT SHORTCUTS, 21. USER/BRANCH STATUS (3-COL) -->
     <!-- ========================================================================= -->
     <div class="adm-grid-3col">
+        <?php if ($enable_notifications_widget): ?>
         <!-- 19. NOTIFICATION HUB -->
         <div class="adm-card" style="margin-bottom:0;">
             <div class="adm-card-header">
@@ -2232,7 +2241,9 @@ include __DIR__ . '/../partials/header.php';
                 <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
 
+        <?php if ($enable_quick_actions): ?>
         <!-- 20. REPORT SHORTCUTS -->
         <div class="adm-card" style="margin-bottom:0;">
             <div class="adm-card-header">
@@ -2268,6 +2279,7 @@ include __DIR__ . '/../partials/header.php';
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- 21. USER / SHIFT / BRANCH STATUS -->
         <div class="adm-card" style="margin-bottom:0;">

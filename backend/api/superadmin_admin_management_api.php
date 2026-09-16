@@ -84,7 +84,9 @@ if ($action === 'create_admin') {
 
     // Validate
     if (empty($first_name)) { echo json_encode(['ok'=>false,'error'=>'First name is required.']); exit; }
+    if (preg_match('/[^a-zA-Z\s\-\.\']/', $first_name)) { echo json_encode(['ok'=>false,'error'=>'First name cannot contain numbers or special characters.']); exit; }
     if (empty($last_name))  { echo json_encode(['ok'=>false,'error'=>'Last name is required.']); exit; }
+    if (preg_match('/[^a-zA-Z\s\-\.\']/', $last_name)) { echo json_encode(['ok'=>false,'error'=>'Last name cannot contain numbers or special characters.']); exit; }
     if (empty($email))      { echo json_encode(['ok'=>false,'error'=>'Email address is required.']); exit; }
     if ($station_id <= 0)   { echo json_encode(['ok'=>false,'error'=>'Please select a station.']); exit; }
 
@@ -186,7 +188,9 @@ if ($action === 'edit_admin') {
 
     if ($admin_id <= 0)     { echo json_encode(['ok'=>false,'error'=>'Invalid admin ID.']); exit; }
     if (empty($first_name)) { echo json_encode(['ok'=>false,'error'=>'First name is required.']); exit; }
+    if (preg_match('/[^a-zA-Z\s\-\.\']/', $first_name)) { echo json_encode(['ok'=>false,'error'=>'First name cannot contain numbers or special characters.']); exit; }
     if (empty($last_name))  { echo json_encode(['ok'=>false,'error'=>'Last name is required.']); exit; }
+    if (preg_match('/[^a-zA-Z\s\-\.\']/', $last_name)) { echo json_encode(['ok'=>false,'error'=>'Last name cannot contain numbers or special characters.']); exit; }
     if ($station_id <= 0)   { echo json_encode(['ok'=>false,'error'=>'Please select a station.']); exit; }
 
     // Build full name
@@ -299,8 +303,46 @@ if ($action === 'add_station') {
     $outlet_type  = trim($_POST['outlet_type']   ?? 'SERVICE STATION');
 
     // Validate
-    if (empty($station_name)) { echo json_encode(['ok'=>false,'error'=>'Station name is required.']); exit; }
-    if (empty($location))     { echo json_encode(['ok'=>false,'error'=>'Location/Address is required.']); exit; }
+    if (empty($station_name)) {
+        echo json_encode(['ok'=>false,'error'=>'Station name is required.']); exit;
+    }
+    if (mb_strlen($station_name) < 3) {
+        echo json_encode(['ok'=>false,'error'=>'Station name must be at least 3 characters long.']); exit;
+    }
+    if (!preg_match('/[a-zA-Z0-9]/', $station_name)) {
+        echo json_encode(['ok'=>false,'error'=>'Station name must contain valid letters or numbers.']); exit;
+    }
+    if (preg_match('/[^a-zA-Z0-9\s\.\-,\/&\'\(\)]/', $station_name)) {
+        echo json_encode(['ok'=>false,'error'=>'Station name cannot contain special characters like < > { } [ ] ~ ! $ % * + = ? | ; " @.']); exit;
+    }
+
+    if (empty($location)) {
+        echo json_encode(['ok'=>false,'error'=>'Complete address is required.']); exit;
+    }
+    if (mb_strlen($location) < 5) {
+        echo json_encode(['ok'=>false,'error'=>'Complete address must be at least 5 characters long.']); exit;
+    }
+    if (!preg_match('/[a-zA-Z0-9]/', $location)) {
+        echo json_encode(['ok'=>false,'error'=>'Complete address must contain valid letters or numbers.']); exit;
+    }
+    if (preg_match('/[^a-zA-Z0-9\s.,\-\/#\(\)\']/', $location)) {
+        echo json_encode(['ok'=>false,'error'=>'Address cannot contain special characters like < > { } [ ] ~ ! $ % * + = ? | ; " @.']); exit;
+    }
+
+    if (empty($region)) {
+        echo json_encode(['ok'=>false,'error'=>'Please select a valid region.']); exit;
+    }
+
+    // Validate Contact Number if provided (Philippine mobile number: 09XXXXXXXXX or +639XXXXXXXXX)
+    if (!empty($contact)) {
+        if (preg_match('/[^0-9+\s\-]/', $contact)) {
+            echo json_encode(['ok'=>false,'error'=>'Contact number cannot contain special characters. Only Philippine mobile numbers (e.g. 09171234567 or +639171234567) are allowed.']); exit;
+        }
+        $clean_contact = preg_replace('/[\s\-\(\)\.]/', '', $contact);
+        if (!preg_match('/^(09\d{9}|\+639\d{9}|639\d{9})$/', $clean_contact)) {
+            echo json_encode(['ok'=>false,'error'=>'Invalid contact number. Must be a valid 11-digit Philippine mobile number starting with 09 (e.g. 09171234567) or +639.']); exit;
+        }
+    }
 
     // Normalize region to standard values
     $region_upper = strtoupper($region);

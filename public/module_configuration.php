@@ -167,17 +167,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 try {
-                    // Remove station-specific saved config
-                    $pdo->prepare(
-                        "DELETE FROM module_station_config WHERE module_key = ? AND station_id = ?"
-                    )->execute([$moduleKey, $stationId]);
+                    if ($stationId === 'all' || !$stationId) {
+                        // Remove global overrides
+                        $pdo->prepare(
+                            "DELETE FROM module_station_config WHERE module_key = ? AND (station_id = 'all' OR station_id = '0' OR station_id = '')"
+                        )->execute([$moduleKey]);
 
-                    // Also wipe global config entries from module_config table for this module
-                    $pdo->prepare(
-                        "DELETE FROM module_config WHERE module_key = ?"
-                    )->execute([$moduleKey]);
+                        // Also wipe global config entries from module_config table for this module so defaults reload
+                        $pdo->prepare(
+                            "DELETE FROM module_config WHERE module_key = ?"
+                        )->execute([$moduleKey]);
 
-                    $stationLabel = ($stationId === 'all' || !$stationId) ? 'All Stations (Global)' : 'Station #' . $stationId;
+                        $stationLabel = 'All Stations (Global)';
+                    } else {
+                        // Remove station-specific override
+                        $pdo->prepare(
+                            "DELETE FROM module_station_config WHERE module_key = ? AND station_id = ?"
+                        )->execute([$moduleKey, $stationId]);
+
+                        $stNameStmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
+                        $stNameStmt->execute([$stationId]);
+                        $stRow = $stNameStmt->fetch(PDO::FETCH_ASSOC);
+                        $stationLabel = $stRow ? $stRow['name'] : 'Station #' . $stationId;
+                    }
+
                     $success = "Configuration for '<strong>{$moduleKey}</strong>' has been restored to defaults for <strong>{$stationLabel}</strong>.";
                     log_activity($pdo, $me['id'], 'Module Configuration', "Reset config to default for {$moduleKey} @ {$stationLabel}");
                 } catch (Exception $e) {
@@ -1579,8 +1592,8 @@ const stationConfigs = <?php echo json_encode($stationConfigsMap, JSON_HEX_TAG |
             const batch = filtered.slice(currentCount, currentCount + 100);
             batch.forEach(s => {
                 const div = document.createElement('div');
-                div.className    = 'am-combo-option' + (currentVal === s.name ? ' selected' : '');
-                div.dataset.value = s.name;
+                div.className    = 'am-combo-option' + (String(currentVal) === String(s.id) ? ' selected' : '');
+                div.dataset.value = s.id;
                 div.dataset.label = s.name;
                 div.innerHTML    = '<i class="fas fa-building opt-icon"></i> ' + esc(s.name);
                 list.appendChild(div);
@@ -1747,6 +1760,8 @@ function populateModalInputs(moduleKey, stationId) {
         configSource = stationConfigs[moduleKey][sId];
     } else if (stationConfigs[moduleKey] && stationConfigs[moduleKey]['all']) {
         configSource = stationConfigs[moduleKey]['all'];
+    } else if (stationConfigs[moduleKey] && stationConfigs[moduleKey]['0']) {
+        configSource = stationConfigs[moduleKey]['0'];
     } else if (activeConfigs[moduleKey]) {
         configSource = activeConfigs[moduleKey];
     }
@@ -1764,7 +1779,9 @@ function populateModalInputs(moduleKey, stationId) {
         'enable_low_stock_alerts': 'enable_low_stock_alert',
         'enable_low_stock_alert': 'enable_low_stock_alerts',
         'enable_expiration': 'enable_expiration_monitoring',
-        'enable_expiration_monitoring': 'enable_expiration'
+        'enable_expiration_monitoring': 'enable_expiration',
+        'success_banner_duration': 'notification_duration',
+        'notification_duration': 'success_banner_duration'
     };
     
     modal.querySelectorAll('input[name], select[name], textarea[name]').forEach(input => {
@@ -1787,14 +1804,20 @@ function populateModalInputs(moduleKey, stationId) {
                 val = activeConfigs[moduleKey][altKey];
             }
         }
+
+        // For module status, fallback to row table status if not set in configSource
+        if (key === 'module_status' && (!configSource || !configSource.hasOwnProperty('module_status'))) {
+            const tr = document.querySelector(`tr[data-module="${moduleKey}"]`);
+            if (tr && tr.dataset.status) {
+                val = tr.dataset.status;
+            }
+        }
         
         if (input.type === 'checkbox') {
             const boolVal = (val === true || val === 'true' || val === 1 || val === '1');
             input.checked = boolVal;
         } else if (input.type === 'radio') {
-            if (input.value === String(val)) {
-                input.checked = true;
-            }
+            input.checked = (input.value === String(val));
         } else if (input.tagName === 'SELECT') {
             input.value = val;
             const options = input.querySelectorAll('option');
@@ -1852,21 +1875,27 @@ function showModuleSettings(moduleKey) {
             </div>
             <div style="display: flex; gap: 28px; background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 20px; border-radius: 10px; align-items: center;">
                 <label for="opt_module_status_enabled" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; font-weight: 700; color: #16a34a;">
-                    <input type="radio" id="opt_module_status_enabled" name="module_status" value="enabled" ${isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                    <input type="radio" id="opt_module_status_enabled" name="module_status" value="enabled" data-default="enabled" ${isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
                     <i class="fas fa-check-circle" style="color: #16a34a; font-size: 18px;"></i> Enabled
                 </label>
                 <label for="opt_module_status_disabled" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; font-weight: 700; color: #dc2626;">
-                    <input type="radio" id="opt_module_status_disabled" name="module_status" value="disabled" ${!isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                    <input type="radio" id="opt_module_status_disabled" name="module_status" value="disabled" data-default="disabled" ${!isCurrentlyEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
                     <i class="fas fa-times-circle" style="color: #dc2626; font-size: 18px;"></i> Disabled
                 </label>
             </div>
         </div>
     `;
     
-    // Top Module Information Card (Module Name, Version, Status)
+    // Top Module Information Card (Module Name, Version, Status, Station Scope)
+    const stationInputVal = stationInput ? stationInput.value : '';
+    const stationDisplayEl = document.getElementById('tb_station_display');
+    const targetStationName = (stationInputVal && stationDisplayEl && stationDisplayEl.value) 
+        ? stationDisplayEl.value 
+        : 'All Stations (Global)';
+
     const topInfoCard = `
         <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 22px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: center;">
+            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr 1fr 1.3fr; gap: 14px; align-items: center;">
                 <div>
                     <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Module Name</div>
                     <div style="font-size: 17px; font-weight: 700; color: #00264D; margin-top: 3px;">${moduleName}</div>
@@ -1878,6 +1907,12 @@ function showModuleSettings(moduleKey) {
                 <div>
                     <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Status</div>
                     <div style="margin-top: 3px;">${statusBadgeHtml}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Target Station</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #0057b8; margin-top: 3px; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${targetStationName}">
+                        <i class="fas fa-map-marker-alt" style="color: #3b82f6; flex-shrink: 0;"></i> ${targetStationName}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1960,18 +1995,18 @@ function showModuleSettings(moduleKey) {
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
                     <label for="chk_enable_pdf" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_enable_pdf" name="enable_pdf" checked data-default="true" style="width: 16px; height: 16px;">
-                        <span>Enable PDF</span>
+                        <span>Enable PDF Export</span>
                     </label>
                     <label for="chk_enable_excel" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_enable_excel" name="enable_excel" checked data-default="true" style="width: 16px; height: 16px;">
-                        <span>Enable Excel</span>
+                        <span>Enable Excel Export</span>
                     </label>
                     <label for="chk_enable_csv" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_enable_csv" name="enable_csv" checked data-default="true" style="width: 16px; height: 16px;">
-                        <span>Enable CSV</span>
+                        <span>Enable CSV Export</span>
                     </label>
                 </div>
-                <div>
+                <div style="margin-bottom: 14px;">
                     <label for="sel_paper_size" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Paper Size</label>
                     <select id="sel_paper_size" name="paper_size" class="config-input" data-default="A4" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                         <option value="A4" selected>A4</option>
@@ -1979,12 +2014,30 @@ function showModuleSettings(moduleKey) {
                         <option value="Legal">Legal</option>
                     </select>
                 </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="inp_report_header" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Report Header</label>
+                    <input type="text" id="inp_report_header" name="report_header" class="config-input" value="PETRON CORPORATION - STATION REPORT" data-default="PETRON CORPORATION - STATION REPORT" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+                <div>
+                    <label for="inp_report_footer" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Report Footer</label>
+                    <input type="text" id="inp_report_footer" name="report_footer" class="config-input" value="Thank you for choosing Petron. This is a system-generated report." data-default="Thank you for choosing Petron. This is a system-generated report." style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
             </div>
         `,
         'backup_restore': `
             <div style="margin-bottom: 20px;">
                 <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
                     Backup Settings
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                    <label for="chk_enable_scheduled_backup" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_scheduled_backup" name="enable_scheduled_backup" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Scheduled Backup</span>
+                    </label>
+                    <label for="chk_auto_cleanup" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_auto_cleanup" name="auto_cleanup" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Auto Cleanup Old Backups</span>
+                    </label>
                 </div>
                 <div style="margin-bottom: 14px;">
                     <label for="sel_backup_frequency" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Backup Frequency</label>
@@ -2019,16 +2072,24 @@ function showModuleSettings(moduleKey) {
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
                     <label for="chk_enable_notifications" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_enable_notifications" name="enable_notifications" checked data-default="true" style="width: 16px; height: 16px;">
-                        <span>Enable Notifications</span>
+                        <span>Enable Notifications System</span>
                     </label>
-                    <label for="chk_auto_hide_success_banner" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
-                        <input type="checkbox" id="chk_auto_hide_success_banner" name="auto_hide_success_banner" checked data-default="true" style="width: 16px; height: 16px;">
-                        <span>Auto Hide Success Banner</span>
+                    <label for="chk_enable_low_stock_alert" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_low_stock_alert" name="enable_low_stock_alert" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Low Stock Alert</span>
+                    </label>
+                    <label for="chk_enable_approval_alert" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_approval_alert" name="enable_approval_alert" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Approval Notifications</span>
+                    </label>
+                    <label for="chk_enable_backup_alert" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_backup_alert" name="enable_backup_alert" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Backup Alert</span>
                     </label>
                 </div>
                 <div>
-                    <label for="inp_notification_duration" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Duration (seconds)</label>
-                    <input type="number" id="inp_notification_duration" name="notification_duration" class="config-input" value="5" data-default="5" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                    <label for="inp_success_banner_duration" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Success Banner Duration (seconds)</label>
+                    <input type="number" id="inp_success_banner_duration" name="success_banner_duration" class="config-input" value="5" data-default="5" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
         `,
@@ -2037,7 +2098,7 @@ function showModuleSettings(moduleKey) {
                 <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
                     Transaction Controls
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
                     <label for="chk_auto_transaction_numbering" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_auto_transaction_numbering" name="auto_transaction_numbering" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Auto Transaction Numbering</span>
@@ -2047,6 +2108,14 @@ function showModuleSettings(moduleKey) {
                         <span>Enable Void Transaction Control</span>
                     </label>
                 </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="inp_or_number_format" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Official Receipt (OR) Number Format</label>
+                    <input type="text" id="inp_or_number_format" name="or_number_format" class="config-input" value="OR-{YYYY}{MM}{DD}-{6DIGITS}" data-default="OR-{YYYY}{MM}{DD}-{6DIGITS}" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; font-family: monospace;">
+                </div>
+                <div>
+                    <label for="inp_job_order_number_format" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Job Order (JO) Number Format</label>
+                    <input type="text" id="inp_job_order_number_format" name="job_order_number_format" class="config-input" value="JO-{YYYY}{MM}{DD}-{6DIGITS}" data-default="JO-{YYYY}{MM}{DD}-{6DIGITS}" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; font-family: monospace;">
+                </div>
             </div>
         `,
         'fuel_management': `
@@ -2054,7 +2123,7 @@ function showModuleSettings(moduleKey) {
                 <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
                     Fuel Controls
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
                     <label for="chk_enable_fuel_reconciliation" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
                         <input type="checkbox" id="chk_enable_fuel_reconciliation" name="enable_fuel_reconciliation" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Automated Fuel Reconciliation</span>
@@ -2067,6 +2136,14 @@ function showModuleSettings(moduleKey) {
                         <input type="checkbox" id="chk_enable_meter_reading_validation" name="enable_meter_reading_validation" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Meter Reading Validation</span>
                     </label>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="inp_decimal_precision" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Decimal Precision (Liters)</label>
+                    <input type="number" id="inp_decimal_precision" name="decimal_precision" class="config-input" value="3" data-default="3" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+                <div>
+                    <label for="inp_default_fuel_unit" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Default Measurement Unit</label>
+                    <input type="text" id="inp_default_fuel_unit" name="default_fuel_unit" class="config-input" value="Liters" data-default="Liters" style="width: 180px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
         `,
@@ -2088,6 +2165,106 @@ function showModuleSettings(moduleKey) {
                         <input type="checkbox" id="chk_enable_credit_account" name="enable_credit_account" checked data-default="true" style="width: 16px; height: 16px;">
                         <span>Enable Customer Credit Account Limits</span>
                     </label>
+                    <label for="chk_enable_fleet_card" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_fleet_card" name="enable_fleet_card" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Fleet Card Integration</span>
+                    </label>
+                </div>
+            </div>
+        `,
+        'product_pricing': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Product &amp; Pricing Controls
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label for="chk_enable_sku_validation" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_sku_validation" name="enable_sku_validation" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable SKU Validation</span>
+                    </label>
+                    <label for="chk_enable_barcode" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_barcode" name="enable_barcode" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Barcode System</span>
+                    </label>
+                    <label for="chk_enable_price_approval_workflow" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_price_approval_workflow" name="enable_price_approval_workflow" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Price Approval Workflow</span>
+                    </label>
+                    <label for="chk_enable_price_history" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_price_history" name="enable_price_history" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Price History Auditing</span>
+                    </label>
+                </div>
+            </div>
+        `,
+        'calendar': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Calendar Settings
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label for="chk_enable_holidays" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_holidays" name="enable_holidays" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Holidays on Calendar</span>
+                    </label>
+                    <label for="chk_enable_reminder_notifications" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_reminder_notifications" name="enable_reminder_notifications" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Reminder Notifications</span>
+                    </label>
+                    <label for="chk_enable_maintenance_schedule" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_maintenance_schedule" name="enable_maintenance_schedule" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Maintenance Schedule</span>
+                    </label>
+                </div>
+            </div>
+        `,
+        'audit_trail': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    Audit Trail Settings
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                    <label for="chk_enable_audit_logs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_audit_logs" name="enable_audit_logs" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Audit Logs</span>
+                    </label>
+                    <label for="chk_enable_error_logs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_enable_error_logs" name="enable_error_logs" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Enable Error Logs</span>
+                    </label>
+                    <label for="chk_auto_archive_logs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_auto_archive_logs" name="auto_archive_logs" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>Auto Archive Logs</span>
+                    </label>
+                </div>
+                <div>
+                    <label for="inp_log_retention" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Log Retention Period (days)</label>
+                    <input type="number" id="inp_log_retention" name="log_retention" class="config-input" value="365" data-default="365" style="width: 140px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+            </div>
+        `,
+        'api_integration': `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: 700; color: #00264D; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;">
+                    API &amp; Integration Settings
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="chk_api_status" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #374151;">
+                        <input type="checkbox" id="chk_api_status" name="api_status" checked data-default="true" style="width: 16px; height: 16px;">
+                        <span>API Status (Active)</span>
+                    </label>
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="inp_api_keys" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">API Key</label>
+                    <input type="text" id="inp_api_keys" name="api_keys" class="config-input" value="petron_live_key_9f81a7b0" data-default="petron_live_key_9f81a7b0" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; font-family: monospace;">
+                </div>
+                <div style="margin-bottom: 14px;">
+                    <label for="inp_webhook_settings" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">Webhook URL</label>
+                    <input type="text" id="inp_webhook_settings" name="webhook_settings" class="config-input" value="http://localhost/group31petron_system_official4/api/webhook.php" data-default="http://localhost/group31petron_system_official4/api/webhook.php" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
+                </div>
+                <div>
+                    <label for="inp_smtp_email_settings" style="display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px;">SMTP Settings</label>
+                    <input type="text" id="inp_smtp_email_settings" name="smtp_email_settings" class="config-input" value="smtp.gmail.com:587" data-default="smtp.gmail.com:587" style="width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px;">
                 </div>
             </div>
         `

@@ -102,6 +102,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['success' => false, 'error' => 'Fuel type is required.']);
             exit;
         }
+    } elseif ($reqType === 'inspection_item') {
+        $category = 'Inspection Item';
+        $sourceModule = 'Vehicle Inspection';
+        if (empty($requestData['item_name'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Inspection item name is required.']);
+            exit;
+        }
     } else {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'Invalid request type.']);

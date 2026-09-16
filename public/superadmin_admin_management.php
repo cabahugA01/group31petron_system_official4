@@ -467,6 +467,7 @@ button.am-combo-clear:hover i {
 .am-flash { padding: 14px 18px; border-radius: 10px; margin-bottom: 18px; font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
 .am-flash.success { background: rgba(40,167,69,.1); border: 1px solid rgba(40,167,69,.3); color: #1a7a35; }
 .am-flash.error   { background: rgba(204,0,0,.08);  border: 1px solid rgba(204,0,0,.25);  color: #cc0000; }
+.am-invalid       { border-color: #dc2626 !important; background-color: #fffaf0 !important; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15) !important; }
 
 /* Empty state */
 .am-empty { text-align: center; padding: 60px 20px; color: #999; }
@@ -507,21 +508,26 @@ button.am-combo-clear:hover i {
     background: #ffffff;
     color: #0f172a;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    box-shadow: 0 14px 34px rgba(0,0,0,.16), 0 4px 10px rgba(0,0,0,.06);
+    box-shadow: 0 12px 32px rgba(0,0,0,.13), 0 4px 10px rgba(0,0,0,.05);
     pointer-events: auto;
     display: flex;
     align-items: flex-start;
     gap: 14px;
     box-sizing: border-box;
     animation: petronSlideRight .32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    border: none !important;
+    text-decoration: none !important;
+    cursor: pointer;
 }
 .petron-custom-toast.toast-success {
-    border: 1px solid #86efac;
-    border-left: 5px solid #16a34a;
+    border: none !important;
+    border-left: none !important;
+    border-bottom: none !important;
 }
 .petron-custom-toast.toast-error {
-    border: 1px solid #fca5a5;
-    border-left: 5px solid #dc2626;
+    border: none !important;
+    border-left: none !important;
+    border-bottom: none !important;
 }
 @keyframes petronSlideRight {
     from { opacity: 0; transform: translateX(50px); }
@@ -747,11 +753,15 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <div class="am-form-row">
           <div class="am-form-group">
             <label>First Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="first_name" id="c_first_name" placeholder="e.g. Juan" required>
+            <input type="text" name="first_name" id="c_first_name" placeholder="e.g. Juan" required
+              onkeydown="return blockSpecialChars(event, 'name')"
+              oninput="cleanPersonNameInput(this)">
           </div>
           <div class="am-form-group">
             <label>Last Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="last_name" id="c_last_name" placeholder="e.g. Dela Cruz" required>
+            <input type="text" name="last_name" id="c_last_name" placeholder="e.g. Dela Cruz" required
+              onkeydown="return blockSpecialChars(event, 'name')"
+              oninput="cleanPersonNameInput(this)">
           </div>
         </div>
 
@@ -832,11 +842,15 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <div class="am-form-row">
           <div class="am-form-group">
             <label>First Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="first_name" id="e_first_name" placeholder="e.g. Juan" required>
+            <input type="text" name="first_name" id="e_first_name" placeholder="e.g. Juan" required
+              onkeydown="return blockSpecialChars(event, 'name')"
+              oninput="cleanPersonNameInput(this)">
           </div>
           <div class="am-form-group">
             <label>Last Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="last_name" id="e_last_name" placeholder="e.g. Dela Cruz" required>
+            <input type="text" name="last_name" id="e_last_name" placeholder="e.g. Dela Cruz" required
+              onkeydown="return blockSpecialChars(event, 'name')"
+              oninput="cleanPersonNameInput(this)">
           </div>
         </div>
 
@@ -947,7 +961,11 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
         <div class="am-form-row full">
           <div class="am-form-group">
             <label>Station Name <span style="color:#cc0000;">*</span></label>
-            <input type="text" name="station_name" id="station_name" placeholder="e.g. Petron Quezon City - Commonwealth Ave" required>
+            <input type="text" name="station_name" id="station_name" 
+              placeholder="e.g. Petron Quezon City - Commonwealth Ave" 
+              required minlength="3" maxlength="150"
+              onkeydown="return blockSpecialChars(event, 'station_name')"
+              oninput="cleanStationNameInput(this)">
           </div>
         </div>
 
@@ -959,7 +977,9 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
               required
               style="padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;outline:none;resize:vertical;font-family:inherit;transition:border-color .2s;"
               onfocus="this.style.borderColor='var(--petron-blue)'"
-              onblur="this.style.borderColor='#ddd'"></textarea>
+              onblur="this.style.borderColor='#ddd'"
+              onkeydown="return blockSpecialChars(event, 'station_address')"
+              oninput="cleanAddressInput(this)"></textarea>
           </div>
         </div>
 
@@ -1005,16 +1025,16 @@ $stations_covered = count(array_unique(array_filter(array_column($admins, 'stati
 
         <div class="am-form-row full">
           <div class="am-form-group">
-            <label>Contact Number</label>
-            <input type="text" name="contact" id="station_contact" placeholder="e.g. (02) 1234-5678 or 09XX-XXX-XXXX">
+            <label>Contact Number <span style="font-size:12px;font-weight:normal;color:#64748b;">(PH Format)</span></label>
+            <input type="tel" name="contact" id="station_contact" 
+              placeholder="e.g. 0917xxxxxxx or +639..." 
+              maxlength="13"
+              onkeydown="return blockSpecialChars(event, 'phone')"
+              oninput="validatePhoneRealtime(this, 'station_contact_hint')"
+              autocomplete="off">
+            <small id="station_contact_hint" style="font-size: 11.5px; color: #64748b; margin-top: 4px; display: block;">Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639</small>
           </div>
         </div>
-
-        <div style="background:#f0f9f0;border:1px solid #c6e6c6;border-radius:10px;padding:14px 16px;margin-top:6px;font-size:14px;color:#1a5c1a;">
-          <i class="fas fa-check-circle" style="color:#16a34a;margin-right:6px;"></i>
-          The new station will appear in the station dropdown <strong>immediately</strong> after creation and will be available for admin assignment.
-        </div>
-      </div>
       <div class="am-modal-footer">
         <button type="button" class="am-btn" style="border-color:#ddd;" onclick="closeModal('addStationModal')">Cancel</button>
         <button type="submit" class="am-btn am-btn-primary" id="addStationSubmitBtn">
@@ -1621,8 +1641,8 @@ function showPageFlash(type, msg, persist = false) {
             <strong style="display:block;font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">${isSuccess ? 'Success' : 'Notice'}</strong>
             <span style="font-size:13.5px;color:#334155;font-weight:500;word-break:break-word;line-height:1.4;display:block;">${msg}</span>
         </div>
-        <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;padding:0 4px;margin-left:6px;line-height:1;transition:color .2s;" onmouseover="this.style.color='#0f172a'" onmouseout="this.style.color='#94a3b8'">&times;</button>
     `;
+    toast.onclick = () => toast.remove();
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -1649,34 +1669,234 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ── Add Station Modal ──────────────────────────────────────────────────────
-function openAddStationModal() {
-    document.getElementById('addStationAlert').style.display = 'none';
-    document.getElementById('addStationForm').reset();
-    openModal('addStationModal');
+// ── Special Characters Blocker & Input Sanitizers ──────────────────────────
+function blockSpecialChars(e, type) {
+    // Allow functional keys (Backspace, Tab, Enter, Arrows, Delete, Escape) and shortcuts (Ctrl+C, Ctrl+V, etc.)
+    if (!e.key || e.key.length > 1 || e.ctrlKey || e.altKey || e.metaKey) {
+        return true;
+    }
+
+    let allowedRegex = null;
+    if (type === 'station_name') {
+        // Station Name: letters, numbers, spaces, and safe symbols (. , - / & ' ( ))
+        allowedRegex = /^[a-zA-Z0-9\s\.\-,\/&'\(\)]$/;
+    } else if (type === 'station_address') {
+        // Complete Address: letters, numbers, spaces, and safe address symbols (. , - / # ' ( ))
+        allowedRegex = /^[a-zA-Z0-9\s.,\-\/#\(\)']$/;
+    } else if (type === 'name') {
+        // Admin Names: letters, spaces, hyphens, periods, apostrophes only
+        allowedRegex = /^[a-zA-Z\s\-\.']$/;
+    } else if (type === 'phone') {
+        // Phone: digits and leading plus only
+        allowedRegex = /^[0-9+]$/;
+    }
+
+    if (allowedRegex && !allowedRegex.test(e.key)) {
+        e.preventDefault();
+        return false;
+    }
+    return true;
 }
+
+function cleanAddressInput(el) {
+    if (!el) return;
+    // Strip special characters like < > { } [ ] \ ^ ~ ` ! $ % * + = ? | ; " @ & in real-time
+    el.value = el.value.replace(/[^a-zA-Z0-9\s.,\-\/#\(\)']/g, '');
+    el.classList.remove('am-invalid');
+    const alertEl = document.getElementById('addStationAlert');
+    if (alertEl) alertEl.style.display = 'none';
+}
+
+function cleanStationNameInput(el) {
+    if (!el) return;
+    // Strip special characters like < > { } [ ] \ ^ ~ ` ! $ % * + = ? | ; " @ # in real-time
+    el.value = el.value.replace(/[^a-zA-Z0-9\s\.\-,\/&'\(\)]/g, '');
+    el.classList.remove('am-invalid');
+    const alertEl = document.getElementById('addStationAlert');
+    if (alertEl) alertEl.style.display = 'none';
+}
+
+function cleanPersonNameInput(el) {
+    if (!el) return;
+    el.value = el.value.replace(/[^a-zA-Z\s\-\.']/g, '');
+    el.classList.remove('am-invalid');
+    const createAlert = document.getElementById('createAlert');
+    if (createAlert) createAlert.style.display = 'none';
+    const editAlert = document.getElementById('editAlert');
+    if (editAlert) editAlert.style.display = 'none';
+}
+
+// ── Phone / Contact Validation (Philippine format, same as Users/Admin module) ───
+function validatePhoneRealtime(input, hintId) {
+    input.value = input.value.replace(/[^0-9+]/g, '');
+    const val = input.value;
+    const hint = document.getElementById(hintId);
+    if (!hint) return;
+
+    if (val === '') {
+        hint.style.color = '#64748b';
+        hint.textContent = 'Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639';
+        input.style.borderColor = '';
+        input.classList.remove('am-invalid');
+        return;
+    }
+
+    const isValid = /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(val);
+    if (isValid) {
+        hint.style.color = '#16a34a';
+        hint.innerHTML = '<i class="fas fa-check-circle"></i> Valid Philippine mobile number';
+        input.style.borderColor = '#16a34a';
+        input.classList.remove('am-invalid');
+    } else {
+        hint.style.color = '#dc2626';
+        hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be 11 digits starting with 09 (e.g. 09171234567) or +639';
+        input.style.borderColor = '#dc2626';
+    }
+}
+
+function isValidPhilippineNumber(val) {
+    if (!val) return true;
+    const clean = val.replace(/[\s\-\(\)\.]/g, '');
+    if (clean === '') return true;
+    return /^(09\d{9}|\+639\d{9}|639\d{9})$/.test(clean);
+}
+
+// ── Add Station Modal & Validation ─────────────────────────────────────────
+function clearAddStationErrors() {
+    const alertEl = document.getElementById('addStationAlert');
+    if (alertEl) {
+        alertEl.style.display = 'none';
+        alertEl.innerHTML = '';
+    }
+    ['station_name', 'station_location', 'station_region', 'station_contact'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('am-invalid');
+            el.style.borderColor = '';
+        }
+    });
+    const hint = document.getElementById('station_contact_hint');
+    if (hint) {
+        hint.style.color = '#64748b';
+        hint.textContent = 'Format: 11-digit PH mobile number starting with 09 (e.g. 0917xxxxxxx) or +639';
+    }
+}
+
+function openAddStationModal() {
+    clearAddStationErrors();
+    const form = document.getElementById('addStationForm');
+    if (form) form.reset();
+    openModal('addStationModal');
+    setTimeout(() => {
+        const firstInput = document.getElementById('station_name');
+        if (firstInput) firstInput.focus();
+    }, 150);
+}
+
+// Attach real-time input listeners to clear errors on change and sanitize characters
+document.addEventListener('DOMContentLoaded', () => {
+    // Add Station Modal fields
+    const addr = document.getElementById('station_location');
+    if (addr) {
+        addr.addEventListener('keydown', (e) => blockSpecialChars(e, 'station_address'));
+        addr.addEventListener('input', () => cleanAddressInput(addr));
+    }
+
+    const stName = document.getElementById('station_name');
+    if (stName) {
+        stName.addEventListener('keydown', (e) => blockSpecialChars(e, 'station_name'));
+        stName.addEventListener('input', () => cleanStationNameInput(stName));
+    }
+
+    const stContact = document.getElementById('station_contact');
+    if (stContact) {
+        stContact.addEventListener('keydown', (e) => blockSpecialChars(e, 'phone'));
+        stContact.addEventListener('input', () => validatePhoneRealtime(stContact, 'station_contact_hint'));
+    }
+
+    // Admin first and last names in create and edit modals
+    ['c_first_name', 'c_last_name', 'e_first_name', 'e_last_name'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('keydown', (e) => blockSpecialChars(e, 'name'));
+            el.addEventListener('input', () => cleanPersonNameInput(el));
+        }
+    });
+});
 
 async function submitAddStation(e) {
     e.preventDefault();
     const btn = document.getElementById('addStationSubmitBtn');
     const alertEl = document.getElementById('addStationAlert');
-    alertEl.style.display = 'none';
+    clearAddStationErrors();
 
-    const stationName = document.getElementById('station_name').value.trim();
-    const location    = document.getElementById('station_location').value.trim();
-    const region      = document.getElementById('station_region').value.trim();
+    const nameEl     = document.getElementById('station_name');
+    const locationEl = document.getElementById('station_location');
+    const regionEl   = document.getElementById('station_region');
+    const contactEl  = document.getElementById('station_contact');
 
+    const stationName = (nameEl ? nameEl.value : '').trim();
+    const location    = (locationEl ? locationEl.value : '').trim();
+    const region      = (regionEl ? regionEl.value : '').trim();
+    const contact     = (contactEl ? contactEl.value : '').trim();
+
+    function showValidationError(el, msg) {
+        if (el) {
+            el.classList.add('am-invalid');
+            el.style.borderColor = '#dc2626';
+            el.focus();
+        }
+        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + msg;
+        alertEl.style.display = 'flex';
+        return false;
+    }
+
+    // 1. Validate Station Name
     if (!stationName) {
-        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Station name is required.';
-        alertEl.style.display = 'flex'; return;
+        return showValidationError(nameEl, 'Station name is required.');
     }
+    if (stationName.length < 3) {
+        return showValidationError(nameEl, 'Station name must be at least 3 characters long.');
+    }
+    if (!/[a-zA-Z0-9]/.test(stationName)) {
+        return showValidationError(nameEl, 'Station name must contain letters or numbers, not only symbols.');
+    }
+    if (/[^a-zA-Z0-9\s\.\-,\/&'\(\)]/.test(stationName)) {
+        return showValidationError(nameEl, 'Station name cannot contain special characters like < > { } [ ] ~ ! $ % * + = ? | ; " @.');
+    }
+
+    // 2. Validate Address
     if (!location) {
-        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Complete address is required.';
-        alertEl.style.display = 'flex'; return;
+        return showValidationError(locationEl, 'Complete address is required.');
     }
+    if (location.length < 5) {
+        return showValidationError(locationEl, 'Complete address must be at least 5 characters long.');
+    }
+    if (!/[a-zA-Z0-9]/.test(location)) {
+        return showValidationError(locationEl, 'Complete address must contain valid letters or numbers, not only symbols.');
+    }
+    if (/[^a-zA-Z0-9\s.,\-\/#\(\)']/.test(location)) {
+        return showValidationError(locationEl, 'Address cannot contain special characters like < > { } [ ] ~ ! $ % * + = ? | ; " @.');
+    }
+
+    // 3. Validate Region
     if (!region) {
-        alertEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please select a region.';
-        alertEl.style.display = 'flex'; return;
+        return showValidationError(regionEl, 'Please select a region.');
+    }
+
+    // 4. Validate Contact Number (if provided) - Philippine mobile format
+    if (contact) {
+        if (!isValidPhilippineNumber(contact)) {
+            if (contactEl) {
+                contactEl.style.borderColor = '#dc2626';
+            }
+            const hint = document.getElementById('station_contact_hint');
+            if (hint) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="fas fa-exclamation-circle"></i> Must be 11 digits starting with 09 (e.g. 09171234567) or +639';
+            }
+            return showValidationError(contactEl, 'Invalid contact number. Must be a valid Philippine mobile number starting with 09 or +639 (11 digits).');
+        }
     }
 
     btn.disabled = true;

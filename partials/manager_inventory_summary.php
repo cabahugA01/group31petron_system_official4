@@ -20,7 +20,7 @@ try {
 // 2. Pending Stock Requests
 $pending_sr = 0;
 try {
-    $s_sr = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status = 'Pending'");
+    $s_sr = $pdo->prepare("SELECT COUNT(*) FROM stock_requests WHERE station_id = ? AND status IN ('Pending', 'Pending Manager Review')");
     $s_sr->execute([$station_id]);
     $pending_sr = (int)$s_sr->fetchColumn();
 } catch (Exception $e) {}

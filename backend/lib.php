@@ -727,8 +727,8 @@ function get_module_setting(string $module_key, string $config_key, $default = n
             }
         }
 
-        // 2. Check global station config (station_id = 'all')
-        $allStmt = $pdo->prepare("SELECT config_data FROM module_station_config WHERE module_key = ? AND station_id = 'all' LIMIT 1");
+        // 2. Check global station config (station_id = 'all' or '0')
+        $allStmt = $pdo->prepare("SELECT config_data FROM module_station_config WHERE module_key = ? AND (station_id = 'all' OR station_id = '0' OR station_id = '') ORDER BY (station_id = 'all') DESC LIMIT 1");
         $allStmt->execute([$module_key]);
         $allData = $allStmt->fetchColumn();
         if ($allData) {
