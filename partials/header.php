@@ -624,19 +624,11 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
-  <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=1788169806"></script>
-    <!-- GLOBAL PROTECTED UI & TEXT SELECTION SHIELD -->
+  <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=<?php echo time(); ?>"></script>
+    <!-- GLOBAL RIGHT-CLICK & TEXT SELECTION ALLOWED -->
     <style>
-        /* Prevent accidental scraping / text-highlighting on UI chrome & navigational elements */
-        .sidebar, .top-header, .navbar, .card-header, .stat-card, .badge, .badge-tag, .btn, button, th, .no-select, .protected-ui {
-            -webkit-user-select: none !important;
-            -moz-user-select: none !important;
-            -ms-user-select: none !important;
-            user-select: none !important;
-        }
-
-        /* Guarantee 100% normal selection, typing, cut, copy & paste inside all form controls */
-        input, textarea, select, [contenteditable="true"], .allow-select, .allow-copy, code, pre, .selectable-text {
+        /* Allow normal selection, right-click, cut, copy & paste everywhere */
+        body, table, td, th, div, span, p, .card, .card-header, .stat-card, .badge, input, textarea, select, [contenteditable="true"], .allow-select, .allow-copy, code, pre, .selectable-text {
             -webkit-user-select: text !important;
             -moz-user-select: text !important;
             -ms-user-select: text !important;

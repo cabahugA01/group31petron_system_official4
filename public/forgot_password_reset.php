@@ -465,9 +465,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valid) {
             .login-wrap { padding: 0 12px; }
             .login-card { padding: 38px 28px 32px; }
         }
+
+        /* ── Top Navigation Bar (matching login.php) ── */
+        .login-navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 0 28px;
+            height: 60px;
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border-bottom: none;
+            box-shadow: none;
+            animation: navSlideDown 0.5s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        @keyframes navSlideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to   { transform: translateY(0);     opacity: 1; }
+        }
+        .login-navbar .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .login-navbar .nav-links li a,
+        .login-navbar .nav-links li button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 18px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            color: #111111;
+            text-decoration: none;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+            letter-spacing: 0.3px;
+            position: relative;
+            text-shadow: none;
+        }
+        .login-navbar .nav-links li a::after,
+        .login-navbar .nav-links li button::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            left: 18px;
+            right: 18px;
+            height: 2px;
+            background: linear-gradient(90deg, #E30613, #002F6C);
+            border-radius: 2px;
+            transform: scaleX(0);
+            transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .login-navbar .nav-links li a:hover,
+        .login-navbar .nav-links li button:hover {
+            color: #002F6C;
+            background: rgba(0,47,108,0.08);
+        }
+        .login-navbar .nav-links li a:hover::after,
+        .login-navbar .nav-links li button:hover::after {
+            transform: scaleX(1);
+        }
+        .login-navbar .nav-links li a.active {
+            color: #111111;
+            background: transparent;
+        }
+        .login-navbar .nav-links li a:active,
+        .login-navbar .nav-links li button:active {
+            color: #002F6C;
+            background: rgba(0,47,108,0.12);
+        }
+        /* Mobile nav toggle */
+        .nav-toggle {
+            display: none;
+            background: none;
+            border: 1.5px solid rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 6px 10px;
+            color: #111;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background 0.2s;
+        }
+        .nav-toggle:hover { background: rgba(0,47,108,0.08); }
+        @media (max-width: 600px) {
+            .login-navbar { padding: 0 20px; }
+            .nav-toggle { display: flex; align-items: center; }
+            .login-navbar .nav-links {
+                display: none;
+                position: absolute;
+                top: 64px; left: 0; right: 0;
+                flex-direction: column;
+                background: rgba(255, 255, 255, 0.98);
+                backdrop-filter: blur(20px);
+                padding: 12px 20px 20px;
+                gap: 4px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            }
+            .login-navbar .nav-links.open { display: flex; }
+            .login-navbar .nav-links li a,
+            .login-navbar .nav-links li button { width: 100%; border-radius: 10px; }
+        }
     </style>
 </head>
 <body>
+    <nav class="login-navbar" id="loginNavbar" role="navigation" aria-label="Main navigation">
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" onclick="document.getElementById('navLinks').classList.toggle('open')">
+            <i class="fas fa-bars"></i>
+        </button>
+        <ul class="nav-links" id="navLinks">
+            <li><a href="login.php#home" id="nav-home" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-home"></i> Home</a></li>
+            <li><a href="login.php#about-us" id="nav-about" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-info-circle"></i> About Us</a></li>
+            <li><a href="login.php#contact-us" id="nav-contact" onclick="document.getElementById('navLinks').classList.remove('open')"><i class="fas fa-envelope"></i> Contact Us</a></li>
+        </ul>
+    </nav>
+
     <div class="bg-layer bg-image"></div>
 
     <div class="login-wrap">

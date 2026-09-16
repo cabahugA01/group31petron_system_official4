@@ -585,6 +585,9 @@ $_asset_base = $_login_base . '/assets';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
     <title>Login | Petron Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Great+Vibes&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= htmlspecialchars($_asset_base) ?>/vendor/fontawesome/css/all.min.css">
     <script src="<?= htmlspecialchars($_asset_base) ?>/js/security_frontend.js?v=1788169806"></script>
     <style>
@@ -1556,47 +1559,63 @@ $_asset_base = $_login_base . '/assets';
         .reveal-delay-3 { transition-delay: 0.3s; }
         .reveal-delay-4 { transition-delay: 0.4s; }
 
+        /* About Us badge = same cursive style as Contact Info title */
         .section-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11.5px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #ffffff;
-            background: linear-gradient(135deg, #002F6C, #0050b3);
+            display: block;
+            font-family: 'Alex Brush', 'Great Vibes', cursive;
+            font-size: 64px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            color: #0a1628;
+            background: none;
             border: none;
-            padding: 8px 22px;
-            border-radius: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(0,47,108,0.35);
+            padding: 0;
+            border-radius: 0;
+            margin-bottom: 10px;
+            box-shadow: none;
+            text-align: center;
+            line-height: 1.05;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.7);
         }
 
-        .section-heading {
-            font-size: 22px;
-            font-weight: 800;
-            letter-spacing: -0.2px;
-            color: #0a1628;
-            margin: 0 0 14px 0;
-            line-height: 1.2;
+        @media (max-width: 768px) {
+            .section-badge { font-size: 46px; }
         }
+        @media (max-width: 480px) {
+            .section-badge { font-size: 38px; }
+        }
+
+        /* About Us sub-label = same as Petron Station & Service Center */
+        .section-heading {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 3.5px;
+            color: #475569;
+            margin: 0 0 16px 0;
+            line-height: 1.4;
+            text-shadow: none;
+        }
+
 
         .section-divider {
             width: 60px;
-            height: 4px;
+            height: 3px;
             background: linear-gradient(90deg, #E30613, #002F6C);
             border-radius: 4px;
             margin: 0 auto 28px auto;
         }
 
         .about-body-p {
-            font-size: 16px;
-            line-height: 1.9;
-            color: #111111;
+            font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+            font-size: 19px;
+            line-height: 1.75;
+            color: #0a1628;
             margin-bottom: 18px;
             text-align: center;
-            font-weight: 500;
+            font-weight: 600;
+            letter-spacing: 0.2px;
             max-width: 760px;
             margin-left: auto;
             margin-right: auto;
@@ -1605,97 +1624,272 @@ $_asset_base = $_login_base . '/assets';
             margin-bottom: 0;
         }
 
-        /* Clean Box-Free Contact Layout */
-        .clean-contact-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 40px;
-            margin-top: 24px;
+        /* ── About Us — Professional Redesign ── */
+        .about-inner {
             text-align: center;
         }
 
-        .contact-col {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            gap: 14px;
-            padding: 8px;
-            background: transparent;
-            backdrop-filter: none;
-            -webkit-backdrop-filter: none;
-            border-radius: 0;
-            border: none;
-            box-shadow: none;
-        }
-
-        .contact-person-role {
-            font-size: 12px;
-            font-weight: 800;
+        .about-sublabel {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1.8px;
-            color: #002F6C;
+            letter-spacing: 3.5px;
+            color: #475569;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+
+        .about-title-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            margin: 0 auto 36px auto;
+            width: 100%;
+            max-width: 720px;
+        }
+
+        .about-swash-line {
+            flex: 1 1 60px;
+            height: 28px;
+            min-width: 40px;
+            max-width: 180px;
+            display: block;
+            opacity: 0.85;
+        }
+
+        .about-title {
+            font-family: 'Alex Brush', 'Great Vibes', cursive;
+            font-size: 64px;
+            font-weight: 400;
+            color: #0a1628;
+            line-height: 1.05;
+            margin: 0;
+            white-space: nowrap;
+            letter-spacing: 1px;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.7);
+        }
+
+        @media (max-width: 768px) {
+            .about-title { font-size: 46px; }
+            .about-swash-line { max-width: 80px; }
+        }
+        @media (max-width: 480px) {
+            .about-title { font-size: 38px; }
+            .about-swash-line { display: none; }
+        }
+
+        /* ── About Us — Learn More expandable ── */
+        .about-more-wrap {
+            overflow: hidden;
+            max-height: 0;
+            opacity: 0;
+            transition: max-height 0.55s cubic-bezier(0.22,1,0.36,1), opacity 0.45s ease;
+        }
+        .about-more-wrap.expanded {
+            max-height: 600px;
+            opacity: 1;
+        }
+        .about-more-wrap .about-body-p:first-child {
+            margin-top: 18px;
+        }
+
+        .btn-learn-more {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background: transparent;
-            padding: 0;
-            border-radius: 0;
-            width: fit-content;
-            margin: 0 auto;
+            gap: 7px;
+            margin-top: 26px;
+            background: none;
+            border: 1.8px solid #002F6C;
+            color: #002F6C;
+            font-family: 'Cormorant Garamond', Georgia, serif;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            padding: 9px 28px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.22s, color 0.22s;
+        }
+        .btn-learn-more:hover {
+            background: #002F6C;
+            color: #fff;
+        }
+        .btn-learn-more .lm-arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            font-style: normal;
+            font-size: 13px;
+        }
+        .btn-learn-more.open .lm-arrow {
+            transform: rotate(180deg);
         }
 
-        .contact-person-title {
-            font-size: 20px;
-            font-weight: 800;
-            color: #111111;
-            letter-spacing: 0.2px;
-            line-height: 1.3;
+        /* ── Minimalist Stationery Contact Info (Matches Reference Image) ── */
+        .stationery-contact-inner {
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            text-align: left;
+            box-sizing: border-box;
+        }
+
+        .stationery-brand-sub {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 3.5px;
+            color: #475569;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+
+        /* Flowing Handwritten Script Title with Organic Swash Lines */
+        .stationery-title-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            margin: 0 auto 42px auto;
+            width: 100%;
+            max-width: 720px;
             text-align: center;
         }
 
-        .contact-divider {
-            width: 45px;
-            height: 3px;
-            background: linear-gradient(90deg, #E30613, #002F6C);
-            border-radius: 3px;
+        .stationery-swash-line {
+            flex: 1 1 60px;
+            height: 28px;
+            min-width: 40px;
+            max-width: 180px;
+            display: block;
+            opacity: 0.85;
+        }
+
+        .stationery-title {
+            font-family: 'Alex Brush', 'Great Vibes', cursive;
+            font-size: 64px;
+            font-weight: 400;
+            color: #0a1628;
+            line-height: 1.05;
+            margin: 0;
+            white-space: nowrap;
+            letter-spacing: 1px;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.7);
+        }
+
+        @media (max-width: 768px) {
+            .stationery-title {
+                font-size: 46px;
+            }
+            .stationery-swash-line {
+                max-width: 80px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stationery-title {
+                font-size: 38px;
+            }
+            .stationery-swash-line {
+                display: none;
+            }
+        }
+
+        /* 2-Column Stationery Grid — Strictly NO Boxes, NO Cards, NO Shadows */
+        .stationery-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 48px 64px;
+            max-width: 960px;
             margin: 0 auto;
+            align-items: start;
+            text-align: left;
         }
 
-        .contact-link-row {
+        @media (max-width: 820px) {
+            .stationery-grid {
+                grid-template-columns: 1fr;
+                gap: 40px;
+                max-width: 520px;
+            }
+        }
+
+        .stationery-col {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            font-size: 15px;
-            color: #111111;
+            flex-direction: column;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+
+        .stationery-role-tag {
+            font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+            font-size: 20px;
             font-weight: 600;
+            font-style: italic;
+            text-transform: none;
+            letter-spacing: 0.5px;
+            color: #002F6C;
+            display: block;
+            margin-bottom: 6px;
         }
 
-        .contact-link-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            background: rgba(0,47,108,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        .contact-link-icon i {
-            font-size: 13px;
-            color: #002F6C;
-        }
-
-        .contact-link-row a {
-            color: #002F6C;
-            text-decoration: none;
+        .stationery-name {
+            font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+            font-size: 23px;
             font-weight: 700;
+            color: #0a1628;
+            line-height: 1.25;
+            margin: 0 0 10px 0;
+            letter-spacing: 0.2px;
+        }
+
+        .stationery-person {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stationery-rows {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        /* Line-separated contact row — no icons, plain text only */
+        .stationery-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 13px 2px;
+            border-bottom: 1.2px solid rgba(15, 23, 42, 0.22);
+            transition: border-color 0.2s, padding-left 0.2s;
+        }
+
+        .stationery-row:hover {
+            border-bottom-color: #002F6C;
+            padding-left: 4px;
+        }
+
+        .stationery-content {
+            font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+            font-size: 19px;
+            font-weight: 600;
+            color: #0a1628;
+            line-height: 1.45;
+            letter-spacing: 0.2px;
+            flex: 1;
+        }
+
+        .stationery-content a {
+            color: #0a1628;
+            text-decoration: none;
             transition: color 0.2s;
         }
-        .contact-link-row a:hover {
-            color: #E30613;
+
+        .stationery-content a:hover {
+            color: #002F6C;
             text-decoration: underline;
         }
 
@@ -2049,66 +2243,138 @@ $_asset_base = $_login_base . '/assets';
 
     <!-- ── SECTION 2: ABOUT US ── -->
     <section id="about-us" class="page-section section-about">
-        <div class="section-inner">
-            <div class="section-badge reveal">
-                <i class="fas fa-info-circle"></i> About Us
+        <div class="section-inner about-inner">
+
+            <!-- Sub-label -->
+            <div class="about-sublabel reveal">Petron Station Management System</div>
+
+            <!-- Cursive Title with Swash Lines (matches Contact Info style) -->
+            <div class="about-title-wrap reveal reveal-delay-1">
+                <svg class="about-swash-line swash-left" viewBox="0 0 160 30" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 0,16 C 45,16 80,24 115,15 C 130,11 145,13 160,16" fill="none" stroke="#0a1628" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <h2 class="about-title">About Us</h2>
+                <svg class="about-swash-line swash-right" viewBox="0 0 160 30" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 0,16 C 15,13 30,11 45,15 C 80,24 115,16 160,16" fill="none" stroke="#0a1628" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
             </div>
-            <h2 class="section-heading reveal reveal-delay-1">Petron Station Management System</h2>
-            <div class="section-divider reveal reveal-delay-1"></div>
+
+            <!-- Intro paragraph -->
             <p class="about-body-p reveal reveal-delay-2">
                 The Petron Station Management System is a web-based back-office management solution developed to support the daily operations of Petron Station &amp; Service Center – Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental.
             </p>
-            <p class="about-body-p reveal reveal-delay-2">
-                The system provides a centralized platform for managing fuel operations, merchandise and job order transactions, inventory, customer records, reporting, approvals, notifications, and audit trails. It is designed to improve operational efficiency, record accuracy, accountability, and monitoring within the station.
-            </p>
-            <p class="about-body-p reveal reveal-delay-3">
-                Currently implemented for one Petron franchise branch, the system follows a scalable and nationwide-ready design that can support future expansion to additional franchise branches.
-            </p>
+
+            <!-- Collapsible content -->
+            <div class="about-more-wrap" id="about-more-wrap">
+                <p class="about-body-p">
+                    The system provides a centralized platform for managing fuel operations, merchandise and job order transactions, inventory, customer records, reporting, approvals, notifications, and audit trails. It is designed to improve operational efficiency, record accuracy, accountability, and monitoring within the station.
+                </p>
+                <p class="about-body-p">
+                    Currently implemented for one Petron franchise branch, the system follows a scalable and nationwide-ready design that can support future expansion to additional franchise branches.
+                </p>
+            </div>
+
+            <!-- Learn More button -->
+            <div>
+                <button class="btn-learn-more reveal reveal-delay-3" id="btn-learn-more" type="button" onclick="toggleAboutMore(this)">
+                    Learn More <em class="lm-arrow">&#9660;</em>
+                </button>
+            </div>
         </div>
     </section>
 
-    <!-- ── SECTION 3: CONTACT US ── -->
+
+
+    <!-- ── SECTION 3: CONTACT INFO ── -->
     <section id="contact-us" class="page-section section-contact">
-        <div class="section-inner">
-            <div class="section-badge reveal">
-                <i class="fas fa-envelope"></i> Contact Us
+        <div class="section-inner stationery-contact-inner">
+            
+            <div class="stationery-brand-sub reveal">Petron Station &amp; Service Center</div>
+
+            <!-- Handwritten / Cursive Script Title with Organic Swash Lines (matches reference image) -->
+            <div class="stationery-title-wrap reveal reveal-delay-1">
+                <svg class="stationery-swash-line swash-left" viewBox="0 0 160 30" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 0,16 C 45,16 80,24 115,15 C 130,11 145,13 160,16" fill="none" stroke="#0a1628" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <h2 class="stationery-title">Contact Info</h2>
+                <svg class="stationery-swash-line swash-right" viewBox="0 0 160 30" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 0,16 C 15,13 30,11 45,15 C 80,24 115,16 160,16" fill="none" stroke="#0a1628" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
             </div>
-            <div class="section-divider reveal reveal-delay-1"></div>
 
-            <div class="clean-contact-grid">
-                <!-- Admin / Owner -->
-                <div class="contact-col reveal reveal-delay-2">
-                    <div class="contact-person-role">
-                        <i class="fas fa-user-shield"></i> Admin / Owner
-                    </div>
-                    <div class="contact-person-title">Romeca Katherine Jane Tello Pepito</div>
-                    <div class="contact-divider"></div>
-                    <div class="contact-link-row">
-                        <div class="contact-link-icon"><i class="fas fa-envelope"></i></div>
-                        <a href="mailto:romeca.katherine@gmail.com">romeca.katherine@gmail.com</a>
-                    </div>
-                    <div class="contact-link-row">
-                        <div class="contact-link-icon"><i class="fas fa-phone-alt"></i></div>
-                        <a href="tel:+639177918140">+63 917 791 8140</a>
+            <!-- 2-Column Minimalist Stationery Grid (No Boxes / No Cards) -->
+            <div class="stationery-grid">
+                
+                <!-- Column 1: Admin / Owner -->
+                <div class="stationery-col reveal reveal-delay-2">
+                    <div class="stationery-role-tag">Admin / Owner</div>
+                    <h3 class="stationery-name">Romeca Katherine Jane Tello Pepito</h3>
+                    
+                    <div class="stationery-rows">
+                        <!-- Location Row -->
+                        <div class="stationery-row">
+                            <div class="stationery-content">
+                                9 Vamenta Boulevard, corner Max Y. Suniel Street,<br>
+                                Barangay Carmen, Cagayan de Oro City,<br>
+                                9000 Misamis Oriental, Philippines
+                            </div>
+                        </div>
+                        <!-- Phone Row 1 -->
+                        <div class="stationery-row">
+                            <div class="stationery-content">
+                                <a href="tel:+639989525625">+63 998-952-5625</a>
+                            </div>
+                        </div>
+                        <!-- Phone Row 2 -->
+                        <div class="stationery-row">
+                            <div class="stationery-content">
+                                <a href="tel:+639177918140">+63 917-791-8140</a>
+                            </div>
+                        </div>
+                        <!-- Email Row -->
+                        <div class="stationery-row">
+                            <div class="stationery-content">
+                                <a href="mailto:rtpepito.coc@phinmaed.com">rtpepito.coc@phinmaed.com</a>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Developer -->
-                <div class="contact-col reveal reveal-delay-3">
-                    <div class="contact-person-role">
-                        <i class="fas fa-code"></i> Developer
+                <!-- Column 2: Developers -->
+                <div class="stationery-col reveal reveal-delay-3">
+                    <div class="stationery-role-tag">Developers</div>
+
+                    <!-- Amie Cabahug -->
+                    <div class="stationery-person">
+                        <h3 class="stationery-name">Amie Cabahug</h3>
+                        <div class="stationery-rows">
+                            <div class="stationery-row">
+                                <div class="stationery-content">
+                                    <a href="tel:+639851743073">+63 985-174-3073</a>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="contact-person-title">Christian Valencia</div>
-                    <div class="contact-divider"></div>
-                    <div class="contact-link-row">
-                        <div class="contact-link-icon"><i class="fas fa-envelope"></i></div>
-                        <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
+
+                    <!-- Christian Valencia -->
+                    <div class="stationery-person" style="margin-top: 24px;">
+                        <h3 class="stationery-name">Christian Valencia</h3>
+                        <div class="stationery-rows">
+                            <div class="stationery-row">
+                                <div class="stationery-content">
+                                    <a href="tel:+639936406090">+63 993-640-6090</a>
+                                </div>
+                            </div>
+                            <div class="stationery-row">
+                                <div class="stationery-content">
+                                    <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="contact-link-row">
-                        <div class="contact-link-icon"><i class="fas fa-phone-alt"></i></div>
-                        <a href="tel:+639288089251">+63 928 808 9251</a>
-                    </div>
+
                 </div>
+
             </div>
         </div>
     </section>
@@ -2371,6 +2637,19 @@ document.addEventListener('DOMContentLoaded', function() {
     changeActiveNav();
     window.addEventListener('scroll', changeActiveNav);
 
+    // If navigated with a hash (e.g., login.php#about-us or login.php#contact-us)
+    if (window.location.hash) {
+        setTimeout(function() {
+            try {
+                var target = document.querySelector(window.location.hash);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                    changeActiveNav();
+                }
+            } catch(e) {}
+        }, 120);
+    }
+
     // ── Scroll Reveal (Intersection Observer) ──
     var reveals = document.querySelectorAll('.reveal');
     if ('IntersectionObserver' in window) {
@@ -2458,6 +2737,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     setInterval(checkMaintStatus, 5000);
 })();
+
+// ── About Us — Learn More / Show Less toggle ──
+function toggleAboutMore(btn) {
+    var wrap = document.getElementById('about-more-wrap');
+    if (!wrap) return;
+    var isOpen = wrap.classList.contains('expanded');
+    if (isOpen) {
+        wrap.classList.remove('expanded');
+        btn.classList.remove('open');
+        btn.innerHTML = 'Learn More <em class="lm-arrow">&#9660;</em>';
+    } else {
+        wrap.classList.add('expanded');
+        btn.classList.add('open');
+        btn.innerHTML = 'Show Less <em class="lm-arrow">&#9660;</em>';
+    }
+}
 </script>
 
 </body>

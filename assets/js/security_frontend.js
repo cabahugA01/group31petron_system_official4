@@ -28,60 +28,16 @@
         return false;
     }
 
-    // ── 2. ANTI-COPY & CONTEXT MENU DETERRENT (Context-Aware) ──
-    // Allows right-click inside form fields; blocks casual context-menu scraping on static UI
-    document.addEventListener('contextmenu', function (e) {
-        if (isEditableElement(e.target)) {
-            return true; // Allow context menu for form inputs (paste, cut, copy, spellcheck)
-        }
-        e.preventDefault();
-        return false;
-    }, false);
+    // ── 2. CONTEXT MENU & CLIPBOARD (Right-Click & Copy-Paste Enabled) ──
+    // Right-click and copy/paste are fully enabled across the entire application
+    // allowing users to right-click, copy table data, IDs, and paste into inputs.
+    // (No contextmenu or clipboard blocking)
 
-    // ── 3. KEYBOARD SHORTCUT PROTECTION (Context-Aware) ──
+    // ── 3. KEYBOARD SHORTCUTS ──
     // Form fields allow all keys (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+X, Ctrl+Z, etc.)
-    // Non-input areas block Ctrl+U (view-source), Ctrl+S (save-page), Ctrl+C (static text copy)
     // DEVTOOLS SHORTCUTS (F12, Ctrl+Shift+I, Ctrl+Shift+C, Ctrl+Shift+J) REMAIN FULLY ACCESSIBLE
     document.addEventListener('keydown', function (e) {
-        var isCtrlOrCmd = e.ctrlKey || e.metaKey;
-        var key = (e.key || '').toLowerCase();
-        var code = e.keyCode || e.which;
-
-        // If typing inside an input/textarea, never interfere with typing or clipboard shortcuts
-        if (isEditableElement(e.target || document.activeElement)) {
-            return true;
-        }
-
-        // Block Ctrl+U (View Page Source)
-        if (isCtrlOrCmd && (key === 'u' || code === 85)) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-
-        // Block Ctrl+S (Save Page As)
-        if (isCtrlOrCmd && (key === 's' || code === 83)) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-
-        // Block Ctrl+C and Ctrl+A on non-editable protected UI
-        if (isCtrlOrCmd && (key === 'c' || code === 67 || key === 'a' || code === 65)) {
-            if (!isEditableElement(e.target || document.activeElement)) {
-                // If user selected text on non-editable area, block copy
-                var sel = window.getSelection ? window.getSelection() : null;
-                if (sel && sel.toString().length > 0) {
-                    var anchor = sel.anchorNode ? sel.anchorNode.parentElement : null;
-                    if (!isEditableElement(anchor)) {
-                        e.preventDefault();
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // NOTE: F12, Ctrl+Shift+I, Ctrl+Shift+C, Ctrl+Shift+J are intentionally NOT blocked.
+        // Allow all standard shortcuts (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+X, etc.)
         return true;
     }, true);
 
