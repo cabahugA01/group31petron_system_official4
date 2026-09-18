@@ -2575,8 +2575,8 @@ function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
                 $ft_id = (int)$pdo->lastInsertId();
             }
 
-            // Ensure in fuel_inventory
-            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) LIMIT 1");
+            // Ensure in fuel_inventory (skip archived/deleted rows — they should stay archived)
+            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') LIMIT 1");
             $chk_fi->execute([$station_id, $fname]);
             if (!$chk_fi->fetchColumn()) {
                 $max_ugt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
