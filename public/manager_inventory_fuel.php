@@ -205,17 +205,12 @@ foreach ($TANK_CONFIG_17 as $tc) {
         }
     }
     if (!$inv) {
-        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance' || $ft_key === 'xtra advance') {
+        if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
             $cand = '';
             if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
             elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
             if ($cand && isset($fi_lookup[$cand]) && (float)($fi_lookup[$cand]['current_level'] ?? 0) > 0) { $ft_key = $cand; }
-            elseif (isset($fi_lookup['xtra advance']) && (float)($fi_lookup['xtra advance']['current_level'] ?? 0) > 0) { $ft_key = 'xtra advance'; }
             else { $ft_key = 'xtra unl'; }
-        } elseif ($ft_key === 'xcs' || $ft_key === 'xcs plus') {
-            if (isset($fi_lookup['xcs']) && (float)($fi_lookup['xcs']['current_level'] ?? 0) > 0) { $ft_key = 'xcs'; }
-            elseif (isset($fi_lookup['xcs plus (ugt #3)'])) { $ft_key = 'xcs plus (ugt #3)'; }
-            else { $ft_key = 'xcs plus'; }
         } elseif ($ft_key === 'diesel') {
             $cand = '';
             if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
@@ -1340,8 +1335,8 @@ td:nth-child(11), th:nth-child(11), td:nth-child(12), th:nth-child(12) {
                 <option value="diesel">Diesel</option>
                 <option value="kerosene">Kerosene</option>
                 <option value="turbo diesel">Turbo Diesel</option>
-                <option value="xcs">XCS</option>
-                <option value="advance">Xtra Advance</option>
+                <option value="xcs plus">XCS Plus</option>
+                <option value="xtra unl">XTRA UNL</option>
             </select>
 
             <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;">

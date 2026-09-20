@@ -220,17 +220,12 @@ try {
             }
         }
         if (!$inv) {
-            if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance' || $ft_key === 'xtra advance') {
+            if ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
                 $cand = '';
                 if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
                 elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
                 if ($cand && isset($fi_lookup[$cand])) { $ft_key = $cand; }
-                elseif (isset($fi_lookup['xtra advance'])) { $ft_key = 'xtra advance'; }
                 else { $ft_key = 'xtra unl'; }
-            } elseif ($ft_key === 'xcs' || $ft_key === 'xcs plus') {
-                if (isset($fi_lookup['xcs'])) { $ft_key = 'xcs'; }
-                elseif (isset($fi_lookup['xcs plus (ugt #3)'])) { $ft_key = 'xcs plus (ugt #3)'; }
-                else { $ft_key = 'xcs plus'; }
             } elseif ($ft_key === 'diesel') {
                 $cand = '';
                 if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
@@ -252,17 +247,12 @@ try {
         // Number of tanks for this fuel sub-group
         $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
             $k = strtolower(trim($t['fuel_type']));
-            if ($k === 'xtra unl' || $k === 'xtr advance' || $k === 'xtra advance') {
+            if ($k === 'xtra unl' || $k === 'xtr advance') {
                 $cand = '';
                 if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
                 elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
                 if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
-                elseif (isset($fi_lookup['xtra advance'])) { $k = 'xtra advance'; }
                 else { $k = 'xtra unl'; }
-            } elseif ($k === 'xcs' || $k === 'xcs plus') {
-                if (isset($fi_lookup['xcs'])) { $k = 'xcs'; }
-                elseif (isset($fi_lookup['xcs plus (ugt #3)'])) { $k = 'xcs plus (ugt #3)'; }
-                else { $k = 'xcs plus'; }
             } elseif ($k === 'diesel') {
                 $cand = '';
                 if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
@@ -1276,8 +1266,8 @@ body.sidebar-collapsed .modal-overlay,
         <option value="diesel">Diesel</option>
         <option value="kerosene">Kerosene</option>
         <option value="turbo diesel">Turbo Diesel</option>
-        <option value="xcs">XCS</option>
-        <option value="advance">Xtra Advance</option>
+        <option value="xcs">XCS Plus</option>
+        <option value="xtra">XTRA UNL</option>
     </select>
     <select id="sf" onchange="filterFuelTable()" style="height:36px; font-size:13px; font-weight:600; border:1.5px solid #cbd5e1; border-radius:6px;">
         <option value="">All Statuses</option>

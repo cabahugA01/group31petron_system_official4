@@ -176,7 +176,7 @@ try {
 // Helper function to get canonical fuel name
 if (!function_exists('get_canonical_fuel_name')) {
     function get_canonical_fuel_name($name) {
-        $name_lower = strtolower(trim($name ?? ''));
+        $name_lower = strtolower(trim($name));
         if (strpos($name_lower, 'turbo') !== false) {
             return 'Turbo Diesel';
         } elseif (strpos($name_lower, 'diesel') !== false) {
@@ -184,9 +184,9 @@ if (!function_exists('get_canonical_fuel_name')) {
         } elseif (strpos($name_lower, 'kerosene') !== false) {
             return 'Kerosene';
         } elseif (strpos($name_lower, 'xcs') !== false) {
-            return 'XCS';
+            return 'XCS Plus';
         } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-            return 'Xtra Advance';
+            return 'Xtra UNL';
         }
         return $name;
     }
@@ -1079,8 +1079,8 @@ body, html { overflow-x:hidden !important; }
                 <option value="diesel">Diesel</option>
                 <option value="kerosene">Kerosene</option>
                 <option value="turbo diesel">Turbo Diesel</option>
-                <option value="xcs">XCS</option>
-                <option value="advance">Xtra Advance</option>
+                <option value="xcs plus">XCS Plus</option>
+                <option value="xtra unl">XTRA UNL</option>
             </select>
 
             <select id="fuelStatusFilter" onchange="filterFuelTable()" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;">

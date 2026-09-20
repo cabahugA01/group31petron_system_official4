@@ -2575,24 +2575,13 @@ function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
                 $ft_id = (int)$pdo->lastInsertId();
             }
 
-            // Ensure in fuel_inventory using canonical fuel matching
-            $c_name = get_canonical_fuel_name($fname);
-            $chk_stmt = $pdo->prepare("SELECT id, fuel_type FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted')");
-            $chk_stmt->execute([$station_id]);
-            $existing_tanks = $chk_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $already_has_fuel = false;
-            foreach ($existing_tanks as $et) {
-                if (get_canonical_fuel_name($et['fuel_type']) === $c_name) {
-                    $already_has_fuel = true;
-                    break;
-                }
-            }
-
-            // Do NOT insert extra tanks if this fuel is already represented, or if station already has 7 tanks
-            $tank_count = count($existing_tanks);
-            if (!$already_has_fuel && $tank_count < 7) {
-                $ugt_count = $tank_count + 1;
+            // Ensure in fuel_inventory (skip archived/deleted rows — they should stay archived)
+            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') LIMIT 1");
+            $chk_fi->execute([$station_id, $fname]);
+            if (!$chk_fi->fetchColumn()) {
+                $max_ugt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
+                $max_ugt->execute([$station_id]);
+                $ugt_count = (int)$max_ugt->fetchColumn() + 1;
                 $ugt_no = 'UGT-' . str_pad($ugt_count, 2, '0', STR_PAD_LEFT);
 
                 $pdo->prepare("
@@ -2636,31 +2625,13 @@ function get_system_logo_url($station_id = null) {
     return $default_logo;
 }
 
-if (!function_exists('get_canonical_fuel_name')) {
-    function get_canonical_fuel_name($name) {
-        $name_lower = strtolower(trim($name ?? ''));
-        if (strpos($name_lower, 'turbo') !== false) {
-            return 'Turbo Diesel';
-        } elseif (strpos($name_lower, 'diesel') !== false) {
-            return 'Diesel';
-        } elseif (strpos($name_lower, 'kerosene') !== false) {
-            return 'Kerosene';
-        } elseif (strpos($name_lower, 'xcs') !== false) {
-            return 'XCS';
-        } elseif (strpos($name_lower, 'xtra') !== false || strpos($name_lower, 'unl') !== false || strpos($name_lower, 'advance') !== false) {
-            return 'Xtra Advance';
-        }
-        return $name;
-    }
-}
-
 define('PETRON_7_UGT_CONFIG', [
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'tanker_num'=>1,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'tanker_num'=>2,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-    ['fuel_type'=>'XCS',          'label'=>'XCS - 1',          'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-    ['fuel_type'=>'Xtra Advance', 'label'=>'XTRA ADVANCE - 1', 'tank'=>'UGT #4',  'tanker_num'=>4,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+    ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #4',  'tanker_num'=>4,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
     ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #5',  'tanker_num'=>5,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
-    ['fuel_type'=>'Xtra Advance', 'label'=>'XTRA ADVANCE - 2', 'tank'=>'UGT #6',  'tanker_num'=>6,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+    ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 2',  'tank'=>'UGT #6',  'tanker_num'=>6,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'UGT #7',  'tanker_num'=>7,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
 ]);
 

@@ -136,7 +136,7 @@ try {
 
 // ── 5 Petron Station Inventory Fuel Types ─────────────────────────────────────
 // Aligned directly with fuel_inventory UGT tanks & PETRON_7_UGT_CONFIG
-$fuel_types_list = ['Diesel', 'Turbo Diesel', 'XCS', 'Xtra Advance', 'Kerosene'];
+$fuel_types_list = ['Diesel', 'Turbo Diesel', 'XCS Plus', 'Xtra UNL', 'Kerosene'];
 try {
     $ft_stmt = $pdo->query("SELECT DISTINCT fuel_type FROM fuel_inventory WHERE fuel_type IS NOT NULL AND TRIM(fuel_type) != ''");
     $raw_fuels = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -150,9 +150,9 @@ try {
         } elseif (strpos($nl, 'kerosene') !== false) {
             $c = 'Kerosene';
         } elseif (strpos($nl, 'xcs') !== false) {
-            $c = 'XCS';
+            $c = 'XCS Plus';
         } elseif (strpos($nl, 'xtra') !== false || strpos($nl, 'unl') !== false || strpos($nl, 'advance') !== false) {
-            $c = 'Xtra Advance';
+            $c = 'Xtra UNL';
         } else {
             $c = trim($rf);
         }
@@ -161,7 +161,7 @@ try {
         }
     }
     // Preferred standard Petron display order
-    $preferred = ['Diesel', 'Turbo Diesel', 'XCS', 'Xtra Advance', 'Kerosene'];
+    $preferred = ['Diesel', 'Turbo Diesel', 'XCS Plus', 'Xtra UNL', 'Kerosene'];
     $final_fuels = [];
     foreach ($preferred as $pf) {
         if (in_array($pf, $canon_fuels, true)) $final_fuels[] = $pf;
