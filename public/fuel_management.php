@@ -527,18 +527,27 @@ try {
             ensure_station_inventory_synced($pdo, (int)$station_id);
         }
         $stmt = $pdo->prepare("
-            SELECT DISTINCT TRIM(name) AS name FROM (
-                SELECT fuel_type AS name FROM fuel_inventory WHERE station_id = ? AND fuel_type IS NOT NULL AND fuel_type != '' AND LOWER(COALESCE(status,'active')) != 'deleted'
-                UNION
-                SELECT name FROM fuel_types WHERE name IS NOT NULL AND name != ''
-                UNION
-                SELECT product_name AS name FROM inventory_products WHERE station_id = ? AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') AND LOWER(COALESCE(status,'active')) NOT IN ('deleted','archived')
-            ) all_fuels
-            WHERE name IS NOT NULL AND TRIM(name) != ''
-            ORDER BY name
+            SELECT DISTINCT product_name AS name 
+            FROM inventory_products 
+            WHERE station_id = ? 
+              AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') 
+              AND LOWER(COALESCE(status,'active')) NOT IN ('deleted','archived')
+            ORDER BY id ASC
         ");
-        $stmt->execute([$station_id, $station_id]);
+        $stmt->execute([$station_id]);
         $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        // Fallback: if empty, query fuel_types
+        if (empty($db_fuel_types)) {
+            $stmt = $pdo->query("SELECT DISTINCT name FROM fuel_types ORDER BY id ASC");
+            $raw_ft = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $canon = [];
+            foreach ($raw_ft as $rf) {
+                $c = function_exists('clean_fuel_display_name') ? clean_fuel_display_name($rf) : trim($rf);
+                if ($c && !in_array($c, $canon, true)) $canon[] = $c;
+            }
+            $db_fuel_types = $canon;
+        }
     }
 } catch (Exception $e) {
     error_log("Fuel Management fuel types fetch error: " . $e->getMessage());

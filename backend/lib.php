@@ -2542,13 +2542,14 @@ function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
                 $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$fname, $fprice]);
             }
 
-            // Ensure in inventory_products as Fuel
+            // Ensure in inventory_products as canonical Fuel (5 fuel types: Diesel, Turbo Diesel, XCS Plus, Xtra UNL, Kerosene)
+            $canonical_name = function_exists('clean_fuel_display_name') ? clean_fuel_display_name($fname) : $fname;
             $chk_ip = $pdo->prepare("SELECT id, unit_price FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') LIMIT 1");
-            $chk_ip->execute([$station_id, $fname]);
+            $chk_ip->execute([$station_id, $canonical_name]);
             $existing_ip = $chk_ip->fetch(PDO::FETCH_ASSOC);
             if (!$existing_ip) {
                 $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, stock, status, created_at) VALUES (?, ?, 'Fuel', ?, ?, 0, 'active', NOW())")
-                    ->execute([$station_id, $fname, $fprice, $fprice]);
+                    ->execute([$station_id, $canonical_name, $fprice, $fprice]);
             } elseif ((float)$existing_ip['unit_price'] <= 0 && $fprice > 0) {
                 $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?")
                     ->execute([$fprice, $fprice, $existing_ip['id']]);
@@ -2649,6 +2650,33 @@ function get_tank_config(int $station_id = null): array {
     }
 
     if ($pdo && $station_id > 0) {
+        // 1. Dynamic DB Fetch: Query fuel_inventory for this station's active tanks
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    id,
+                    COALESCE(NULLIF(CAST(REGEXP_REPLACE(ugt_no, '[^0-9]', '') AS UNSIGNED), 0), id) AS tanker_num,
+                    COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unknown') AS fuel_type,
+                    COALESCE(NULLIF(TRIM(ugt_no), ''), CONCAT('UGT #', id)) AS label,
+                    COALESCE(NULLIF(TRIM(ugt_no), ''), CONCAT('UGT #', id)) AS tank,
+                    COALESCE(NULLIF(capacity, 0), 14000) AS capacity,
+                    COALESCE(reorder_level, 0) AS reorder_level,
+                    COALESCE(critical_level, 0) AS critical_level
+                FROM fuel_inventory
+                WHERE station_id = ?
+                  AND LOWER(COALESCE(status, 'active')) NOT IN ('archived', 'deleted')
+                ORDER BY CAST(REGEXP_REPLACE(ugt_no, '[^0-9]', '') AS UNSIGNED) ASC, id ASC
+            ");
+            $stmt->execute([$station_id]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($rows)) {
+                return array_map('_normalize_tank_row', $rows);
+            }
+        } catch (Throwable $e) {
+            error_log("get_tank_config fuel_inventory query error: " . $e->getMessage());
+        }
+
+        // 2. Fallback: check fuel_tanks table if present
         try {
             $tables = $pdo->query("SHOW TABLES LIKE 'fuel_tanks'")->fetchAll(PDO::FETCH_COLUMN);
             if (!empty($tables)) {
@@ -2674,12 +2702,11 @@ function get_tank_config(int $station_id = null): array {
             }
         } catch (Throwable $e) {}
 
-        // Station 1253 (Vamenta Carmen) default tanks
+        // Fallback to PETRON_7_UGT_CONFIG only if database query fails or returns empty
         if ($station_id === 1253) {
             return array_map('_normalize_tank_row', PETRON_7_UGT_CONFIG);
         }
 
-        // New branches start with 0 tanks until configured
         return [];
     }
 
