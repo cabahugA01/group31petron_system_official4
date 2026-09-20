@@ -20,7 +20,20 @@ include __DIR__ . '/../partials/header.php';
 <?php
 $fuels = [];
 try {
-    $stmt = $pdo->query("SELECT name, 'Read-only' as price FROM fuel_types ORDER BY name");
+    $stmt = $pdo->query("
+        SELECT name, 'Read-only' as price FROM fuel_types 
+        ORDER BY 
+          CASE 
+            WHEN LOWER(name) LIKE '%diesel 1%' OR LOWER(name) = 'diesel' THEN 1
+            WHEN LOWER(name) LIKE '%diesel 2%' THEN 2
+            WHEN LOWER(name) LIKE '%turbo%' THEN 3
+            WHEN LOWER(name) LIKE '%xcs%' THEN 4
+            WHEN LOWER(name) LIKE '%xtra unl 1%' OR LOWER(name) = 'xtra unl' THEN 5
+            WHEN LOWER(name) LIKE '%xtra unl 2%' THEN 6
+            WHEN LOWER(name) LIKE '%kero%' THEN 7
+            ELSE 8
+          END ASC, id ASC
+    ");
     $fuels = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $fuels = [];

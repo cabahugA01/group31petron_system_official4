@@ -539,14 +539,23 @@ try {
         FROM fuel_pumps fp
         LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
         LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
-        WHERE fp.station_id = ?
-        ORDER BY fp.pump_number ASC
+        ORDER BY 
+            CASE 
+                WHEN LOWER(fp.pump_number) LIKE '%diesel 1%' THEN 1
+                WHEN LOWER(fp.pump_number) LIKE '%diesel 2%' THEN 2
+                WHEN LOWER(fp.pump_number) LIKE '%turbo%' THEN 3
+                WHEN LOWER(fp.pump_number) LIKE '%xcs%' THEN 4
+                WHEN LOWER(fp.pump_number) LIKE '%xtra unl 1%' THEN 5
+                WHEN LOWER(fp.pump_number) LIKE '%xtra unl 2%' THEN 6
+                WHEN LOWER(fp.pump_number) LIKE '%kero%' THEN 7
+                ELSE 8
+            END ASC, fp.pump_number ASC
     ");
     $stmt->execute([$station_id]);
     $fuel_options = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Get fuel inventory
-        $stmt = $pdo->prepare("SELECT fi.*, COALESCE(fi.current_level, 0) AS current_stock, " . $reorderThresholdExpr . " AS reorder_threshold FROM fuel_inventory fi WHERE station_id = ? ORDER BY fuel_type");
+    // Get fuel inventory ordered by UGT number so Kerosene (UGT-07) is pinakalast
+    $stmt = $pdo->prepare("SELECT fi.*, COALESCE(fi.current_level, 0) AS current_stock, " . $reorderThresholdExpr . " AS reorder_threshold FROM fuel_inventory fi WHERE station_id = ? ORDER BY CAST(REGEXP_REPLACE(fi.ugt_no, '[^0-9]', '') AS UNSIGNED) ASC, fi.id ASC");
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

@@ -432,8 +432,24 @@ $variance_reports = [];
 
 if ($station_id) {
     try {
-        // Fetch fuel stations/pumps
-        $stmt = $pdo->prepare("SELECT * FROM fuel_stations WHERE station_id = ? ORDER BY pump_number");
+        // Fetch fuel pumps / stations with Kerosene as pinakalast (UGT-07)
+        $stmt = $pdo->prepare("
+            SELECT fp.id, fp.pump_number, ft.name AS fuel_type 
+            FROM fuel_pumps fp 
+            LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
+            WHERE fp.station_id = ? 
+            ORDER BY 
+              CASE 
+                WHEN LOWER(fp.pump_number) LIKE '%diesel 1%' THEN 1
+                WHEN LOWER(fp.pump_number) LIKE '%diesel 2%' THEN 2
+                WHEN LOWER(fp.pump_number) LIKE '%turbo%' THEN 3
+                WHEN LOWER(fp.pump_number) LIKE '%xcs%' THEN 4
+                WHEN LOWER(fp.pump_number) LIKE '%xtra unl 1%' THEN 5
+                WHEN LOWER(fp.pump_number) LIKE '%xtra unl 2%' THEN 6
+                WHEN LOWER(fp.pump_number) LIKE '%kero%' THEN 7
+                ELSE 8
+              END ASC, fp.pump_number ASC
+        ");
         $stmt->execute([$station_id]);
         $fuel_stations = $stmt->fetchAll();
         
@@ -532,14 +548,33 @@ try {
             WHERE station_id = ? 
               AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') 
               AND LOWER(COALESCE(status,'active')) NOT IN ('deleted','archived')
-            ORDER BY id ASC
+            ORDER BY 
+              CASE 
+                WHEN LOWER(product_name) LIKE '%diesel%' AND LOWER(product_name) NOT LIKE '%turbo%' THEN 1
+                WHEN LOWER(product_name) LIKE '%turbo%' THEN 2
+                WHEN LOWER(product_name) LIKE '%xcs%' THEN 3
+                WHEN LOWER(product_name) LIKE '%xtra%' OR LOWER(product_name) LIKE '%unl%' THEN 4
+                WHEN LOWER(product_name) LIKE '%kero%' THEN 5
+                ELSE 6
+              END ASC, id ASC
         ");
         $stmt->execute([$station_id]);
         $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         // Fallback: if empty, query fuel_types
         if (empty($db_fuel_types)) {
-            $stmt = $pdo->query("SELECT DISTINCT name FROM fuel_types ORDER BY id ASC");
+            $stmt = $pdo->query("
+                SELECT DISTINCT name FROM fuel_types 
+                ORDER BY 
+                  CASE 
+                    WHEN LOWER(name) LIKE '%diesel%' AND LOWER(name) NOT LIKE '%turbo%' THEN 1
+                    WHEN LOWER(name) LIKE '%turbo%' THEN 2
+                    WHEN LOWER(name) LIKE '%xcs%' THEN 3
+                    WHEN LOWER(name) LIKE '%xtra%' OR LOWER(name) LIKE '%unl%' THEN 4
+                    WHEN LOWER(name) LIKE '%kero%' THEN 5
+                    ELSE 6
+                  END ASC, id ASC
+            ");
             $raw_ft = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $canon = [];
             foreach ($raw_ft as $rf) {
@@ -554,7 +589,20 @@ try {
 }
 if (empty($db_fuel_types)) {
     try {
-        $stmt = $pdo->prepare("SELECT DISTINCT fuel_type AS name FROM fuel_inventory WHERE fuel_type IS NOT NULL AND fuel_type != '' ORDER BY fuel_type");
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT fuel_type AS name 
+            FROM fuel_inventory 
+            WHERE fuel_type IS NOT NULL AND fuel_type != '' 
+            ORDER BY 
+              CASE 
+                WHEN LOWER(fuel_type) LIKE '%diesel%' AND LOWER(fuel_type) NOT LIKE '%turbo%' THEN 1
+                WHEN LOWER(fuel_type) LIKE '%turbo%' THEN 2
+                WHEN LOWER(fuel_type) LIKE '%xcs%' THEN 3
+                WHEN LOWER(fuel_type) LIKE '%xtra%' OR LOWER(fuel_type) LIKE '%unl%' THEN 4
+                WHEN LOWER(fuel_type) LIKE '%kero%' THEN 5
+                ELSE 6
+              END ASC
+        ");
         $stmt->execute();
         $db_fuel_types = $stmt->fetchAll(PDO::FETCH_COLUMN);
     } catch (Exception $e) {}
