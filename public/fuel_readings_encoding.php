@@ -539,6 +539,7 @@ try {
         FROM fuel_pumps fp
         LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
         LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+        WHERE fp.station_id = ?
         ORDER BY 
             CASE 
                 WHEN LOWER(fp.pump_number) LIKE '%diesel 1%' THEN 1
@@ -547,8 +548,8 @@ try {
                 WHEN LOWER(fp.pump_number) LIKE '%xcs%' THEN 4
                 WHEN LOWER(fp.pump_number) LIKE '%xtra unl 1%' THEN 5
                 WHEN LOWER(fp.pump_number) LIKE '%xtra unl 2%' THEN 6
-                WHEN LOWER(fp.pump_number) LIKE '%kero%' THEN 7
-                ELSE 8
+                WHEN LOWER(fp.pump_number) LIKE '%kero%' THEN 99
+                ELSE 50
             END ASC, fp.pump_number ASC
     ");
     $stmt->execute([$station_id]);

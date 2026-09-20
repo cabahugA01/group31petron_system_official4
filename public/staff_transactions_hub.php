@@ -173,7 +173,20 @@ try {
         $ft_sql .= " AND fi.fuel_type NOT IN ($placeholders)";
         $ft_params = array_merge($ft_params, $excluded_fuel_types);
     }
-    $ft_sql .= " ORDER BY fi.fuel_type";
+    // Order: Diesel 1 → Diesel 2 → Turbo Diesel → XCS Plus → Xtra UNL 1 → Xtra UNL 2 → Kerosene (pinakalast = UGT-07)
+    $ft_sql .= "
+        ORDER BY
+            CASE
+                WHEN LOWER(fi.fuel_type) LIKE '%diesel 1%' THEN 1
+                WHEN LOWER(fi.fuel_type) LIKE '%diesel 2%' THEN 2
+                WHEN LOWER(fi.fuel_type) LIKE '%turbo%'   THEN 3
+                WHEN LOWER(fi.fuel_type) LIKE '%xcs%'     THEN 4
+                WHEN LOWER(fi.fuel_type) LIKE '%xtra%' AND LOWER(fi.fuel_type) LIKE '%1%' THEN 5
+                WHEN LOWER(fi.fuel_type) LIKE '%xtra%' AND LOWER(fi.fuel_type) LIKE '%2%' THEN 6
+                WHEN LOWER(fi.fuel_type) LIKE '%kero%'    THEN 99
+                WHEN LOWER(fi.fuel_type) LIKE '%diesel%'  THEN 1
+                ELSE 50
+            END ASC, fi.fuel_type ASC";
     $stmt = $pdo->prepare($ft_sql);
     $stmt->execute($ft_params);
     

@@ -2323,7 +2323,9 @@ function clean_fuel_display_name($fuel_type) {
     if (strpos($normalized, 'KEROSENE') !== false) return 'Kerosene';
     if (strpos($normalized, 'XCS') !== false) return 'XCS Plus';
     if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) return 'Xtra UNL';
-    if (strpos($normalized, 'DIESEL') !== false) return 'Diesel';
+    if (strpos($normalized, 'DIESEL 2') !== false || strpos($normalized, 'DIESEL - 2') !== false) return 'Diesel 2';
+    if (strpos($normalized, 'DIESEL 1') !== false || strpos($normalized, 'DIESEL - 1') !== false) return 'Diesel 1';
+    if (strpos($normalized, 'DIESEL') !== false) return 'Diesel 1'; // generic Diesel → Diesel 1 (UGT-01)
     return $name !== '' ? $name : 'Fuel';
 }
 }
@@ -2633,8 +2635,8 @@ function get_system_logo_url($station_id = null) {
 }
 
 define('PETRON_7_UGT_CONFIG', [
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'tanker_num'=>1,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-    ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'tanker_num'=>2,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+    ['fuel_type'=>'Diesel 1',     'label'=>'DIESEL 1 - 1',     'tank'=>'UGT #1',  'tanker_num'=>1,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+    ['fuel_type'=>'Diesel 2',     'label'=>'DIESEL 2 - 2',     'tank'=>'UGT #2',  'tanker_num'=>2,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
     ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #4',  'tanker_num'=>4,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #5',  'tanker_num'=>5,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
