@@ -794,53 +794,79 @@ require_once __DIR__ . '/../partials/header.php';
     <?php endif; ?>
   </div>
 
-  <!-- WORKFLOW NAVIGATION SECTION -->
+  <!-- 6-PILLAR FUEL MANAGEMENT MODULE NAVIGATION -->
   <section class="card" style="margin-top:18px">
     <div class="card-head">
-      <div class="card-title">Manager Workflows</div>
+      <div class="card-title"><i class="fas fa-cubes" style="color:#002F6C;margin-right:6px;"></i> Fuel Management Modules</div>
     </div>
-    <div class="workflow-grid">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;padding:16px;">
       
-      <!-- Manager: Verify Deliveries -->
-      <?php if ($isManager): ?>
-        <div class="workflow-link" style="cursor: default; pointer-events: none; opacity: 0.7;">
-          <div class="wf-icon"><i class="fas fa-truck"></i></div>
-          <strong>Verify Deliveries</strong>
-          <small>Review and verify recorded fuel deliveries</small>
-          <?php
-            try {
-              $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM fuel_deliveries WHERE station_id = ? AND status = 'Pending Review'");
-              $stmt->execute([$station_id]);
-              $count = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
-              echo "<span class='wf-count'>" . intval($count) . " pending</span>";
-            } catch (Exception $e) {}
-          ?>
+      <!-- 1. Fuel Products -->
+      <a href="manager_set_prices.php?tab=fuel" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #0284c7;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#e0f2fe;color:#0369a1;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-tint"></i>
         </div>
-      <?php endif; ?>
-      
-      <!-- Manager: Shift-End Processing -->
-      <?php if ($isManager): ?>
-        <div class="workflow-link" style="cursor: default; pointer-events: none; opacity: 0.7; border-left-color:#e6a817;">
-          <div class="wf-icon"><i class="fas fa-clock"></i></div>
-          <strong>Shift-End Processing</strong>
-          <small>Approve pump readings & deduct sales</small>
-          <?php
-            try {
-              $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM fuel_daily_readings WHERE station_id = ? AND DATE(reading_date) = CURDATE() AND status = 'Pending Review'");
-              $stmt->execute([$station_id]);
-              $count = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
-              echo "<span class='wf-count'>" . intval($count) . " readings</span>";
-            } catch (Exception $e) {}
-          ?>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Fuel Products</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Fuel catalog, selling prices, and pump setup</div>
         </div>
-      <?php endif; ?>
-      
-      <!-- Audit Trail -->
-      <div class="workflow-link" style="cursor: default; pointer-events: none; opacity: 0.7; border-left-color:var(--muted);">
-        <div class="wf-icon"><i class="fas fa-clipboard-list"></i></div>
-        <strong>Audit Trail</strong>
-        <small>View complete transaction history</small>
-      </div>
+      </a>
+
+      <!-- 2. Tank Configuration -->
+      <a href="manager_inventory_fuel.php" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #10b981;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#d1fae5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-database"></i>
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Tank Configuration</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Underground tanks (UGT-01 to UGT-07) and levels</div>
+        </div>
+      </a>
+
+      <!-- 3. Pump & Nozzle Configuration -->
+      <a href="manager_pump_nozzle_config.php" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #002F6C;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#e0f2fe;color:#002F6C;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-gas-pump"></i>
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Pump & Nozzle Configuration</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Station-specific pumps, nozzles, and tank mapping</div>
+        </div>
+      </a>
+
+      <!-- 4. Fuel Sales -->
+      <a href="staff_transactions_hub.php?section=fuel" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#fef3c7;color:#b45309;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-tachometer-alt"></i>
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Fuel Sales</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Shift meter readings and pump sales encoding</div>
+        </div>
+      </a>
+
+      <!-- 5. Fuel Closing -->
+      <a href="staff_fuel_sales_closing.php" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #8b5cf6;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#ede9fe;color:#6d28d9;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-lock"></i>
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Fuel Closing</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Shift-end closing, validation, and cash handover</div>
+        </div>
+      </a>
+
+      <!-- 6. Fuel Reconciliation -->
+      <a href="manager_fuel_reconciliation.php" style="text-decoration:none;display:flex;align-items:flex-start;gap:14px;padding:14px 18px;background:#ffffff;border:1.5px solid #e2e8f0;border-left:4px solid #ec4899;border-radius:8px;transition:transform 0.15s, box-shadow 0.15s;color:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(0,0,0,0.06)';" onmouseout="this.style.transform='none';this.style.boxShadow='none';">
+        <div style="width:38px;height:38px;border-radius:8px;background:#fce7f3;color:#be185d;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">
+          <i class="fas fa-calculator"></i>
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#002F6C;">Fuel Reconciliation</div>
+          <div style="font-size:12.5px;color:#64748b;margin-top:2px;">Deliveries vs sales vs physical dip variances</div>
+        </div>
+      </a>
+
     </div>
   </section>
 
@@ -915,12 +941,14 @@ require_once __DIR__ . '/../partials/header.php';
 
   <!-- Tabs -->
   <div class="tabs pills">
-    <button class="tab active" data-fueltab="operations"><i class="fas fa-gas-pump"></i> Daily Operations</button>
-    <a href="staff_fuel_deliveries.php" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-truck"></i> Fuel Deliveries</a>
+    <button class="tab active" data-fueltab="operations"><i class="fas fa-tachometer-alt"></i> Daily Operations</button>
+    <a href="manager_pump_nozzle_config.php" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-gas-pump"></i> Pump & Nozzle Config</a>
+    <a href="manager_set_prices.php?tab=fuel" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-tint"></i> Fuel Products</a>
+    <a href="manager_inventory_fuel.php" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-database"></i> Tank Config</a>
+    <a href="staff_fuel_deliveries.php" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-truck"></i> Deliveries</a>
     <button class="tab" data-fueltab="adjustments"><i class="fas fa-exchange-alt"></i> Adjustments</button>
     <button class="tab" data-fueltab="reconciliation"><i class="fas fa-calculator"></i> Reconciliation</button>
-    <button class="tab" data-fueltab="variances"><i class="fas fa-exclamation-triangle"></i> Variance Reports</button>
-    <button class="tab" data-fueltab="history"><i class="fas fa-history"></i> Shift History</button>
+    <a href="staff_fuel_sales_closing.php" class="tab" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;"><i class="fas fa-lock"></i> Fuel Closing</a>
   </div>
 
   <!-- TAB 1: DAILY OPERATIONS -->

@@ -130,21 +130,22 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'manager_mechanics_management',    'label' => 'Mechanics Management',      'href' => 'manager_mechanics_management.php',                                   'ico' => 'fas fa-wrench',         'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
                 ],
             ],
-            // 4. Fuel Management — Staff Meter Readings + Manager Validation, Adjustments & Admin Oversight
+            // 4. Fuel Management — 6-Pillar Structured Fuel Management Suite
             [
                 'id'               => 'admin_fuel_management',
                 'label'            => 'Fuel Management',
                 'ico'              => 'fas fa-gas-pump',
-                'href'             => 'staff_transactions_hub.php?section=fuel',
+                'href'             => 'fuel_management.php',
                 'permissions'      => ['encode_fuel', 'manage_fuel', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'desc'             => 'Record meter readings, validate pump transactions, calibrate pumps, and monitor fuel levels.',
+                'desc'             => 'Fuel Products, Tank Configuration, Pump & Nozzle Configuration, Fuel Sales, Fuel Closing, and Fuel Reconciliation.',
                 'sub_items'        => [
-                    ['id' => 'fuel_meter_encoding',            'label' => 'Meter Readings & Closing',       'href' => 'staff_transactions_hub.php?section=fuel',             'ico' => 'fas fa-tachometer-alt',  'permissions' => ['encode_fuel'],  'desc' => 'Record pump meter readings, calibration, and shift sales closing.'],
-                    ['id' => 'fuel_transactions_validation',   'label' => 'Fuel Transaction Validation',    'href' => 'manager_fuel_transaction_validation.php',         'ico' => 'fas fa-clipboard-check', 'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Review and validate staff-encoded fuel transactions.'],
-                    ['id' => 'fuel_adjustments',               'label' => 'Adjustments',                    'href' => 'manager_fuel_adjustments.php',                    'ico' => 'fas fa-sliders-h',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Apply corrections for tank levels, stock, or price changes.'],
-                    ['id' => 'fuel_pump_master',               'label' => 'Calibration Review',             'href' => 'manager_fuel_pump_master.php',                    'ico' => 'fas fa-tools',            'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage calibration values for accurate pump readings.'],
-                    ['id' => 'admin_fuel_oversight',          'label' => 'Fuel Transactions Oversight',    'href' => 'admin_fuel_transactions_oversight.php',         'ico' => 'fas fa-clipboard-list',  'permissions' => ['view_all_reports'], 'desc' => 'Monitor and audit validated fuel transactions for compliance.'],
+                    ['id' => 'fuel_products',           'label' => 'Fuel Products',                'href' => 'manager_set_prices.php?tab=fuel',         'ico' => 'fas fa-tint',            'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage fuel products, pricing, and pump count.'],
+                    ['id' => 'fuel_tank_config',        'label' => 'Tank Configuration',           'href' => 'manager_inventory_fuel.php',              'ico' => 'fas fa-database',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Configure and monitor UGT physical fuel tanks.'],
+                    ['id' => 'fuel_pump_nozzle_config', 'label' => 'Pump & Nozzle Configuration',  'href' => 'manager_pump_nozzle_config.php',          'ico' => 'fas fa-gas-pump',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Configure station-specific pumps and nozzles.'],
+                    ['id' => 'fuel_sales',              'label' => 'Fuel Sales',                   'href' => 'staff_transactions_hub.php?section=fuel',  'ico' => 'fas fa-tachometer-alt',  'permissions' => ['encode_fuel', 'manage_fuel'],       'desc' => 'Record pump meter readings and shift sales.'],
+                    ['id' => 'fuel_closing',            'label' => 'Fuel Closing',                 'href' => 'staff_fuel_sales_closing.php',            'ico' => 'fas fa-lock',            'permissions' => ['encode_fuel', 'manage_fuel'],       'desc' => 'Daily fuel sales shift closing and validation.'],
+                    ['id' => 'fuel_reconciliation',     'label' => 'Fuel Reconciliation',          'href' => 'manager_fuel_reconciliation.php',         'ico' => 'fas fa-calculator',      'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Reconcile fuel deliveries, sales, and tank dips.'],
                 ],
             ],
             // 5. Inventory Management — Operational, Manager Stock-In/Review & Oversight

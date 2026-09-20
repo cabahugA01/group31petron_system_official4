@@ -730,6 +730,58 @@ try {
                 if (function_exists('ensure_fuel_inventory_synced')) {
                     ensure_fuel_inventory_synced($pdo, (int)$station_id);
                 }
+
+                // ── Station-Specific Pump & Nozzle Creation ───────────────────
+                $num_pumps = max(0, (int)($_POST['num_pumps'] ?? 0));
+                $pump_configs_raw = $_POST['pump_configs'] ?? '[]';
+                $pump_configs = json_decode($pump_configs_raw, true) ?: [];
+
+                if ($num_pumps > 0 && $station_id > 0 && $fuel_type_id > 0) {
+                    $clean_fuel_tag = strtoupper(trim($fuel_type));
+                    for ($pi = 1; $pi <= $num_pumps; $pi++) {
+                        $p_cfg = $pump_configs[$pi - 1] ?? [];
+                        $p_status = ucfirst(strtolower($p_cfg['status'] ?? 'Active'));
+                        if (!in_array($p_status, ['Active', 'Inactive', 'Maintenance'])) {
+                            $p_status = 'Active';
+                        }
+                        $pump_num = "{$clean_fuel_tag} - {$pi}";
+                        $pump_name = "Pump {$pi}";
+                        $nozzle_num = "Nozzle {$pi}";
+                        
+                        // Check if pump exists for this station
+                        $chk_pump = $pdo->prepare("SELECT id FROM fuel_pumps WHERE station_id = ? AND pump_number = ? LIMIT 1");
+                        $chk_pump->execute([$station_id, $pump_num]);
+                        $existing_pump_id = (int)$chk_pump->fetchColumn();
+                        
+                        if (!$existing_pump_id) {
+                            $ins_pump = $pdo->prepare("
+                                INSERT INTO fuel_pumps (station_id, pump_number, pump_name, nozzle_number, fuel_type_id, ugt_no, capacity, status, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                            ");
+                            $ins_pump->execute([$station_id, $pump_num, $pump_name, $nozzle_num, $fuel_type_id, $ugt_no, $capacity, $p_status]);
+                            $existing_pump_id = (int)$pdo->lastInsertId();
+                        } else {
+                            $pdo->prepare("UPDATE fuel_pumps SET pump_name = ?, nozzle_number = ?, ugt_no = ?, status = ? WHERE id = ?")
+                                ->execute([$pump_name, $nozzle_num, $ugt_no, $p_status, $existing_pump_id]);
+                        }
+
+                        // Sync into nozzles table
+                        try {
+                            $chk_noz = $pdo->prepare("SELECT id FROM nozzles WHERE station_id = ? AND pump_id = ? LIMIT 1");
+                            $chk_noz->execute([$station_id, $existing_pump_id]);
+                            $noz_id = (int)$chk_noz->fetchColumn();
+                            if (!$noz_id) {
+                                $pdo->prepare("
+                                    INSERT INTO nozzles (station_id, pump_id, pump_name, nozzle_number, fuel_type_id, ugt_no, status, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                                ")->execute([$station_id, $existing_pump_id, $pump_name, $nozzle_num, $fuel_type_id, $ugt_no, $p_status]);
+                            } else {
+                                $pdo->prepare("UPDATE nozzles SET pump_name = ?, nozzle_number = ?, ugt_no = ?, status = ? WHERE id = ?")
+                                    ->execute([$pump_name, $nozzle_num, $ugt_no, $p_status, $noz_id]);
+                            }
+                        } catch (Exception $e) {}
+                    }
+                }
             } catch (PDOException $pdoe) {
                 echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
                 exit;

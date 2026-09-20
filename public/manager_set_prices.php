@@ -1865,11 +1865,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            <!-- Row 4: Status + Remarks -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;align-items:start;">
+            <!-- Row 4: Number of Pumps + Status -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
+                <div>
+                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Number of Pumps <span style="color:#dc2626;">*</span>
+                    </label>
+                    <input type="number" id="newNumPumps" min="0" max="30" step="1" required value="4"
+                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="e.g. 4" oninput="updatePumpConfigPreview(this.value)">
+                    <small style="font-size:11.5px;color:#64748b;display:block;margin-top:3px;">
+                        <i class="fas fa-info-circle"></i> Station-specific: configure pumps for this station (0 = configure later).
+                    </small>
+                </div>
                 <div>
                     <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
-                        Status <span style="color:#dc2626;">*</span>
+                        Product Status <span style="color:#dc2626;">*</span>
                     </label>
                     <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
                         <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
@@ -1880,15 +1892,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         </label>
                     </div>
                 </div>
-                <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
-                        Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
-                    </label>
-                    <input type="text" id="newRemarks"
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
-                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-                           placeholder="Optional notes or remarks...">
+            </div>
+
+            <!-- Row 5: Dynamic Pump Configuration Card -->
+            <div style="margin-bottom:12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:13px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.4px;display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP CONFIGURATION
+                    </span>
+                    <span id="pumpConfigCountBadge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:11.5px;font-weight:700;">
+                        4 Pumps
+                    </span>
                 </div>
+                <div id="pumpConfigContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:8px;max-height:150px;overflow-y:auto;padding-right:2px;">
+                    <!-- Dynamically populated via updatePumpConfigPreview() -->
+                </div>
+            </div>
+
+            <!-- Row 6: Remarks -->
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
+                </label>
+                <input type="text" id="newRemarks"
+                       style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                       onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                       placeholder="Optional notes or remarks...">
             </div>
 
             <!-- Actions Footer -->
@@ -3053,6 +3082,38 @@ function confirmModalAction() {
 }
 
 // ── Modal functions ─────────────────────────────────────────────────────────
+function updatePumpConfigPreview(val) {
+    var count = parseInt(val);
+    if (isNaN(count) || count < 0) count = 0;
+    if (count > 30) count = 30;
+    
+    var badge = document.getElementById('pumpConfigCountBadge');
+    if (badge) badge.textContent = count + (count === 1 ? ' Pump' : ' Pumps');
+    
+    var container = document.getElementById('pumpConfigContainer');
+    if (!container) return;
+    
+    if (count === 0) {
+        container.innerHTML = '<div style="grid-column:1/-1;padding:12px;text-align:center;color:#64748b;font-size:12.5px;font-style:italic;background:#fff;border-radius:6px;border:1px dashed #cbd5e1;"><i class="fas fa-info-circle"></i> 0 pumps will be created. Admin or Manager can configure pumps for this station later in Pump & Nozzle Configuration.</div>';
+        return;
+    }
+    
+    var html = '';
+    for (var i = 1; i <= count; i++) {
+        html += '<div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
+            '<div style="font-weight:700;color:#1e293b;font-size:13.5px;display:flex;align-items:center;gap:6px;">' +
+                '<i class="fas fa-gas-pump" style="font-size:12px;color:#002F6C;"></i>' +
+                '<span>Pump ' + i + '</span>' +
+            '</div>' +
+            '<select class="new-pump-status" data-pump-idx="' + i + '" style="font-size:12px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid #86efac;background:#dcfce7;color:#166534;cursor:pointer;" onchange="this.style.background = this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\'; this.style.color = this.value === \'Active\' ? \'#166534\' : \'#991b1b\'; this.style.borderColor = this.value === \'Active\' ? \'#86efac\' : \'#fca5a5\';">' +
+                '<option value="Active" selected>Active</option>' +
+                '<option value="Inactive">Inactive</option>' +
+            '</select>' +
+        '</div>';
+    }
+    container.innerHTML = html;
+}
+
 function openAddProductModal() {
     document.getElementById('addProductModal').style.display = 'flex';
     var ugtEl = document.getElementById('newUgtNo');
@@ -3062,6 +3123,11 @@ function openAddProductModal() {
         fuelInp.value = '';
         try { fuelInp.focus(); } catch(e) {}
     }
+    var numPumpsEl = document.getElementById('newNumPumps');
+    if (numPumpsEl) {
+        numPumpsEl.value = '4';
+    }
+    updatePumpConfigPreview(4);
     // Reset hidden fields
     var ftiEl = document.getElementById('newFuelTypeId');
     var ftnEl = document.getElementById('newFuelTypeName');
@@ -3239,6 +3305,17 @@ safeAddListener('addProductForm', 'submit', function(e) {
         return;
     }
 
+    var numPumps = parseInt((document.getElementById('newNumPumps') || {}).value);
+    if (isNaN(numPumps) || numPumps < 0) numPumps = 0;
+    var pumpConfigs = [];
+    for (var pi = 1; pi <= numPumps; pi++) {
+        var pSel = document.querySelector('.new-pump-status[data-pump-idx="' + pi + '"]');
+        pumpConfigs.push({
+            pump_index: pi,
+            status: pSel ? pSel.value : 'Active'
+        });
+    }
+
     var fd = new FormData();
     fd.append('action',         'add_fuel_product');
     fd.append('fuel_type',      fuelName);
@@ -3249,6 +3326,8 @@ safeAddListener('addProductForm', 'submit', function(e) {
     fd.append('reorder_level',  reorder);
     fd.append('status',         status);
     fd.append('remarks',        remarks);
+    fd.append('num_pumps',      numPumps);
+    fd.append('pump_configs',   JSON.stringify(pumpConfigs));
 
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(function(r) { return r.json(); })
