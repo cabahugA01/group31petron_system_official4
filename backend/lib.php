@@ -2576,13 +2576,19 @@ function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
             }
 
             // Ensure in fuel_inventory (skip archived/deleted rows — they should stay archived)
-            $chk_fi = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') LIMIT 1");
-            $chk_fi->execute([$station_id, $fname]);
-            if (!$chk_fi->fetchColumn()) {
-                $max_ugt = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ?");
-                $max_ugt->execute([$station_id]);
-                $ugt_count = (int)$max_ugt->fetchColumn() + 1;
-                $ugt_no = 'UGT-' . str_pad($ugt_count, 2, '0', STR_PAD_LEFT);
+            // Use canonical matching so 'Xtra UNL' matches 'Xtra UNL 1' / 'Xtra UNL 2', etc.
+            $fname_lower = strtolower(trim($fname));
+            $chk_fi = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR (LOWER(TRIM(?)) = 'xtra unl' AND LOWER(fuel_type) LIKE 'xtra unl%') OR (LOWER(TRIM(?)) = 'diesel' AND LOWER(fuel_type) LIKE 'diesel%'))");
+            $chk_fi->execute([$station_id, $fname, $fname_lower, $fname_lower]);
+            $existing_count = (int)$chk_fi->fetchColumn();
+
+            // Hard cap: never exceed 7 tanks per station
+            $tank_total = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted')");
+            $tank_total->execute([$station_id]);
+            $current_tank_count = (int)$tank_total->fetchColumn();
+
+            if ($existing_count === 0 && $current_tank_count < 7) {
+                $ugt_no = 'UGT-' . str_pad($current_tank_count + 1, 2, '0', STR_PAD_LEFT);
 
                 $pdo->prepare("
                     INSERT INTO fuel_inventory 
