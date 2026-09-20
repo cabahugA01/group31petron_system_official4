@@ -2472,7 +2472,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </h4>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;font-size:14.5px;">
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">SKU / Code:</span><br><code id="vm_sku" style="font-weight:800;color:#4f46e5;">-</code></div>
-                    
+                    <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Barcode:</span><br><code id="vm_barcode" style="font-weight:700;color:#334155;">-</code></div>
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Product Name:</span><br><strong id="vm_name" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Category:</span><br><strong id="vm_category" style="color:#0f172a;">-</strong></div>
                     <div><span style="color:#64748b;font-weight:600;font-size:12px;text-transform:uppercase;">Brand:</span><br><strong id="vm_brand" style="color:#0f172a;">-</strong></div>
@@ -3962,17 +3962,25 @@ function closeEditMerchPriceModal() {
 function viewMerchandiseDetails(id) {
     _currentViewMerchId = id;
     var modal = document.getElementById('viewMerchModal');
-    modal.style.display = 'flex';
+    if (modal) modal.style.display = 'flex';
+
+    function setSafeText(elemId, val) {
+        var el = document.getElementById(elemId);
+        if (el) el.textContent = (val !== null && val !== undefined && val !== '') ? val : '—';
+    }
+    function setSafeHtml(elemId, val) {
+        var el = document.getElementById(elemId);
+        if (el) el.innerHTML = val;
+    }
+
     // Loading placeholders
     ['vm_sku','vm_barcode','vm_name','vm_category','vm_brand','vm_unit','vm_price','vm_cost','vm_stock','vm_batch_count','vm_reorder','vm_code_sub'].forEach(function(el){
-        var e = document.getElementById(el); if(e) e.textContent = '...';
+        setSafeText(el, '...');
     });
-    document.getElementById('vm_status').innerHTML = '...';
+    setSafeHtml('vm_status', '...');
     ['vm_batches_body','vm_price_history_body','vm_config_history_body','vm_status_history_body'].forEach(function(el){
-        var e = document.getElementById(el);
-        if(e) e.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        setSafeHtml(el, '<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>');
     });
-
 
     fetch('manager_set_prices_handler.php?action=get_merchandise_details&id=' + id)
     .then(function(r) {
@@ -3988,25 +3996,24 @@ function viewMerchandiseDetails(id) {
     })
     .then(data => {
         if (!data.success) { showCustomAlert(data.message || 'Failed to load details.', 'error'); closeViewMerchModal(); return; }
-        var p = data.product;
-        document.getElementById('vm_title').textContent = (p.name || 'Product').toUpperCase() + ' — SPECIFICATION & HISTORY';
-        var codeSub = document.getElementById('vm_code_sub');
-        if (codeSub) codeSub.textContent = p.sku || p.barcode || '—';
-        document.getElementById('vm_sku').textContent = p.sku || '—';
-        document.getElementById('vm_barcode').textContent = p.barcode || '—';
-        document.getElementById('vm_name').textContent = p.name || '—';
-        document.getElementById('vm_category').textContent = p.category_name || '—';
-        document.getElementById('vm_brand').textContent = p.brand || '—';
-        document.getElementById('vm_unit').textContent = p.unit || '—';
-        document.getElementById('vm_price').textContent = '₱' + parseFloat(p.price || 0).toFixed(2);
-        document.getElementById('vm_cost').textContent = '₱' + parseFloat(p.cost || 0).toFixed(2);
-        document.getElementById('vm_stock').textContent = parseFloat(p.current_stock || 0).toLocaleString();
-        document.getElementById('vm_batch_count').textContent = (p.batch_count || 0) + ' batch(es)';
-        document.getElementById('vm_reorder').textContent = p.min_stock_level || '—';
+        var p = data.product || {};
+        setSafeText('vm_title', ((p.name || 'Product').toUpperCase() + ' — SPECIFICATION & HISTORY'));
+        setSafeText('vm_code_sub', p.sku || p.barcode || '—');
+        setSafeText('vm_sku', p.sku || '—');
+        setSafeText('vm_barcode', p.barcode || '—');
+        setSafeText('vm_name', p.name || '—');
+        setSafeText('vm_category', p.category_name || '—');
+        setSafeText('vm_brand', p.brand || '—');
+        setSafeText('vm_unit', p.unit || '—');
+        setSafeText('vm_price', '₱' + parseFloat(p.price || 0).toFixed(2));
+        setSafeText('vm_cost', '₱' + parseFloat(p.cost || 0).toFixed(2));
+        setSafeText('vm_stock', parseFloat(p.current_stock || 0).toLocaleString());
+        setSafeText('vm_batch_count', (p.batch_count || 0) + ' batch(es)');
+        setSafeText('vm_reorder', p.min_stock_level || '—');
         var stLower = (p.status || 'active').toLowerCase();
         var stColor = stLower === 'active' ? '#16a34a' : '#dc2626';
         var stBg = stLower === 'active' ? '#dcfce7' : '#fee2e2';
-        document.getElementById('vm_status').innerHTML = '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:14px;font-weight:700;">' + (p.status || 'Active') + '</span>';
+        setSafeHtml('vm_status', '<span style="background:' + stBg + ';color:' + stColor + ';padding:2px 10px;border-radius:20px;font-size:14px;font-weight:700;">' + (p.status || 'Active') + '</span>');
 
         // Batches
         var bb = document.getElementById('vm_batches_body');

@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $service_description = $_POST['service_description'] ?? '';
         $parts_cost = (float)($_POST['parts_cost'] ?? 0);
         $labor_cost = (float)($_POST['labor_cost'] ?? 0);
-        $estimated_duration = (int)($_POST['estimated_duration'] ?? 60);
+        $estimated_duration = (!empty($_POST['estimated_duration']) && (int)$_POST['estimated_duration'] > 0) ? (int)$_POST['estimated_duration'] : null;
         $notes = $_POST['notes'] ?? '';
         
         $total_cost = $parts_cost + $labor_cost;
@@ -480,7 +480,7 @@ require_once __DIR__ . '/partials/header.php';
             <div class="col-md-6">
               <div class="mb-3">
                 <label class="form-label">Estimated Duration (minutes)</label>
-                <input type="number" name="estimated_duration" id="estDuration" class="form-control" value="60">
+                <input type="number" name="estimated_duration" id="estDuration" class="form-control" placeholder="e.g. 60">
               </div>
             </div>
           </div>

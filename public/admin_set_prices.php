@@ -2198,16 +2198,16 @@ table.pricing-table tbody tr:hover {
                             $currentLabFee  = (float)($svc['labor_fee'] ?? 0);
                             $oldSvcFee      = (float)($svc['old_service_fee'] ?? 0);
                             $oldLabFee      = (float)($svc['old_labor_fee'] ?? 0);
-                            $duration     = (int)($svc['estimated_duration'] ?? 60);
+                            $duration     = (!empty($svc['estimated_duration']) && (int)$svc['estimated_duration'] > 0) ? (int)$svc['estimated_duration'] : null;
                             $mechanics    = (int)($svc['required_mechanics'] ?? 1);
                             $isActive     = (int)($svc['active'] ?? 1) === 1;
                             $hasPending   = ($svc['approval_status'] ?? '') === 'pending';
                             $pendSvcFee   = $hasPending ? (float)($svc['pending_price'] ?? 0) : 0;
                             $pendLabFee   = $hasPending ? (float)($svc['pending_labor_fee'] ?? 0) : 0;
                             $updatedAt    = !empty($svc['updated_at']) ? date('M j, Y', strtotime($svc['updated_at'])) : '—';
-                            $hrs          = floor($duration / 60);
-                            $mins         = $duration % 60;
-                            $durationStr  = ($hrs > 0 ? $hrs . 'h' : '') . ($mins > 0 ? ($hrs > 0 ? ' ' : '') . $mins . 'm' : ($hrs === 0 ? '0m' : ''));
+                            $hrs          = $duration !== null ? floor($duration / 60) : 0;
+                            $mins         = $duration !== null ? ($duration % 60) : 0;
+                            $durationStr  = ($duration !== null && $duration > 0) ? (($hrs > 0 ? $hrs . 'h' : '') . ($mins > 0 ? ($hrs > 0 ? ' ' : '') . $mins . 'm' : ($hrs === 0 ? '0m' : ''))) : '—';
                             $managerName  = htmlspecialchars($svc['manager_name'] ?? '');
                             $approvalId   = (int)($svc['approval_id'] ?? 0);
                             $jsObj = json_encode([

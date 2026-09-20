@@ -1853,7 +1853,7 @@ if ($section === 'merchandise') {
                     mt.id,
                     mt.customer_name,
                     mt.transaction_type,
-                    COALESCE($mt_col_est_duration, jo_ref.estimated_duration, 0) AS estimated_duration,
+                    COALESCE($mt_col_est_duration, jo_ref.estimated_duration) AS estimated_duration,
                     COALESCE(
                         NULLIF(TRIM(mt.job_order_service), ''),
                         jo_ref.service_type,
@@ -12734,7 +12734,7 @@ setTimeout(function() {
                     job_order_mechanic_id:        parseInt(mechanicId) || null,
                     job_order_mechanic_name:      (document.getElementById('joMechanicName')?.value || '').trim(),
                     job_order_contact:            contactNumber,
-                    job_order_estimated_duration: parseInt(document.getElementById('joEstimatedDuration')?.value || 0) || null,
+                    job_order_estimated_duration: (document.getElementById('joEstimatedDuration')?.value?.trim() !== '' && parseInt(document.getElementById('joEstimatedDuration').value) > 0) ? parseInt(document.getElementById('joEstimatedDuration').value) : null,
                 };
             }
 
@@ -13231,23 +13231,14 @@ setTimeout(function() {
 
                         if (empty($est_disp)) {
                             $duration_mins = (int)($job['estimated_duration'] ?? 0);
-                            if ($duration_mins <= 0) {
-                                $svc_name = strtolower($job['service_type'] ?? '');
-                                if (str_contains($svc_name, 'oil') || str_contains($svc_name, 'additive')) {
-                                    $duration_mins = 45;
-                                } elseif (str_contains($svc_name, 'atf') || str_contains($svc_name, 'transmission')) {
-                                    $duration_mins = 60;
-                                } elseif (str_contains($svc_name, 'brake')) {
-                                    $duration_mins = 90;
-                                } elseif (str_contains($svc_name, 'wash')) {
-                                    $duration_mins = 45;
-                                } else {
-                                    $duration_mins = 60;
-                                }
+                            if ($duration_mins > 0) {
+                                $completion_ts = $created_time + ($duration_mins * 60);
+                                $est_disp = date('M j, Y', $completion_ts);
+                                $est_sub = date('h:i A', $completion_ts) . ' (' . $duration_mins . 'm)';
+                            } else {
+                                $est_disp = '—';
+                                $est_sub = '';
                             }
-                            $completion_ts = $created_time + ($duration_mins * 60);
-                            $est_disp = date('M j, Y', $completion_ts);
-                            $est_sub = date('h:i A', $completion_ts) . ' (' . $duration_mins . 'm)';
                         }
 
                         $comp_ts = strtotime($est_disp);
@@ -13408,7 +13399,7 @@ setTimeout(function() {
                                     'repair_recommendation' => $job['repair_recommendation'] ?? '',
                                     'created_at' => $job['created_at'],
                                     'source' => $job['_source'] ?? 'job_orders',
-                                    'estimated_duration' => (int)(($job['estimated_duration'] ?? 0) > 0 ? $job['estimated_duration'] : ($duration_mins ?? 0))
+                                    'estimated_duration' => (!empty($job['estimated_duration']) && (int)$job['estimated_duration'] > 0) ? (int)$job['estimated_duration'] : null
                                 ]);
                             ?>
                             <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
@@ -16468,15 +16459,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const highlightedInputs = [];
 
         function parseMdrDuration(dur) {
-            if (!dur) return 60;
-            if (typeof dur === 'number') return dur;
+            if (!dur) return '';
+            if (typeof dur === 'number') return dur > 0 ? dur : '';
             const s = String(dur).trim().toLowerCase();
             const h = s.match(/(\d+(?:\.\d+)?)\s*(?:hour|hr|h)/);
             if (h) return Math.round(parseFloat(h[1]) * 60);
             const m = s.match(/(\d+)\s*(?:min|m)/);
             if (m) return parseInt(m[1], 10);
             const num = parseInt(s, 10);
-            return isNaN(num) ? 60 : num;
+            return (isNaN(num) || num <= 0) ? '' : num;
         }
 
         // ── 1. VEHICLE CATEGORY ──────────────────────────────────────────
@@ -16520,8 +16511,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (stDur) {
                 const durVal = parseMdrDuration(p.estimated_duration);
-                stDur.value = durVal;
-                highlightedInputs.push(stDur);
+                if (durVal) {
+                    stDur.value = durVal;
+                    highlightedInputs.push(stDur);
+                } else {
+                    stDur.value = '';
+                }
             }
             if (stNotes && p.remarks) {
                 stNotes.value = p.remarks;

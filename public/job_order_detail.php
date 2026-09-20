@@ -296,7 +296,7 @@ function getStatusTextColor($status) {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Estimated Duration</span>
-                        <span class="info-value"><?php echo htmlspecialchars($job['estimated_duration'] ?? 'N/A'); ?></span>
+                        <span class="info-value"><?php echo (!empty($job['estimated_duration']) && (int)$job['estimated_duration'] > 0) ? htmlspecialchars($job['estimated_duration']) . ' mins' : '—'; ?></span>
                     </div>
                 </div>
                 

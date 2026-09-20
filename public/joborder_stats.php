@@ -217,7 +217,7 @@ include __DIR__ . '/../partials/header.php';
                     <td><?php echo htmlspecialchars($j['mechanic'] ?? 'Unassigned'); ?></td>
                     <td>
                         <div>Rate: <b>₱<?php echo number_format($j['service_rate'] ?: 0, 2); ?></b></div>
-                        <small style="color:#666;">Duration: <?php echo $j['estimated_duration'] ?: 60; ?> mins</small>
+                        <small style="color:#666;">Duration: <?php echo (!empty($j['estimated_duration']) && (int)$j['estimated_duration'] > 0) ? htmlspecialchars($j['estimated_duration']) . ' mins' : '—'; ?></small>
                     </td>
                     <td><span class="status-badge <?php echo $stClass; ?>"><?php echo htmlspecialchars($j['status']); ?></span></td>
                 </tr>

@@ -554,7 +554,7 @@ class JobOrderOperations {
                         $assigned_mechanic_id,
                         $this->user['id'],
                         $data['service_description'] ?? 'General Service',
-                        (int)($data['estimated_duration'] ?? 60),
+                        (!empty($data['estimated_duration']) && is_numeric($data['estimated_duration']) && (int)$data['estimated_duration'] > 0) ? (int)$data['estimated_duration'] : null,
                         $initial_status,
                         $data['notes'] ?? null,
                         $requires_approval ? 1 : 0,
@@ -1396,7 +1396,7 @@ class JobOrderOperations {
             $interval = $start->diff($end);
             return ($interval->h * 60) + $interval->i; // Convert to minutes
         }
-        return $job['estimated_duration'] ?? 60;
+        return (!empty($job['estimated_duration']) && (int)$job['estimated_duration'] > 0) ? (int)$job['estimated_duration'] : null;
     }
     
     /**
