@@ -392,9 +392,9 @@ try {
             $PHYSICAL_TANKS = [
                 ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
                 ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #3',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-                ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #4',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
-                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #5',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+                ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #3',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+                ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #4',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+                ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #5',  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
                 ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 2',  'tank'=>'UGT #6',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
                 ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'UGT #7',  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
             ];

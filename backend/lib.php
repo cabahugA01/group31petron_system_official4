@@ -2337,19 +2337,19 @@ function resolve_fuel_inventory_tank_id(PDO $pdo, int $station_id, $label, $fuel
     
     $target_tank_num = 0;
     if (strpos($raw, 'TURBO') !== false) {
-        $target_tank_num = 5; // UGT-05 / Turbo Diesel
+        $target_tank_num = 3; // UGT-03 / Turbo Diesel
     } elseif (strpos($raw, 'DIESEL 2') !== false || strpos($raw, 'DIESEL - 2') !== false || strpos($raw, 'DSL 2') !== false || strpos($raw, 'DSL - 2') !== false) {
         $target_tank_num = 2; // UGT-02 / Diesel 2
     } elseif (strpos($raw, 'DIESEL 1') !== false || strpos($raw, 'DIESEL - 1') !== false || strpos($raw, 'DSL 1') !== false || strpos($raw, 'DSL - 1') !== false || strpos($raw, 'DIESEL') !== false || strpos($raw, 'DSL') !== false) {
         $target_tank_num = 1; // UGT-01 / Diesel 1
     } elseif (strpos($raw, 'XCS') !== false) {
-        $target_tank_num = 3; // UGT-03 / XCS Plus
+        $target_tank_num = 4; // UGT-04 / XCS Plus
     } elseif (strpos($raw, 'XTRA UNL 1') !== false || strpos($raw, 'ADVANCE 1') !== false || strpos($raw, 'UNL 1') !== false) {
-        $target_tank_num = 4; // UGT-04 / Xtra UNL 1
+        $target_tank_num = 5; // UGT-05 / Xtra UNL 1
     } elseif (strpos($raw, 'XTRA UNL 2') !== false || strpos($raw, 'ADVANCE 2') !== false || strpos($raw, 'UNL 2') !== false) {
         $target_tank_num = 6; // UGT-06 / Xtra UNL 2
     } elseif (strpos($raw, 'XTRA') !== false || strpos($raw, 'UNL') !== false || strpos($raw, 'ADVANCE') !== false) {
-        $target_tank_num = 4; // Default to UGT-04 if unspecified
+        $target_tank_num = 5; // Default to UGT-05 if unspecified
     } elseif (strpos($raw, 'KERO') !== false) {
         $target_tank_num = 7; // UGT-07 / Kerosene
     }
@@ -2634,9 +2634,9 @@ function get_system_logo_url($station_id = null) {
 define('PETRON_7_UGT_CONFIG', [
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 1',       'tank'=>'UGT #1',  'tanker_num'=>1,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Diesel',       'label'=>'DIESEL - 2',       'tank'=>'UGT #2',  'tanker_num'=>2,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
-    ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #4',  'tanker_num'=>4,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
-    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #5',  'tanker_num'=>5,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+    ['fuel_type'=>'Turbo Diesel', 'label'=>'TURBO DIESEL - 1', 'tank'=>'UGT #3',  'tanker_num'=>3,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
+    ['fuel_type'=>'XCS Plus',     'label'=>'XCS PLUS - 1',     'tank'=>'UGT #4',  'tanker_num'=>4,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
+    ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 1',  'tank'=>'UGT #5',  'tanker_num'=>5,  'capacity'=>7000,  'reorder_level'=>2000, 'critical_level'=>1000],
     ['fuel_type'=>'Xtra UNL',     'label'=>'XTR ADVANCE - 2',  'tank'=>'UGT #6',  'tanker_num'=>6,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
     ['fuel_type'=>'Kerosene',     'label'=>'KEROSENE - 1',     'tank'=>'UGT #7',  'tanker_num'=>7,  'capacity'=>14000, 'reorder_level'=>5000, 'critical_level'=>2500],
 ]);
