@@ -1485,6 +1485,7 @@ table.pricing-table tbody tr:hover {
     #addServiceModal {
         align-items: flex-start !important;
         padding-top: 25px !important;
+        padding-bottom: 50px !important;
         overflow-y: auto !important;
     }
     #editPriceModalAdmin > div,
@@ -1494,7 +1495,11 @@ table.pricing-table tbody tr:hover {
     #addProductModal > div,
     #addMerchandiseModal > div,
     #addServiceModal > div {
-        margin: 15px auto !important;
+        margin: 15px auto 50px auto !important;
+        max-height: calc(100vh - 120px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
     }
 }
 
@@ -5288,34 +5293,35 @@ safeAddListener('addServiceForm', 'submit', function(e) {
      ══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- Add Fuel Product Modal (Landscape Layout) -->
-<div id="addProductModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-    <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
+<div id="addProductModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px 20px 60px;box-sizing:border-box;">
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;max-height:calc(100vh - 110px);display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;animation:adminModalPopIn .2s ease-out;">
         <!-- Modal Header -->
-        <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;">
+        <div style="flex-shrink:0;background:linear-gradient(135deg,#002F6C,#004494);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;">
             <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
                 <i class="fas fa-plus-circle" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">ADD FUEL PRODUCT</span>
             </h3>
+            <button type="button" onclick="closeAddProductModal()" style="background:transparent;border:none;color:#ffffff;font-size:20px;font-weight:700;cursor:pointer;line-height:1;">&times;</button>
         </div>
-        <!-- Modal Form Body (Landscape 2-Column Grid) -->
-        <form id="addProductForm" style="padding:20px 24px;">
+        <!-- Modal Form Body (Landscape 2-Column Grid with Scroll) -->
+        <form id="addProductForm" style="padding:16px 24px 18px;overflow-y:auto;flex:1 1 auto;display:flex;flex-direction:column;">
             <!-- Row 1: Fuel Name + UGT Number -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;">
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Fuel Name <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="text" id="newFuelName" maxlength="50" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="e.g. Diesel, XCS Plus, Turbo Diesel">
                 </div>
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         UGT Number <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="text" id="newUgtNo" maxlength="20" required value=""
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="e.g. UGT #8"
                            autocomplete="off">
@@ -5323,72 +5329,72 @@ safeAddListener('addServiceForm', 'submit', function(e) {
             </div>
 
             <!-- Row 2: Price + Capacity -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;">
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Selling Price Per Liter (₱) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newPrice" step="0.01" min="0.01" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="84.00">
                 </div>
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Tank Capacity (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newCapacity" step="1" min="1" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="15000">
                 </div>
             </div>
 
             <!-- Row 3: Critical Level + Reorder Level -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;">
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Critical Level (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newCriticalLevel" step="1" min="0" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="2500">
                 </div>
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Reorder Level (Liters) <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newReorderLevel" step="1" min="1" required
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="5000">
                 </div>
             </div>
 
             <!-- Row 4: Number of Pumps + Status -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;align-items:start;">
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Number of Pumps <span style="color:#dc2626;">*</span>
                     </label>
                     <input type="number" id="newNumPumps" min="0" max="30" step="1" required value="4"
-                           style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="e.g. 4" oninput="updatePumpConfigPreview(this.value)">
-                    <small style="font-size:11.5px;color:#64748b;display:block;margin-top:3px;">
+                    <small style="font-size:11px;color:#64748b;display:block;margin-top:2px;">
                         <i class="fas fa-info-circle"></i> Station-specific: configure pumps for this station (0 = configure later).
                     </small>
                 </div>
                 <div>
-                    <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
                         Product Status <span style="color:#dc2626;">*</span>
                     </label>
-                    <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
+                    <div style="display:flex;gap:18px;align-items:center;padding-top:2px;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:14.5px;cursor:pointer;font-weight:600;color:#166534;">
                             <input type="radio" name="newStatus" value="active" checked style="accent-color:#16a34a;"> Active
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#991b1b;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:14.5px;cursor:pointer;font-weight:600;color:#991b1b;">
                             <input type="radio" name="newStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
                         </label>
                     </div>
@@ -5396,39 +5402,39 @@ safeAddListener('addServiceForm', 'submit', function(e) {
             </div>
 
             <!-- Row 5: Dynamic Pump Configuration Card -->
-            <div style="margin-bottom:12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px 16px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                    <span style="font-size:13px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.4px;display:flex;align-items:center;gap:6px;">
+            <div style="margin-bottom:10px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-size:12.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.4px;display:flex;align-items:center;gap:6px;">
                         <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP CONFIGURATION
                     </span>
-                    <span id="pumpConfigCountBadge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:11.5px;font-weight:700;">
+                    <span id="pumpConfigCountBadge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">
                         4 Pumps
                     </span>
                 </div>
-                <div id="pumpConfigContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:8px;max-height:150px;overflow-y:auto;padding-right:2px;">
+                <div id="pumpConfigContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:120px;overflow-y:auto;padding-right:2px;">
                     <!-- Dynamically populated via updatePumpConfigPreview() -->
                 </div>
             </div>
 
             <!-- Row 6: Remarks -->
-            <div style="margin-bottom:16px;">
-                <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                     Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
                 </label>
                 <input type="text" id="newRemarks"
-                       style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"
+                       style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                        onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                        placeholder="Optional notes or remarks...">
             </div>
 
-            <!-- Actions Footer -->
-            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
+            <!-- Actions Footer (Sticky at bottom of modal with top border) -->
+            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1.5px solid #e2e8f0;padding-top:12px;margin-top:auto;background:#ffffff;position:sticky;bottom:0;z-index:10;">
                 <button type="button" onclick="closeAddProductModal()"
-                        style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">
+                        style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;">
                     Cancel
                 </button>
                 <button type="submit"
-                        style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                        style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                     <i class="fas fa-check" style="color:#ffffff !important;"></i> Add Fuel Product
                 </button>
             </div>
