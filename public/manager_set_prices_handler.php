@@ -4,6 +4,8 @@
  * Handles: Add fuel product, Edit fuel price, Deactivate fuel product
  */
 
+ob_start(); // Buffer any stray PHP warnings/notices so they don't corrupt JSON
+
 require_once __DIR__ . '/../backend/lib.php';
 require_once __DIR__ . '/db_connect.php';
 require_login();
@@ -13,6 +15,7 @@ try {
     $pdo->exec("ALTER TABLE fuel_inventory MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'active'");
 } catch (Exception $e) {}
 
+ob_clean(); // Discard any warnings printed before this point
 header('Content-Type: application/json');
 
 $me         = current_user();

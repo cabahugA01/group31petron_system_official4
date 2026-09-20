@@ -6358,14 +6358,9 @@ setTimeout(function() {
                         <input type="hidden" id="joCustomerModeType" value="walkin">
 
                         <!-- Customer Input Fields -->
-                        <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <i class="fas fa-lock" style="color:#059669;"></i>
-                                <span>Customer info locked.</span>
-                            </div>
-                            <button type="button" onclick="clearSelectedCustomerFull('jo')" title="Unlock / Clear Customer" style="background:transparent !important;border:none !important;color:#dc2626 !important;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;display:inline-flex;align-items:center;justify-content:center;">
-                                <i class="fas fa-times"></i>
-                            </button>
+                        <div id="joCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;gap:8px;">
+                            <i class="fas fa-lock" style="color:#059669;"></i>
+                            <span>Customer info locked.</span>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field" style="position:relative;">
@@ -6911,14 +6906,9 @@ setTimeout(function() {
                         <input type="hidden" id="merchCustomerModeType" value="walkin">
 
                         <!-- Customer Input Fields (Merchandise) -->
-                        <div id="merchCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;justify-content:space-between;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <i class="fas fa-lock" style="color:#059669;"></i>
-                                <span>Customer info locked.</span>
-                            </div>
-                            <button type="button" onclick="clearSelectedCustomerFull('merch')" title="Unlock / Clear Customer" style="background:transparent !important;border:none !important;color:#dc2626 !important;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;display:inline-flex;align-items:center;justify-content:center;">
-                                <i class="fas fa-times"></i>
-                            </button>
+                        <div id="merchCustomerLockedBanner" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#065f46;align-items:center;gap:8px;">
+                            <i class="fas fa-lock" style="color:#059669;"></i>
+                            <span>Customer info locked.</span>
                         </div>
                         <div class="txn-form-grid" style="margin-bottom:14px;">
                             <div class="txn-field" style="position:relative;">
@@ -12882,39 +12872,9 @@ setTimeout(function() {
                     if (pmSel) pmSel.selectedIndex = 0;
                     onPaymentChange();
 
-                    // If job order (has service), show clear banner with instant action to go to Tracker or re-print
+                    // If job order (has service), show clean banner alert without redundant buttons
                     if (hasService) {
-                        const old = document.getElementById('txnAlertBanner');
-                        if (old) old.remove();
-                        const div = document.createElement('div');
-                        div.id = 'txnAlertBanner';
-                        div.style.cssText = `position:fixed;top:84px;right:22px;left:auto;z-index:999999;
-                            background:#f0fdf4;border:1.5px solid #86efac;color:#166534;
-                            padding:14px 20px;border-radius:10px;font-size:13.5px;font-weight:700;
-                            display:flex;flex-direction:column;gap:8px;box-shadow:0 12px 30px rgba(0,0,0,.15);
-                            max-width:500px;width:auto;`;
-                        div.innerHTML = `
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <i class="fas fa-check-circle" style="font-size:18px;color:#16a34a;flex-shrink:0;"></i>
-                                <span style="flex:1;">Job Order processed successfully! Official Receipt opened for printing.</span>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;padding-left:28px;">
-                                <button type="button" onclick="printMerchandiseReceipt('${txnId}')"
-                                        style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">
-                                    <i class="fas fa-print"></i> Re-print Receipt
-                                </button>
-                                <a href="staff_transactions_hub.php?section=merchandise&active_tab=tracker"
-                                   style="background:#0284c7;color:#fff;text-decoration:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
-                                    <i class="fas fa-tasks"></i> Go to Tracker Now &rarr;
-                                </a>
-                            </div>
-                        `;
-                        document.body.appendChild(div);
-
-                        // Auto redirect to tracker after 4 seconds (giving plenty of time to view receipt tab)
-                        setTimeout(function() {
-                            window.location.href = 'staff_transactions_hub.php?section=merchandise&active_tab=tracker';
-                        }, 4000);
+                        showTxnAlert('Job Order processed successfully! Official Receipt opened for printing.', 'success');
                         return;
                     }
 

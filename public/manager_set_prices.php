@@ -3973,10 +3973,21 @@ function viewMerchandiseDetails(id) {
         if(e) e.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     });
 
+
     fetch('manager_set_prices_handler.php?action=get_merchandise_details&id=' + id)
-    .then(r => r.json())
+    .then(function(r) {
+        var ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            // Server returned HTML/text (e.g. redirect to login) — handle gracefully
+            return r.text().then(function(txt) {
+                console.warn('[viewMerch] Non-JSON response:', txt.substring(0, 200));
+                throw new Error('Server returned non-JSON response. Check login or handler.');
+            });
+        }
+        return r.json();
+    })
     .then(data => {
-        if (!data.success) { alert(data.message || 'Failed to load details'); closeViewMerchModal(); return; }
+        if (!data.success) { showCustomAlert(data.message || 'Failed to load details.', 'error'); closeViewMerchModal(); return; }
         var p = data.product;
         document.getElementById('vm_title').textContent = (p.name || 'Product').toUpperCase() + ' — SPECIFICATION & HISTORY';
         var codeSub = document.getElementById('vm_code_sub');
@@ -4069,10 +4080,12 @@ function viewMerchandiseDetails(id) {
         }
     })
     .catch(function(err) {
+        console.error('[viewMerch] Fetch error:', err);
         closeViewMerchModal();
-        alert('Error loading details. Please try again.');
+        showCustomAlert('Error loading product details. Please try again.', 'error');
     });
 }
+
 
 function closeViewMerchModal() {
     document.getElementById('viewMerchModal').style.display = 'none';
