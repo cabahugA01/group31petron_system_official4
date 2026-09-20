@@ -58,6 +58,7 @@ try {
         LEFT JOIN product_categories pc ON pc.id = p.category_id
         WHERE si.station_id = ?
           AND (LOWER(COALESCE(ip.category, pc.name, '')) NOT IN ('fuel', 'fuel products', 'services', 'service') OR (ip.category IS NULL AND pc.name IS NULL))
+          AND LOWER(COALESCE(ip.status, 'active')) NOT IN ('inactive', 'discontinued')
         ORDER BY category_name, name
     ");
     $stmt->execute([$station_id]);
