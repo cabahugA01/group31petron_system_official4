@@ -3200,7 +3200,7 @@ $total_alerts_count = count($alert_rows);
 
 <!-- ════ ADMIN DIRECT ADJUSTMENT MODAL (matches staff design) ════ -->
 <div class="modal-overlay" id="adminAdjModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; box-sizing:border-box; overflow-y:auto;">
-    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:calc(100vh - 80px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:92% !important; max-width:520px !important; max-height:calc(100vh - 80px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
 
         <!-- Header — gradient same as staff -->
         <div style="background:linear-gradient(135deg,#002F70,#001838); padding:16px 22px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">

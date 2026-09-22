@@ -1486,49 +1486,28 @@ $_asset_base = $_login_base . '/assets';
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding-bottom: 48px; /* space for fixed footer */
         }
 
-        .page-section {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 90px 24px 70px;
-            scroll-margin-top: 60px;
-            box-sizing: border-box;
-        }
-
-        .section-home {
-            min-height: 100vh;
-            padding-top: 80px;
-            padding-bottom: 60px;
-        }
-
-        /* ── Full-Width Integrated Sections ── */
         .page-section {
             width: 100%;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 70px 24px 60px;
-            scroll-margin-top: 0;
+            scroll-margin-top: 70px;
             box-sizing: border-box;
         }
 
         .section-home {
-            min-height: 100vh;
             justify-content: center;
-            padding-top: 60px;
-            padding-bottom: 60px;
+            padding: 80px 24px 60px;
         }
 
-        /* Transparent overlays for about/contact sections */
+        /* Dedicated non-overlapping styling for About Us and Contact Us */
         .section-about,
         .section-contact {
+            justify-content: flex-start;
+            padding: 95px 24px 90px;
             background: transparent;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
@@ -1685,14 +1664,14 @@ $_asset_base = $_login_base . '/assets';
             overflow: hidden;
             max-height: 0;
             opacity: 0;
-            transition: max-height 0.55s cubic-bezier(0.22,1,0.36,1), opacity 0.45s ease;
+            transition: max-height 0.65s cubic-bezier(0.22,1,0.36,1), opacity 0.5s ease;
         }
         .about-more-wrap.expanded {
-            max-height: 600px;
+            max-height: 4000px;
             opacity: 1;
         }
         .about-more-wrap .about-body-p:first-child {
-            margin-top: 18px;
+            margin-top: 22px;
         }
 
         .btn-learn-more {
@@ -1729,9 +1708,9 @@ $_asset_base = $_login_base . '/assets';
         /* ── Minimalist Stationery Contact Info (Matches Reference Image) ── */
         .stationery-contact-inner {
             width: 100%;
-            max-width: 960px;
+            max-width: 760px;
             margin: 0 auto;
-            text-align: left;
+            text-align: center;
             box-sizing: border-box;
         }
 
@@ -1802,7 +1781,7 @@ $_asset_base = $_login_base . '/assets';
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 48px 64px;
-            max-width: 960px;
+            max-width: 760px;
             margin: 0 auto;
             align-items: start;
             text-align: left;
@@ -1816,13 +1795,32 @@ $_asset_base = $_login_base . '/assets';
             }
         }
 
-        .stationery-col {
+        .stationery-col,
+        .stationery-single-col {
             display: flex;
             flex-direction: column;
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
+        }
+
+        .stationery-single-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 460px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .stationery-person {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            text-align: center;
         }
 
         .stationery-role-tag {
@@ -1834,7 +1832,8 @@ $_asset_base = $_login_base . '/assets';
             letter-spacing: 0.5px;
             color: #002F6C;
             display: block;
-            margin-bottom: 6px;
+            text-align: center;
+            margin-bottom: 4px;
         }
 
         .stationery-name {
@@ -1845,38 +1844,40 @@ $_asset_base = $_login_base . '/assets';
             line-height: 1.25;
             margin: 0 0 10px 0;
             letter-spacing: 0.2px;
-        }
-
-        .stationery-person {
-            display: flex;
-            flex-direction: column;
+            text-align: center;
         }
 
         .stationery-rows {
             display: flex;
             flex-direction: column;
+            align-items: center;
             width: 100%;
         }
 
         /* Line-separated contact row with elegant icons */
         .stationery-row {
             display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            padding: 13px 2px;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+            padding: 12px 6px;
             border-bottom: 1.2px solid rgba(15, 23, 42, 0.22);
-            transition: border-color 0.2s, padding-left 0.2s;
+            transition: border-color 0.2s, transform 0.2s;
+            text-align: center;
         }
 
         .stationery-row:hover {
             border-bottom-color: #002F6C;
-            padding-left: 4px;
+            transform: translateY(-1px);
         }
 
         .stationery-icon {
             font-size: 16px;
             color: #002F6C;
-            margin-top: 4px;
+            margin-top: 0;
             width: 20px;
             text-align: center;
             flex-shrink: 0;
@@ -1896,7 +1897,7 @@ $_asset_base = $_login_base . '/assets';
             color: #0a1628;
             line-height: 1.45;
             letter-spacing: 0.2px;
-            flex: 1;
+            text-align: center;
         }
 
         .stationery-content a {
@@ -1910,14 +1911,10 @@ $_asset_base = $_login_base . '/assets';
             text-decoration: underline;
         }
 
-        /* Site Footer Section */
+        /* Site Footer Section — normal flow at bottom of document so it never overlaps content */
         .page-site-footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
             width: 100%;
-            padding: 14px 24px;
+            padding: 28px 24px 36px;
             text-align: center;
             color: #111111;
             font-size: 12.5px;
@@ -1929,7 +1926,9 @@ $_asset_base = $_login_base . '/assets';
             box-sizing: border-box;
             letter-spacing: 0.3px;
             text-shadow: none;
-            z-index: 900;
+            position: relative;
+            z-index: 10;
+            margin-top: 24px;
         }
     </style>
 </head>
@@ -2263,7 +2262,7 @@ $_asset_base = $_login_base . '/assets';
         <div class="section-inner about-inner">
 
             <!-- Sub-label -->
-            <div class="about-sublabel reveal">Petron Station Management System</div>
+            <div class="about-sublabel reveal">Station Operations Management System</div>
 
             <!-- Cursive Title with Swash Lines (matches Contact Info style) -->
             <div class="about-title-wrap reveal reveal-delay-1">
@@ -2278,16 +2277,28 @@ $_asset_base = $_login_base . '/assets';
 
             <!-- Intro paragraph -->
             <p class="about-body-p reveal reveal-delay-2">
-                The Petron Station Management System is a web-based back-office management solution developed to support the daily operations of Petron Station &amp; Service Center – Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental.
+                This system is a web-based solution designed to provide a reliable, organized, and efficient digital environment for modern station operations. It was developed to help improve the way daily activities, records, and business processes are handled by providing a centralized platform where important information can be properly recorded, accessed, and maintained.
             </p>
 
-            <!-- Collapsible content -->
+            <!-- Collapsible content (Paragraphs 2 to 7) -->
             <div class="about-more-wrap" id="about-more-wrap">
                 <p class="about-body-p">
-                    The system provides a centralized platform for managing fuel operations, merchandise and job order transactions, inventory, customer records, reporting, approvals, notifications, and audit trails. It is designed to improve operational efficiency, record accuracy, accountability, and monitoring within the station.
+                    The system was created to address the common challenges experienced in managing station operations, particularly the use of manual records, handwritten logs, disconnected information, and time-consuming processes. By moving important operational activities into a digital environment, the system helps reduce unnecessary paperwork, improve record accuracy, and make information easier to retrieve when needed. It also provides a more organized way of handling day-to-day activities while supporting proper coordination among authorized personnel.
                 </p>
                 <p class="about-body-p">
-                    Currently implemented for one Petron franchise branch, the system follows a scalable and nationwide-ready design that can support future expansion to additional franchise branches.
+                    A major focus of the system is accuracy and accountability. Information entered into the system is organized and maintained in a structured manner, allowing authorized users to work with more consistent and reliable records. The system also follows role-based access so that users are given access according to their assigned responsibilities. This helps protect important information while ensuring that users can perform the tasks related to their respective roles.
+                </p>
+                <p class="about-body-p">
+                    The system is also designed to support better decision-making by keeping operational information organized and accessible. Instead of relying on separate records or manual calculations, authorized users can work with centralized information that can help them monitor ongoing activities, review records, and manage station operations more efficiently. This contributes to a more systematic workflow and allows important information to be available when it is needed.
+                </p>
+                <p class="about-body-p">
+                    Another important aspect of the system is its emphasis on reliability and security. Proper validation, controlled access, secure handling of information, and organized record management are incorporated to help maintain the quality and safety of stored data. These features are intended to provide users with greater confidence that the information they record and retrieve is properly managed.
+                </p>
+                <p class="about-body-p">
+                    The system was also designed with scalability in mind. Although it can be used for a single station, its structure is prepared to support future expansion to multiple stations. Each station can maintain its own operational information while following a consistent system structure. This makes the platform suitable for organizations that may expand their operations over time without requiring a complete redesign of the system.
+                </p>
+                <p class="about-body-p">
+                    Overall, this system aims to provide a practical digital solution for improving station operations and record management. It supports a more organized, efficient, accurate, and accountable working environment while reducing dependence on manual processes. Through its centralized structure, secure access, and scalable design, the system provides a dependable foundation for modern station management and future operational growth.
                 </p>
             </div>
 
@@ -2306,7 +2317,7 @@ $_asset_base = $_login_base . '/assets';
     <section id="contact-us" class="page-section section-contact">
         <div class="section-inner stationery-contact-inner">
             
-            <div class="stationery-brand-sub reveal">Petron Station &amp; Service Center</div>
+            <div class="stationery-brand-sub reveal">Station Operations Management System</div>
 
             <!-- Handwritten / Cursive Script Title with Organic Swash Lines (matches reference image) -->
             <div class="stationery-title-wrap reveal reveal-delay-1">
@@ -2319,84 +2330,41 @@ $_asset_base = $_login_base . '/assets';
                 </svg>
             </div>
 
-            <!-- 2-Column Minimalist Stationery Grid (No Boxes / No Cards) -->
-            <div class="stationery-grid">
+            <!-- Centered Stacked Stationery List (Developers Stacked One by One) -->
+            <div class="stationery-single-col reveal reveal-delay-2">
                 
-                <!-- Column 1: Admin / Owner -->
-                <div class="stationery-col reveal reveal-delay-2">
-                    <div class="stationery-role-tag">Admin / Owner</div>
-                    <h3 class="stationery-name">Romeca Katherine Jane Tello Pepito</h3>
-                    
+                <div class="stationery-role-tag" style="margin-bottom: 12px;">Developers</div>
+
+                <!-- Developer 1: Amie Cabahug -->
+                <div class="stationery-person">
+                    <h3 class="stationery-name">Amie Cabahug</h3>
                     <div class="stationery-rows">
-                        <!-- Location Row -->
-                        <div class="stationery-row">
-                            <i class="fas fa-map-marker-alt stationery-icon"></i>
-                            <div class="stationery-content">
-                                9 Vamenta Boulevard, corner Max Y. Suniel Street,<br>
-                                Barangay Carmen, Cagayan de Oro City,<br>
-                                9000 Misamis Oriental, Philippines
-                            </div>
-                        </div>
-                        <!-- Phone Row 1 -->
                         <div class="stationery-row">
                             <i class="fas fa-phone-alt stationery-icon"></i>
                             <div class="stationery-content">
-                                <a href="tel:+639989525625">+63 998-952-5625</a>
-                            </div>
-                        </div>
-                        <!-- Phone Row 2 -->
-                        <div class="stationery-row">
-                            <i class="fas fa-phone-alt stationery-icon"></i>
-                            <div class="stationery-content">
-                                <a href="tel:+639177918140">+63 917-791-8140</a>
-                            </div>
-                        </div>
-                        <!-- Email Row -->
-                        <div class="stationery-row">
-                            <i class="fas fa-envelope stationery-icon"></i>
-                            <div class="stationery-content">
-                                <a href="mailto:rtpepito.coc@phinmaed.com">rtpepito.coc@phinmaed.com</a>
+                                <a href="tel:+639851743073">+63 985-174-3073</a>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Column 2: Developers -->
-                <div class="stationery-col reveal reveal-delay-3">
-                    <div class="stationery-role-tag">Developers</div>
-
-                    <!-- Amie Cabahug -->
-                    <div class="stationery-person">
-                        <h3 class="stationery-name">Amie Cabahug</h3>
-                        <div class="stationery-rows">
-                            <div class="stationery-row">
-                                <i class="fas fa-phone-alt stationery-icon"></i>
-                                <div class="stationery-content">
-                                    <a href="tel:+639851743073">+63 985-174-3073</a>
-                                </div>
+                <!-- Developer 2: Christian Valencia -->
+                <div class="stationery-person" style="margin-top: 28px;">
+                    <h3 class="stationery-name">Christian Valencia</h3>
+                    <div class="stationery-rows">
+                        <div class="stationery-row">
+                            <i class="fas fa-phone-alt stationery-icon"></i>
+                            <div class="stationery-content">
+                                <a href="tel:+639936406090">+63 993-640-6090</a>
+                            </div>
+                        </div>
+                        <div class="stationery-row">
+                            <i class="fas fa-envelope stationery-icon"></i>
+                            <div class="stationery-content">
+                                <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Christian Valencia -->
-                    <div class="stationery-person" style="margin-top: 24px;">
-                        <h3 class="stationery-name">Christian Valencia</h3>
-                        <div class="stationery-rows">
-                            <div class="stationery-row">
-                                <i class="fas fa-phone-alt stationery-icon"></i>
-                                <div class="stationery-content">
-                                    <a href="tel:+639936406090">+63 993-640-6090</a>
-                                </div>
-                            </div>
-                            <div class="stationery-row">
-                                <i class="fas fa-envelope stationery-icon"></i>
-                                <div class="stationery-content">
-                                    <a href="mailto:christianval0813@gmail.com">christianval0813@gmail.com</a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                 </div>
 
             </div>
@@ -2771,6 +2739,8 @@ function toggleAboutMore(btn) {
         wrap.classList.remove('expanded');
         btn.classList.remove('open');
         btn.innerHTML = 'Learn More <em class="lm-arrow">&#9660;</em>';
+        var sec = document.getElementById('about-us');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth' });
     } else {
         wrap.classList.add('expanded');
         btn.classList.add('open');

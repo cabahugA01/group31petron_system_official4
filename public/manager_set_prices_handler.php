@@ -95,6 +95,102 @@ if (!function_exists('get_matching_fuel_ids')) {
     }
 }
 
+if (!function_exists('fetch_pumps_for_fuel_product')) {
+    function fetch_pumps_for_fuel_product($pdo, $station_id, $fuel) {
+        $pumps = [];
+        $ft_id = (int)($fuel['fuel_type_id'] ?? 0);
+        $raw_ugt = trim($fuel['ugt_no'] ?? '');
+        $ugt_num = (int)preg_replace('/[^0-9]/', '', $raw_ugt);
+        $fname = strtolower(trim($fuel['fuel_type'] ?? ''));
+
+        $ugt_list = array_filter(array_unique([
+            $raw_ugt,
+            $ugt_num ? sprintf('UGT-%02d', $ugt_num) : '',
+            $ugt_num ? sprintf('UGT #%d', $ugt_num) : '',
+            $ugt_num ? sprintf('UGT-%d', $ugt_num) : '',
+            $ugt_num ? sprintf('UGT %d', $ugt_num) : '',
+            $ugt_num ? (string)$ugt_num : '',
+        ]));
+
+        $prefix = '';
+        if (strpos($fname, 'turbo') !== false) {
+            $prefix = 'TURBO DIESEL - %';
+        } elseif (strpos($fname, 'diesel 1') !== false || $ugt_num === 1) {
+            $prefix = 'DIESEL 1 - %';
+        } elseif (strpos($fname, 'diesel 2') !== false || $ugt_num === 2) {
+            $prefix = 'DIESEL 2 - %';
+        } elseif (strpos($fname, 'xcs') !== false || $ugt_num === 4) {
+            $prefix = 'XCS PLUS - %';
+        } elseif (strpos($fname, 'xtra unl 1') !== false || (strpos($fname, 'xtra') !== false && strpos($fname, '1') !== false) || $ugt_num === 5) {
+            $prefix = 'XTRA UNL 1 - %';
+        } elseif (strpos($fname, 'xtra unl 2') !== false || (strpos($fname, 'xtra') !== false && strpos($fname, '2') !== false) || $ugt_num === 6) {
+            $prefix = 'XTRA UNL 2 - %';
+        } elseif (strpos($fname, 'kero') !== false || $ugt_num === 7) {
+            $prefix = 'KEROSENE - %';
+        }
+
+        try {
+            $sql = "SELECT id, pump_number, pump_name, nozzle_number, status 
+                    FROM fuel_pumps 
+                    WHERE station_id = ? 
+                      AND (
+                        (? > 0 AND fuel_type_id = ?)
+                        " . (!empty($ugt_list) ? " OR ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
+                        " . ($prefix !== '' ? " OR UPPER(pump_number) LIKE ?" : "") . "
+                      )
+                    ORDER BY id ASC";
+            $params = [$station_id, $ft_id, $ft_id];
+            if (!empty($ugt_list)) {
+                $params = array_merge($params, array_values($ugt_list));
+            }
+            if ($prefix !== '') {
+                $params[] = $prefix;
+            }
+            $p_stmt = $pdo->prepare($sql);
+            $p_stmt->execute($params);
+            $pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $pumps = []; }
+
+        if (empty($pumps)) {
+            try {
+                $n_sql = "SELECT n.id, n.pump_id, 
+                                 COALESCE(fp.pump_number, CONCAT(n.pump_name, ' - ', n.nozzle_number)) AS pump_number,
+                                 n.pump_name, n.nozzle_number, n.status
+                          FROM nozzles n
+                          LEFT JOIN fuel_pumps fp ON fp.id = n.pump_id
+                          WHERE n.station_id = ?
+                            AND (
+                              (? > 0 AND n.fuel_type_id = ?)
+                              " . (!empty($ugt_list) ? " OR n.ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
+                              " . ($prefix !== '' ? " OR UPPER(fp.pump_number) LIKE ?" : "") . "
+                            )
+                          ORDER BY n.id ASC";
+                $n_params = [$station_id, $ft_id, $ft_id];
+                if (!empty($ugt_list)) {
+                    $n_params = array_merge($n_params, array_values($ugt_list));
+                }
+                if ($prefix !== '') {
+                    $n_params[] = $prefix;
+                }
+                $n_stmt = $pdo->prepare($n_sql);
+                $n_stmt->execute($n_params);
+                $pumps = $n_stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { $pumps = []; }
+        }
+
+        foreach ($pumps as &$p) {
+            $p['id'] = (int)($p['id'] ?? 0);
+            $p['pump_number'] = trim($p['pump_number'] ?? '');
+            $p['pump_name'] = trim($p['pump_name'] ?? '');
+            $p['nozzle_number'] = trim($p['nozzle_number'] ?? '');
+            $p['status'] = ucfirst(strtolower($p['status'] ?? 'Active'));
+        }
+        unset($p);
+
+        return $pumps;
+    }
+}
+
 // Handle GET requests for data retrieval
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
     $action = $_GET['action'] ?? '';
@@ -256,8 +352,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
                 }
             } catch (Exception $e) {}
 
+            $pumps = fetch_pumps_for_fuel_product($pdo, $station_id, $fuel);
             $fuel['clean_fuel_type'] = get_canonical_fuel_name($fuel['fuel_type']);
-            echo json_encode(['success'=>true,'fuel'=>$fuel,'history'=>$history,'config_history'=>$config_history,'status_history'=>$status_history]); exit;
+            echo json_encode(['success'=>true,'fuel'=>$fuel,'pumps'=>$pumps,'history'=>$history,'config_history'=>$config_history,'status_history'=>$status_history]); exit;
         } catch (Exception $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
     }
 
@@ -1248,6 +1345,20 @@ try {
                 // Update fuel_inventory
                 $stmt = $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, ugt_no=?, capacity=?, critical_level=?, reorder_level=?, status=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
                 $stmt->execute([$target_fuel_name, $target_ugt_no, $capacity, $critical_level, $reorder_level, $new_status, $me['id'], $id, $station_id]);
+
+                // Update configured pumps for this fuel product
+                if (!empty($_POST['edit_pump_status']) && is_array($_POST['edit_pump_status'])) {
+                    foreach ($_POST['edit_pump_status'] as $p_id => $p_st) {
+                        $p_id = (int)$p_id;
+                        $p_st = in_array(strtolower($p_st), ['active', 'inactive', 'maintenance']) ? ucfirst(strtolower($p_st)) : 'Active';
+                        if ($p_id > 0) {
+                            try {
+                                $pdo->prepare("UPDATE fuel_pumps SET status = ? WHERE id = ? AND station_id = ?")->execute([$p_st, $p_id, $station_id]);
+                                $pdo->prepare("UPDATE nozzles SET status = ? WHERE pump_id = ? AND station_id = ?")->execute([$p_st, $p_id, $station_id]);
+                            } catch (Exception $e) {}
+                        }
+                    }
+                }
 
                 $reason_text = trim($_POST['reason'] ?? '');
                 if (empty($reason_text)) {

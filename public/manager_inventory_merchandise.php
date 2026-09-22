@@ -2761,7 +2761,7 @@ body { overflow-x: hidden; }
 
 <!-- REQUEST INVENTORY ADJUSTMENT MODAL -->
 <div class="modal-overlay" id="adjustmentModal">
-    <div class="modal-box" style="max-width:500px; width:95%;">
+    <div class="modal-box" style="max-width:500px !important; width:92% !important;">
         <div class="modal-head">
             <div class="modal-title"><i class="fas fa-edit" style="color:#28a745;"></i> Request Inventory Adjustment</div>
         </div>

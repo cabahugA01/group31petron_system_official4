@@ -2465,10 +2465,17 @@ function submitAdjustmentForm(e) {
 </script>
 
 <!-- ══ INVENTORY ADJUSTMENT MODAL ══ -->
+<style>
+#staffAdjustmentModal .modal-box {
+    width: 92% !important;
+    max-width: 520px !important;
+}
+</style>
 <div class="modal-overlay" id="staffAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:15000; align-items:center; justify-content:center; box-sizing:border-box; overflow-y:auto;">
-    <div class="modal-box" style="background:#fff; border-radius:14px; width:100%; max-width:580px; max-height:calc(100vh - 150px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
-        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:16px 22px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
-            <div style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
+    <div class="modal-box" style="background:#fff; border-radius:14px; width:92% !important; max-width:520px !important; max-height:calc(100vh - 120px) !important; margin:auto; box-shadow:0 20px 50px rgba(0,0,0,0.35); overflow:hidden; display:flex; flex-direction:column; position:relative;">
+        <div style="background:linear-gradient(135deg,#002F70,#001838); padding:14px 20px; color:#fff; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:10px;"><i class="fas fa-edit" style="color:#fd7e14;"></i> Request Inventory Adjustment</div>
+            <button type="button" onclick="closeAdjustmentModal()" style="background:transparent; border:none; color:rgba(255,255,255,0.7); font-size:18px; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.7)'" title="Close"><i class="fas fa-times"></i></button>
         </div>
         
         <form id="adjustmentForm" onsubmit="submitAdjustmentForm(event)" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; margin:0;">

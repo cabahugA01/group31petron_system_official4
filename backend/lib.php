@@ -340,7 +340,7 @@ function role_key($role){
   $r = strtolower(trim((string)$role));
   if(in_array($r, ['superadmin','super admin','super_admin'])) return 'superadmin';
   if(in_array($r, ['developer','dev'])) return 'developer';
-  if(in_array($r, ['admin','station admin','station_admin'])) return 'admin';
+  if(in_array($r, ['admin','station admin','station_admin','owner'])) return 'admin';
   if(in_array($r, ['manager','supervisor','manager / supervisor','manager/supervisor','supervisor/manager'])) return 'manager';
   // Remove operations_staff handling - all staff roles use 'staff'
   return 'staff';
@@ -2657,6 +2657,7 @@ function get_tank_config(int $station_id = null): array {
             $stmt = $pdo->prepare("
                 SELECT
                     id,
+                    fuel_type_id,
                     COALESCE(NULLIF(CAST(REGEXP_REPLACE(ugt_no, '[^0-9]', '') AS UNSIGNED), 0), id) AS tanker_num,
                     COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unknown') AS fuel_type,
                     COALESCE(NULLIF(TRIM(ugt_no), ''), CONCAT('UGT #', id)) AS label,
@@ -2684,6 +2685,7 @@ function get_tank_config(int $station_id = null): array {
             if (!empty($tables)) {
                 $stmt = $pdo->prepare("
                     SELECT
+                        id,
                         id AS tanker_num,
                         COALESCE(NULLIF(TRIM(fuel_type), ''), 'Unknown') AS fuel_type,
                         COALESCE(NULLIF(TRIM(label), ''), CONCAT('Tank #', id)) AS label,
@@ -2724,6 +2726,8 @@ function _normalize_tank_row(array $row): array {
     if ($reorder <= 0)  $reorder  = ($cap == 7000) ? 2000.0 : 5000.0;
     if ($critical <= 0) $critical = ($cap == 7000) ? 1000.0 : 2500.0;
     return [
+        'id'             => (int)($row['id'] ?? 0),
+        'fuel_type_id'   => (int)($row['fuel_type_id'] ?? 0),
         'fuel_type'      => trim((string)($row['fuel_type']  ?? 'Unknown')),
         'label'          => trim((string)($row['label']      ?? 'Tank')),
         'tank'           => trim((string)($row['tank']       ?? 'UGT')),

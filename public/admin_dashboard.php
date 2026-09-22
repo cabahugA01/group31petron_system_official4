@@ -291,6 +291,9 @@ foreach ($TANK_CONFIG_ADM as $tc) {
 
     $inv = null;
     foreach ($fi_raw as $r) {
+        if (!empty($tc['id']) && (int)$r['id'] === (int)$tc['id']) {
+            $inv = $r; break;
+        }
         $r_ugt = strtolower(trim($r['ugt_no']));
         $r_ft  = strtolower(trim($r['fuel_type']));
         if (($r_ugt !== '' && $r_ugt === strtolower($ugt_str)) ||

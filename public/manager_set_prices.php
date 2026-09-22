@@ -168,7 +168,9 @@ try {
         $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
         $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
         $inv = null;
-        if ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
+        if (!empty($tc['id']) && isset($fi_lookup_by_id[(int)$tc['id']])) {
+            $inv = $fi_lookup_by_id[(int)$tc['id']];
+        } elseif ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
             $inv = $fi_lookup[$tank_ugt_raw];
         } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
             $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
@@ -672,32 +674,42 @@ table td {
     text-overflow: ellipsis !important;
 }
 
-/* Col 9 (Actions): Flex row with no line breaks */
+/* Col 9 (Actions): Aligned vertical button stack */
 #merchTable td:nth-child(9) {
     white-space: nowrap !important;
     overflow: visible !important;
+    text-align: center !important;
+    vertical-align: middle !important;
 }
 
 #merchTable .act-btn-wrap,
 .pricing-table .act-btn-wrap {
-    display: inline-flex !important;
-    flex-wrap: nowrap !important;
-    gap: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
     align-items: center !important;
     justify-content: center !important;
     width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 #merchTable .act-btn,
 .pricing-table .act-btn {
-    width: auto !important;
-    max-width: none !important;
-    padding: 3px 7px !important;
+    width: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    height: 25px !important;
+    min-height: 25px !important;
+    padding: 3px 6px !important;
     font-size: 11px !important;
+    font-weight: 700 !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 3px !important;
+    justify-content: center !important;
+    gap: 4px !important;
     margin-bottom: 0 !important;
+    box-sizing: border-box !important;
+    text-align: center !important;
 }
 </style>
 
@@ -758,7 +770,8 @@ body, html { overflow-x: hidden; max-width: 100%; }
 /* ── Page-level styles ─────────────────────────────────────────────────────── */
 /* Navigation Tabs - Matches Reports sub-tab design */
 .ato-tab-bar { display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
-.ato-tab { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.ato-tab { flex: 1 !important; min-width: 140px !important; padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-radius: 0 !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; text-align: center !important; cursor: pointer !important; pointer-events: all !important; user-select: none !important; position: relative !important; z-index: 5 !important; margin-bottom: 0 !important; box-shadow: none !important; }
+.ato-tab * { pointer-events: none !important; }
 .ato-tab:last-child { border-right: none !important; }
 .ato-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .ato-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; box-shadow: none !important; }
@@ -940,16 +953,19 @@ body, html { overflow-x: hidden; max-width: 100%; }
     align-items: center !important;
     justify-content: center !important;
     gap: 4px !important;
-    padding: 3px 8px !important;
+    padding: 3px 6px !important;
     border-radius: 5px !important;
     font-size: 11px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
     line-height: 1.2 !important;
-    width: 100% !important;
-    max-width: 95px !important;
-    margin-bottom: 3px !important;
+    width: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 25px !important;
+    height: 25px !important;
+    margin-bottom: 0 !important;
     transition: all .18s ease-in-out !important;
     background: #ffffff !important;
     border: 1.5px solid #cbd5e1 !important;
@@ -957,29 +973,30 @@ body, html { overflow-x: hidden; max-width: 100%; }
     box-sizing: border-box !important;
     opacity: 1 !important;
     overflow: visible !important;
+    text-align: center !important;
 }
 .act-btn:last-child { margin-bottom: 0 !important; }
 
 .act-btn-view { color: #475569 !important; -webkit-text-fill-color: #475569 !important; border-color: #cbd5e1 !important; background: #ffffff !important; }
-.act-btn-view:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-view:hover { background: #475569 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #475569 !important; }
 
 .act-btn-edit { color: #002F6C !important; -webkit-text-fill-color: #002F6C !important; border-color: #002F6C !important; background: #ffffff !important; }
-.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-edit:hover { background: #002F6C !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #002F6C !important; }
 
 .act-btn-deactivate { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; border-color: #f87171 !important; background: #fff5f5 !important; }
-.act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-deactivate:hover { background: #dc2626 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #dc2626 !important; }
 
 .act-btn-activate { color: #16a34a !important; -webkit-text-fill-color: #16a34a !important; border-color: #16a34a !important; background: #ffffff !important; }
-.act-btn-activate:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-activate:hover { background: #16a34a !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #16a34a !important; }
 
 .act-btn-batches { color: #0284c7 !important; -webkit-text-fill-color: #0284c7 !important; border-color: #0284c7 !important; background: #ffffff !important; }
-.act-btn-batches:hover { background: #0284c7 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-batches:hover { background: #0284c7 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #0284c7 !important; }
 
 .act-btn-history { color: #6366f1 !important; -webkit-text-fill-color: #6366f1 !important; border-color: #c7d2fe !important; background: #ffffff !important; }
-.act-btn-history:hover { background: #6366f1 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }
+.act-btn-history:hover { background: #6366f1 !important; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; border-color: #6366f1 !important; }
 
-.act-btn i { color: inherit !important; -webkit-text-fill-color: inherit !important; }
-.act-btn-wrap { display: flex; flex-direction: column; gap: 3px; width: 100%; align-items: center; }
+.act-btn i { color: inherit !important; -webkit-text-fill-color: inherit !important; font-size: 11px !important; flex-shrink: 0 !important; }
+.act-btn-wrap { display: flex !important; flex-direction: column !important; gap: 3px !important; width: 100% !important; align-items: center !important; justify-content: center !important; box-sizing: border-box !important; }
 
 .ppm-wrap { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden !important; padding: 0 !important; margin: 0 !important; }
 .page-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-top:0 !important; margin-bottom:25px !important; padding:0 !important; border:none !important; width:100%; }
@@ -1020,9 +1037,9 @@ body, html { overflow-x: hidden; max-width: 100%; }
 <!-- ── Section Tabs ──────────────────────────────────────────────────── -->
 <input type="hidden" id="activeSection" value="<?php echo htmlspecialchars($active_tab); ?>">
 <div class="ato-tab-bar">
-    <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
-    <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
-    <a onclick="switchTab('services')" id="tab-btn-services" class="ato-tab <?php echo $active_tab === 'services' ? 'active' : ''; ?>"><i class="fas fa-wrench"></i> Service Types</a>
+    <a href="javascript:void(0)" onclick="switchTab('fuel'); return false;" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
+    <a href="javascript:void(0)" onclick="switchTab('merch'); return false;" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
+    <a href="javascript:void(0)" onclick="switchTab('services'); return false;" id="tab-btn-services" class="ato-tab <?php echo $active_tab === 'services' ? 'active' : ''; ?>"><i class="fas fa-wrench"></i> Service Types</a>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -1795,7 +1812,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-plus-circle" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">ADD FUEL PRODUCT</span>
             </h3>
-            <button type="button" onclick="closeAddProductModal()" style="background:transparent;border:none;color:#ffffff;font-size:20px;font-weight:700;cursor:pointer;line-height:1;">&times;</button>
         </div>
         <!-- Modal Form Body (Landscape 2-Column Grid with Scroll) -->
         <form id="addProductForm" style="padding:16px 24px 18px;overflow-y:auto;flex:1 1 auto;display:flex;flex-direction:column;">
@@ -1867,17 +1883,17 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <!-- Row 4: Number of Pumps + Status -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;align-items:start;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
                 <div>
                     <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Number of Pumps <span style="color:#dc2626;">*</span>
                     </label>
-                    <input type="number" id="newNumPumps" min="0" max="30" step="1" required value="4"
+                    <input type="number" id="newNumPumps" min="0" max="30" step="1" required value=""
                            style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-                           placeholder="e.g. 4" oninput="updatePumpConfigPreview(this.value)">
+                           placeholder="e.g. 4">
                     <small style="font-size:11px;color:#64748b;display:block;margin-top:2px;">
-                        <i class="fas fa-info-circle"></i> Station-specific: configure pumps for this station (0 = configure later).
+                        <i class="fas fa-info-circle"></i> Station-specific: total pumps/nozzles for this fuel type (0 = configure later).
                     </small>
                 </div>
                 <div>
@@ -1895,23 +1911,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            <!-- Row 5: Dynamic Pump Configuration Card -->
-            <div style="margin-bottom:10px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-size:12.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.4px;display:flex;align-items:center;gap:6px;">
-                        <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP CONFIGURATION
-                    </span>
-                    <span id="pumpConfigCountBadge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">
-                        4 Pumps
-                    </span>
-                </div>
-                <div id="pumpConfigContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:120px;overflow-y:auto;padding-right:2px;">
-                    <!-- Dynamically populated via updatePumpConfigPreview() -->
-                </div>
-            </div>
-
-            <!-- Row 6: Remarks -->
-            <div style="margin-bottom:12px;">
+            <!-- Row 5: Remarks -->
+            <div style="margin-bottom:14px;">
                 <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                     Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
                 </label>
@@ -1938,57 +1939,57 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 <!-- Edit Fuel Modal — Full Edit (Landscape Grid Layout) -->
-<div id="editPriceModal" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border-radius:12px;width:92%;max-width:760px;max-height:calc(100% - 20px);overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;">
-    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;letter-spacing:0.3px;">
-        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+<div id="editPriceModal" style="display:none;position:fixed;top:0;left:250px;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:12px 16px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:94%;max-width:690px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:15.5px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:8px;letter-spacing:0.3px;">
+        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:16px;"></i>
         <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">EDIT FUEL PRODUCT</span>
       </h3>
     </div>
-    <form id="editPriceForm" style="padding:20px 24px;">
+    <form id="editPriceForm" style="padding:12px 20px 12px 20px;">
       <input type="hidden" id="editFuelId">
       <input type="hidden" id="editFuelType">
       <input type="hidden" id="editFuelCritical" value="0">
 
       <!-- Row 1: UGT Number + Fuel Name -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">UGT Number</label>
-          <input type="text" id="editUgtNo" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">UGT Number</label>
+          <input type="text" id="editUgtNo" style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name</label>
-          <input type="text" id="editFuelName" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Fuel Name</label>
+          <input type="text" id="editFuelName" style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
       </div>
 
       <!-- Row 2: Price Per Liter + Tank Capacity -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
-          <small style="font-size:15.5px;color:#d97706;display:block;margin-top:2px;"><i class="fas fa-info-circle"></i> Price changes require Admin approval.</small>
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Price / Liter (₱) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editPrice" step="0.01" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <small style="font-size:11px;color:#d97706;display:block;margin-top:2px;font-weight:500;"><i class="fas fa-info-circle"></i> Price changes require Admin approval.</small>
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editFuelCapacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelCapacity" step="1" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
         </div>
       </div>
 
       <!-- Row 3: Reorder Level + Status -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;align-items:start;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="editFuelReorder" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="editFuelReorder" step="1" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="0.00">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
-          <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Status <span style="color:#dc2626;">*</span></label>
+          <div style="display:flex;gap:16px;align-items:center;padding-top:2px;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;font-weight:600;color:#166534;">
               <input type="radio" id="editFuelStatusActive" name="editFuelStatus" value="active" checked style="accent-color:#16a34a;"> Active
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#991b1b;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;font-weight:600;color:#991b1b;">
               <input type="radio" id="editFuelStatusInactive" name="editFuelStatus" value="inactive" style="accent-color:#dc2626;"> Inactive
             </label>
           </div>
@@ -1996,15 +1997,30 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
 
       <!-- Row 4: Remarks -->
-      <div style="margin-bottom:16px;">
-        <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
-        <input type="text" id="editFuelRemarks" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Optional notes or remarks...">
+      <div style="margin-bottom:7px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span></label>
+        <input type="text" id="editFuelRemarks" style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'" placeholder="Optional notes or remarks...">
+      </div>
+
+      <!-- Row 5: Dynamic Pump Configuration Card for this Fuel Product (matches Meter Reading) -->
+      <div style="margin-bottom:9px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:7px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:11.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.3px;display:flex;align-items:center;gap:5px;">
+            <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP &amp; NOZZLE CONFIGURATION
+          </span>
+          <span id="mef_pump_count_badge" style="background:#e0f2fe;color:#0369a1;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;">
+            0 Nozzles / Pumps
+          </span>
+        </div>
+        <div id="mef_pumps_container" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:6px;max-height:120px;overflow-y:auto;padding-right:2px;">
+          <div style="color:#64748b;font-size:12px;font-style:italic;padding:3px 0;"><i class="fas fa-spinner fa-spin"></i> Loading pump configuration...</div>
+        </div>
       </div>
 
       <!-- Actions -->
-      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
-        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;">Cancel</button>
-        <button type="submit" style="background:#00264D !important;color:#ffffff !important;border:none !important;padding:8px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:10px;">
+        <button type="button" onclick="closeEditPriceModal()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:6px 16px;border-radius:6px;font-size:13.5px;font-weight:700;cursor:pointer;transition:all 0.2s;"><i class="fas fa-times-circle"></i> Cancel</button>
+        <button type="submit" style="background:#002F6C !important;color:#ffffff !important;border:none !important;padding:6px 20px;border-radius:6px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save Changes</button>
       </div>
     </form>
   </div>
@@ -2452,14 +2468,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <!-- Header -->
         <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;gap:14px;flex-shrink:0;">
             <i class="fas fa-box" style="color:#ffffff !important;font-size:22px;flex-shrink:0;"></i>
-            <div>
-                <h3 id="vm_title" style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;letter-spacing:0.3px;">
-                    MERCHANDISE SPECIFICATION &amp; HISTORY
-                </h3>
-                <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:3px;font-family:monospace;letter-spacing:0.5px;font-weight:500;">
-                    SKU / CODE: <span id="vm_code_sub" style="color:#ffffff;font-weight:700;">-</span>
-                </div>
-            </div>
+            <h3 id="vm_title" style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;letter-spacing:0.3px;">
+                MERCHANDISE SPECIFICATION &amp; HISTORY
+            </h3>
         </div>
 
         <!-- Body Content -->
@@ -2858,12 +2869,12 @@ div[id$="Modal"] h3 *,
 .modal input[type="text"],
 .modal input[type="number"],
 .modal input[type="date"],
-.modal select,
+.modal select:not([name^="edit_pump_status"]),
 .modal textarea,
 div[id$="Modal"] input[type="text"],
 div[id$="Modal"] input[type="number"],
 div[id$="Modal"] input[type="date"],
-div[id$="Modal"] select,
+div[id$="Modal"] select:not([name^="edit_pump_status"]),
 div[id$="Modal"] textarea {
     color: #0f172a !important;
     background-color: #ffffff !important;
@@ -2880,10 +2891,28 @@ div[id$="Modal"] textarea {
 .modal input[type="text"]:focus,
 .modal input[type="number"]:focus,
 .modal input[type="date"]:focus,
-.modal select:focus,
+.modal select:not([name^="edit_pump_status"]):focus,
 .modal textarea:focus {
     border-color: #002F6C !important;
     box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.15) !important;
+}
+
+/* Pump & Nozzle Status Dropdown Badges — exactly matching Admin */
+#mef_pumps_container select,
+#aef_pumps_container select,
+select[name^="edit_pump_status"] {
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+    height: 24px !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
 .modal input::placeholder,
@@ -3126,9 +3155,8 @@ function openAddProductModal() {
     }
     var numPumpsEl = document.getElementById('newNumPumps');
     if (numPumpsEl) {
-        numPumpsEl.value = '4';
+        numPumpsEl.value = '';
     }
-    updatePumpConfigPreview(4);
     // Reset hidden fields
     var ftiEl = document.getElementById('newFuelTypeId');
     var ftnEl = document.getElementById('newFuelTypeName');
@@ -3142,6 +3170,8 @@ function closeAddProductModal() {
     if (form) form.reset();
     var ugtEl = document.getElementById('newUgtNo');
     if (ugtEl) ugtEl.value = '';
+    var numPumpsEl = document.getElementById('newNumPumps');
+    if (numPumpsEl) numPumpsEl.value = '';
     var ftiEl = document.getElementById('newFuelTypeId');
     var ftnEl = document.getElementById('newFuelTypeName');
     if (ftiEl) ftiEl.value = '';
@@ -3173,6 +3203,11 @@ function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel,
     if (document.getElementById('editFuelCapacity')) document.getElementById('editFuelCapacity').value = capacity || '';
     if (document.getElementById('editFuelCritical')) document.getElementById('editFuelCritical').value = criticalLevel || '';
     if (document.getElementById('editFuelReorder')) document.getElementById('editFuelReorder').value = reorderLevel || '';
+
+    var pumpBadge = document.getElementById('mef_pump_count_badge');
+    var pumpCont  = document.getElementById('mef_pumps_container');
+    if (pumpBadge) pumpBadge.textContent = 'Loading...';
+    if (pumpCont)  pumpCont.innerHTML = '<div style="color:#64748b;font-size:13px;font-style:italic;padding:8px 0;"><i class="fas fa-spinner fa-spin"></i> Loading pump configuration...</div>';
     
     fetch('manager_set_prices_handler.php?action=get_fuel_details&id=' + id)
         .then(r => r.json()).then(data => {
@@ -3197,6 +3232,49 @@ function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel,
                         if (actRadio) actRadio.checked = true;
                     }
                 }
+
+                // Render Pump & Nozzle Configuration for this fuel product (matches Meter Reading)
+                var pumps = data.pumps || [];
+                if (pumpBadge) pumpBadge.textContent = pumps.length + (pumps.length === 1 ? ' Nozzle / Pump' : ' Nozzles / Pumps');
+
+                if (pumpCont) {
+                    if (pumps.length === 0) {
+                        pumpCont.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:#64748b;font-size:13px;font-style:italic;background:#fff;border-radius:6px;border:1px dashed #cbd5e1;"><i class="fas fa-info-circle"></i> No pumps or nozzles currently assigned to this fuel product.</div>';
+                    } else {
+                        var pHtml = '';
+                        pumps.forEach(function(pm) {
+                            var pSt = (pm.status || 'Active');
+                            var isAct = pSt.toLowerCase() === 'active';
+                            var bgCol = isAct ? '#dcfce7' : '#fee2e2';
+                            var txtCol = isAct ? '#166534' : '#991b1b';
+                            var brdCol = isAct ? '#86efac' : '#fca5a5';
+                            
+                            // Format nozzle label cleanly to Title Case (e.g. "DIESEL 1 - 1" -> "Diesel 1 - 1") matching staff fuel management
+                            var rawLabel = (pm.pump_number || pm.pump_name || ('Pump #' + pm.id)).trim();
+                            var meterLabel = rawLabel.replace(/\b[a-zA-Z]+/g, function(w) {
+                                var up = w.toUpperCase();
+                                if (up === 'XCS' || up === 'UGT' || up === 'UNL') return up;
+                                return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+                            });
+                            
+                            pHtml += '<div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:8px;">' +
+                                '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;">' +
+                                    '<div style="width:26px;height:26px;border-radius:5px;background:#e0f2fe;color:#002F6C;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">' +
+                                        '<i class="fas fa-gas-pump"></i>' +
+                                    '</div>' +
+                                    '<div style="font-weight:800;color:#0f172a;font-size:13px;line-height:1.2;white-space:nowrap;letter-spacing:0.2px;">' +
+                                        meterLabel +
+                                    '</div>' +
+                                '</div>' +
+                                '<select name="edit_pump_status[' + pm.id + ']" style="font-size:11.5px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:4px !important;border:1px solid ' + brdCol + ' !important;background:' + bgCol + ' !important;background-color:' + bgCol + ' !important;color:' + txtCol + ' !important;cursor:pointer;flex-shrink:0;height:24px !important;line-height:1.2 !important;" onchange="this.style.setProperty(\'background\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'background-color\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'color\', this.value === \'Active\' ? \'#166534\' : \'#991b1b\', \'important\'); this.style.setProperty(\'border-color\', this.value === \'Active\' ? \'#86efac\' : \'#fca5a5\', \'important\');">' +
+                                    '<option value="Active"' + (isAct ? ' selected' : '') + '>Active</option>' +
+                                    '<option value="Inactive"' + (!isAct ? ' selected' : '') + '>Inactive</option>' +
+                                '</select>' +
+                            '</div>';
+                        });
+                        pumpCont.innerHTML = pHtml;
+                    }
+                }
             }
         }).catch(function(){});
     document.getElementById('editPriceModal').style.display = 'flex';
@@ -3206,6 +3284,8 @@ function openEditPriceModal(id, fuelType, currentPrice, capacity, criticalLevel,
 function closeEditPriceModal() {
     document.getElementById('editPriceModal').style.display = 'none';
     document.getElementById('editPriceForm').reset();
+    var pumpCont = document.getElementById('mef_pumps_container');
+    if (pumpCont) pumpCont.innerHTML = '';
 }
 
 // Close modals on ESC key
@@ -3306,15 +3386,15 @@ safeAddListener('addProductForm', 'submit', function(e) {
         return;
     }
 
-    var numPumps = parseInt((document.getElementById('newNumPumps') || {}).value);
-    if (isNaN(numPumps) || numPumps < 0) numPumps = 0;
-    var pumpConfigs = [];
-    for (var pi = 1; pi <= numPumps; pi++) {
-        var pSel = document.querySelector('.new-pump-status[data-pump-idx="' + pi + '"]');
-        pumpConfigs.push({
-            pump_index: pi,
-            status: pSel ? pSel.value : 'Active'
-        });
+    var numPumpsRaw = (document.getElementById('newNumPumps') || {}).value;
+    if (numPumpsRaw === '' || numPumpsRaw === undefined || numPumpsRaw === null) {
+        showCustomAlert('Please enter the Number of Pumps.', 'error');
+        return;
+    }
+    var numPumps = parseInt(numPumpsRaw);
+    if (isNaN(numPumps) || numPumps < 0) {
+        showCustomAlert('Please enter a valid Number of Pumps (0 or more).', 'error');
+        return;
     }
 
     var fd = new FormData();
@@ -3328,7 +3408,7 @@ safeAddListener('addProductForm', 'submit', function(e) {
     fd.append('status',         status);
     fd.append('remarks',        remarks);
     fd.append('num_pumps',      numPumps);
-    fd.append('pump_configs',   JSON.stringify(pumpConfigs));
+    fd.append('pump_configs',   '[]');
 
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(function(r) { return r.json(); })
@@ -3363,6 +3443,14 @@ safeAddListener('editPriceForm', 'submit', function(e) {
     fd.append('reorder_level',  document.getElementById('editFuelReorder').value);
     fd.append('status',         statusVal);
     fd.append('remarks',        document.getElementById('editFuelRemarks') ? document.getElementById('editFuelRemarks').value.trim() : '');
+
+    // Include pump status values
+    var pumpSelects = document.querySelectorAll('#mef_pumps_container select');
+    pumpSelects.forEach(function(sel) {
+        if (sel.name) {
+            fd.append(sel.name, sel.value);
+        }
+    });
     
     fetch('manager_set_prices_handler.php', { method: 'POST', body: fd })
         .then(r => r.json()).then(data => {

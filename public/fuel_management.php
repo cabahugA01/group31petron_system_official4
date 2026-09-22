@@ -438,6 +438,7 @@ if ($station_id) {
             FROM fuel_pumps fp 
             LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
             WHERE fp.station_id = ? 
+              AND LOWER(COALESCE(fp.status, 'active')) = 'active'
             ORDER BY 
               CASE 
                 WHEN LOWER(fp.pump_number) LIKE '%diesel 1%' THEN 1

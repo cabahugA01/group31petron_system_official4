@@ -92,7 +92,7 @@ $TANK_CONFIG_17 = get_tank_config((int)$station_id);
 $fi_raw = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted') ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type_id, fuel_type, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived', 'deleted') ORDER BY id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -207,9 +207,13 @@ try {
         $fuel_type_base = $tc['fuel_type'];
         $ft_key = strtolower(trim($fuel_type_base));
         
-        // Smart match: match by UGT number, tanker_num, or clean fuel_type
+        // Smart match: match by exact id, UGT number, tanker_num, or clean fuel_type
         $inv = null;
         foreach ($fi_raw as $r) {
+            if (!empty($tc['id']) && (int)$r['id'] === (int)$tc['id']) {
+                $inv = $r;
+                break;
+            }
             $r_ugt = strtolower(trim($r['ugt_no']));
             $r_ft  = strtolower(trim($r['fuel_type']));
             if (($r_ugt !== '' && $r_ugt === strtolower($ugt_str)) || 

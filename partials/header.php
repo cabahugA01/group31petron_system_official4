@@ -1897,13 +1897,13 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
 
         /* Shrink brand text on mobile */
         .brand-title { font-size: 0.95em !important; }
-        .brand-mark { width: 30px !important; height: 30px !important; }
+        .brand-mark { max-width: 48px !important; height: 38px !important; }
     }
 
     .brand-title { color: var(--petron-blue) !important; font-weight: bold; font-size: 1.3em; line-height: 1.1; }
     .brand-mark {
-        width: 40px; height: 40px;
-        margin-right: 10px;
+        width: auto; max-width: 60px; height: 48px;
+        margin-right: 12px;
         object-fit: contain;
     }
 
@@ -4494,18 +4494,23 @@ require_once __DIR__ . '/rbac_menu.php';
                 } elseif (file_exists(__DIR__ . '/../assets/img/Petron Logo.png')) {
                     $logo_path = $app_base_path . '/assets/img/Petron Logo.png';
                     $show_header_logo = true;
+                } elseif (file_exists(__DIR__ . '/../assets/img/petron_logo_full.png')) {
+                    $logo_path = $app_base_path . '/assets/img/petron_logo_full.png';
+                    $show_header_logo = true;
                 } else {
                     $logo_path = $app_base_path . '/assets/img/petron_logo.png';
                     $show_header_logo = true;
                 }
                 $fallback_logo = $app_base_path . '/assets/img/petron_logo.png';
                 $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
+                $logo_ver = file_exists($logo_file_sys) ? filemtime($logo_file_sys) : (file_exists(__DIR__ . '/../assets/img/petron_logo.png') ? filemtime(__DIR__ . '/../assets/img/petron_logo.png') : time());
+                $logo_display_src = !empty($logo_path) ? ($logo_path . (strpos($logo_path, '?') === false ? '?v=' . $logo_ver : '')) : '';
             ?>
-            <img src="<?php echo htmlspecialchars($logo_path); ?>" 
+            <img src="<?php echo htmlspecialchars($logo_display_src); ?>" 
                  <?php if ($show_header_logo): ?>
                  onerror="if(this.src!=='<?php echo htmlspecialchars($fallback_logo); ?>') this.src='<?php echo htmlspecialchars($fallback_logo); ?>';" 
                  <?php endif; ?>
-                 alt="Petron Logo" class="brand-mark" id="petronLogo" style="<?php echo $show_header_logo ? 'display: inline-block !important;' : 'display: none !important;'; ?> height: 38px; width: auto; max-width: 48px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
+                 alt="Petron Logo" class="brand-mark" id="petronLogo" style="<?php echo $show_header_logo ? 'display: inline-block !important;' : 'display: none !important;'; ?> height: 48px; width: auto; max-width: 60px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
             <div class="brand-text">
                 <div class="brand-title" id="headerSystemName"><?php echo htmlspecialchars($system_name); ?></div>
                 <?php if ($station_name && $role !== 'superadmin'): ?>

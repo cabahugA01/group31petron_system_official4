@@ -771,11 +771,54 @@ if (strlen($or_num_clean) > 6) {
 $or_number    = !empty($sale['or_number']) 
                 ? $sale['or_number'] 
                 : 'OR-' . date('Ymd', strtotime($ts)) . '-' . str_pad($or_num_clean ?: '000001', 6, '0', STR_PAD_LEFT);
-$vat_tin      = '248-719-305-00000';
+// ── Station Details & Receipt Config ──────────────────────────────────────────
+$st_id = (int)($sale['station_id'] ?? $jo['station_id'] ?? $txn['station_id'] ?? 0);
+if ($st_id <= 0 && function_exists('user_station_id')) {
+    $st_id = (int)user_station_id();
+}
+
+$receipt_cfg = null;
+try {
+    if (isset($pdo)) {
+        $rc_stmt = $pdo->prepare("SELECT * FROM receipt_config WHERE station_id = ? OR station_id = 0 ORDER BY (station_id = ?) DESC LIMIT 1");
+        $rc_stmt->execute([$st_id, $st_id]);
+        $receipt_cfg = $rc_stmt->fetch(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {}
+
+// Smart detection: if station name is the system name or a street address, default to PETRON CORPORATION
+$_raw_sn = $sale['station_name'] ?? '';
+if (preg_match('/(station management|blvd|street|st\.|road|city|misamis)/i', $_raw_sn)) {
+    $_raw_sn = 'PETRON CORPORATION';
+}
+
+$station_name = !empty($receipt_cfg['station_header'])
+    ? $receipt_cfg['station_header']
+    : ($_raw_sn ?: 'PETRON CORPORATION');
+
+$branch_name  = !empty($receipt_cfg['branch_name']) ? $receipt_cfg['branch_name'] : '';
+
+$station_addr = !empty($receipt_cfg['station_address'])
+    ? $receipt_cfg['station_address']
+    : ($sale['station_address'] ?? 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental');
+
+$station_contact = !empty($receipt_cfg['station_contact']) ? $receipt_cfg['station_contact'] : '';
+
+$vat_tin      = !empty($receipt_cfg['station_vat_tin'])
+    ? $receipt_cfg['station_vat_tin']
+    : ($sale['station_vat_tin'] ?? '248-719-305-00000');
+
 $vat_reg_no   = 'Registered';
-$atp_no       = 'BIR-ATP-2026-00984712';
-$station_name = 'PETRON STATION MANAGEMENT SYSTEM';
-$station_addr = 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental';
+$atp_no       = !empty($receipt_cfg['atp_no']) ? $receipt_cfg['atp_no'] : 'BIR-ATP-2026-00984712';
+$min_serial   = !empty($receipt_cfg['min_serial']) ? $receipt_cfg['min_serial'] : '';
+
+$show_vat             = !isset($receipt_cfg['show_vat']) || (int)$receipt_cfg['show_vat'] === 1;
+$show_payment_details = !isset($receipt_cfg['show_payment_details']) || (int)$receipt_cfg['show_payment_details'] === 1;
+$show_cashier         = !isset($receipt_cfg['show_cashier']) || (int)$receipt_cfg['show_cashier'] === 1;
+$show_customer        = !isset($receipt_cfg['show_customer']) || (int)$receipt_cfg['show_customer'] === 1;
+$show_jo_details      = !isset($receipt_cfg['show_jo_details']) || (int)$receipt_cfg['show_jo_details'] === 1;
+$show_qr              = !isset($receipt_cfg['show_qr']) || (int)$receipt_cfg['show_qr'] === 1;
+$paper_size           = $receipt_cfg['paper_size'] ?? 'thermal_80mm';
 
 // ── Payment status derivation ────────────────────────────────────────────────
 $stored_pay_status = strtolower(trim($sale['payment_status'] ?? ''));
@@ -797,7 +840,7 @@ if ($balance_due_db <= 0 && $pay_status_norm === 'partial') {
 }
 
 // ── Transaction type label ─────────────────────────────────────────────────────
-$txn_type_label    = 'MERCHANDISE & SERVICE TRANSACTION';
+$txn_type_label    = !empty($receipt_cfg['receipt_title']) ? $receipt_cfg['receipt_title'] : 'SALES INVOICE';
 $txn_type_sublabel = 'Official Merchandise & Service Invoice';
 
 // ── Compute subtotal and VAT correctly (100% exact math) ─────────────────────
@@ -833,7 +876,6 @@ $pm_lc     = strtolower($pay_method);
 $job_order = $sale['job_order'] ?? null;
 $has_jo    = !empty($job_order);
 
-// Logo path - use absolute URL from web root
 // Logo path - try database first
 $logo = '/group31petron_system_official4/assets/img/Petron Logo.png';
 try {
@@ -857,6 +899,9 @@ try {
     
     if ($db_logo) {
         $logo = '/group31petron_system_official4/' . $db_logo;
+    }
+    if (!empty($receipt_cfg['logo_path'])) {
+        $logo = '/group31petron_system_official4/' . ltrim($receipt_cfg['logo_path'], '/');
     }
 } catch (Exception $e) {}
 
@@ -1126,18 +1171,26 @@ if (!empty($local_qr_png)) {
 }
 
 /* ── Print ── */
+<?php
+$paper_width_val = match($paper_size ?? 'thermal_80mm') {
+    'thermal_58mm' => '58mm',
+    'a4'           => '210mm',
+    'letter'       => '216mm',
+    default        => '80mm',
+};
+?>
 @page {
-  size: 80mm auto;
+  size: <?php echo $paper_width_val; ?> auto;
   margin: 3mm 2mm;
 }
 @media print{
   *,*::before,*::after{box-sizing:border-box}
-  html{width:80mm!important;min-width:0!important;max-width:80mm!important;margin:0!important;padding:0!important;background:#fff!important}
-  body{width:80mm!important;min-width:0!important;max-width:80mm!important;margin:0!important;padding:0!important;background:#fff!important;font-family:'Courier New',Courier,monospace}
+  html{width:<?php echo $paper_width_val; ?>!important;min-width:0!important;max-width:<?php echo $paper_width_val; ?>!important;margin:0!important;padding:0!important;background:#fff!important}
+  body{width:<?php echo $paper_width_val; ?>!important;min-width:0!important;max-width:<?php echo $paper_width_val; ?>!important;margin:0!important;padding:0!important;background:#fff!important;font-family:'Courier New',Courier,monospace}
   .jo-toolbar,.no-print{display:none!important}
   .jo-page{
-    width:80mm!important;
-    max-width:80mm!important;
+    width:<?php echo $paper_width_val; ?>!important;
+    max-width:<?php echo $paper_width_val; ?>!important;
     min-width:0!important;
     margin:0!important;
     padding:1mm!important;
@@ -1253,10 +1306,13 @@ if (!empty($local_qr_png)) {
          alt="PETRON LOGO"
          class="jo-r-logo-img"
          style="width:105px;height:auto;display:block;margin:0 auto 6px;object-fit:contain;">
-    <div class="jo-r-brand">PETRON STATION MANAGEMENT SYSTEM</div>
+    <div class="jo-r-brand"><?php echo htmlspecialchars($station_name); ?></div>
     <div class="jo-r-branch"><?php echo htmlspecialchars($station_addr); ?></div>
     <div class="jo-r-tin">VAT Reg TIN: <?php echo htmlspecialchars($vat_tin); ?></div>
     <div class="jo-r-tin">ATP No.: <?php echo htmlspecialchars($atp_no); ?></div>
+    <?php if (!empty($min_serial)): ?>
+    <div class="jo-r-tin">MIN: <?php echo htmlspecialchars($min_serial); ?></div>
+    <?php endif; ?>
   </div>
 
   <div class="jo-r-div2"></div>
@@ -1272,8 +1328,12 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-row"><span class="jo-r-key">OR / Invoice No</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($or_number); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">Transaction ID</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($txn_id); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">Date & Time</span><span class="jo-r-val"><?php echo $disp_date . ' ' . $disp_time; ?></span></div>
+  <?php if ($show_customer): ?>
   <div class="jo-r-row"><span class="jo-r-key">Customer Name</span><span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($customer); ?></span></div>
+  <?php endif; ?>
+  <?php if ($show_cashier): ?>
   <div class="jo-r-row"><span class="jo-r-key">Staff / Shift</span><span class="jo-r-val"><?php echo htmlspecialchars($staff_name) . ($shift_name ? ' (' . htmlspecialchars($shift_name) . ')' : ''); ?></span></div>
+  <?php endif; ?>
 
   <div class="jo-r-div"></div>
 
@@ -1315,7 +1375,7 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
 
   <!-- ══ JOB ORDER DETAILS (shown only when a Job Order is linked) ══════════ -->
-  <?php if ($has_jo): ?>
+  <?php if ($has_jo && $show_jo_details): ?>
   <div class="jo-r-lbl" style="color:#b45309;">Job Order Details</div>
 
   <?php if (!empty($job_order['job_order_id']) || !empty($job_order['job_order_number'])): ?>
@@ -1364,11 +1424,13 @@ if (!empty($local_qr_png)) {
   <?php endif; ?>
 
   <!-- ══ TAX BREAKDOWN ═══════════════════════════════════════════════════════ -->
+  <?php if ($show_vat): ?>
   <div class="jo-r-lbl">Tax Breakdown</div>
   <div class="jo-r-row"><span class="jo-r-key">Vatable Sales</span><span class="jo-r-val">&#8369;<?php echo number_format($vatable, 2); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">VAT (12%)</span><span class="jo-r-val">&#8369;<?php echo number_format($vat_amt, 2); ?></span></div>
   <div class="jo-r-row"><span class="jo-r-key">Zero-Rated Sales</span><span class="jo-r-val">&#8369;0.00</span></div>
   <div class="jo-r-row"><span class="jo-r-key">VAT-Exempt Sales</span><span class="jo-r-val">&#8369;0.00</span></div>
+  <?php endif; ?>
 
   <div class="jo-r-div2"></div>
   <div class="jo-r-row jo-r-grand">
@@ -1378,6 +1440,7 @@ if (!empty($local_qr_png)) {
   <div class="jo-r-div"></div>
 
   <!-- ══ TOTALS & PAYMENT ═════════════════════════════════════════════════════ -->
+  <?php if ($show_payment_details): ?>
   <div class="jo-r-lbl">Totals & Payment</div>
 
   <div class="jo-r-row">
@@ -1487,7 +1550,8 @@ if (!empty($local_qr_png)) {
       <?php endif; ?>
     <?php endif; ?>
 
-  <?php endif; ?>
+  <?php endif; // end of payment methods ?>
+  <?php endif; // end of show_payment_details ?>
   
   <?php if (!empty($sale['remarks'])): ?>
   <div class="jo-r-div"></div>
@@ -1518,22 +1582,30 @@ if (!empty($local_qr_png)) {
   </div>
   <?php endif; ?>
   <div class="jo-r-div"></div>
-  <?php endif; ?>
+  <?php endif; // end of loyalty ?>
 
   <!-- ══ FOOTER ════════════════════════════════════════════════════════════════ -->
   <div class="jo-r-foot" style="text-align:center;margin-top:8px;">
     <div class="jo-r-foot-title" style="font-weight:700;font-size:10.5px;margin-bottom:4px;color:#0f172a;">
-      Official Sales Invoice / Receipt
+      <?php echo htmlspecialchars(!empty($receipt_cfg['footer_title']) ? $receipt_cfg['footer_title'] : 'Official Sales Invoice / Receipt'); ?>
     </div>
     <div class="jo-r-foot-line" style="font-size:9px;color:#334155;margin-bottom:2px;">
       TIN: <?php echo htmlspecialchars($vat_tin); ?> &nbsp;|&nbsp; VAT Reg: <?php echo htmlspecialchars($vat_reg_no); ?>
     </div>
     <div class="jo-r-foot-line" style="font-size:9px;color:#334155;margin-bottom:4px;">
       ATP No.: <?php echo htmlspecialchars($atp_no); ?>
+      <?php if (!empty($min_serial)): ?>
+      &nbsp;|&nbsp; MIN: <?php echo htmlspecialchars($min_serial); ?>
+      <?php endif; ?>
     </div>
     <div class="jo-r-foot-line" style="font-size:10px;font-weight:700;color:#003d7a;margin:6px 0 4px 0;">
-      Thank you for your purchase!
+      <?php echo htmlspecialchars(!empty($receipt_cfg['footer_message']) ? $receipt_cfg['footer_message'] : 'Thank you for your purchase!'); ?>
     </div>
+    <?php if (!empty($receipt_cfg['terms_notes'])): ?>
+    <div class="jo-r-foot-line" style="font-size:8.5px;color:#64748b;margin:3px 0 4px 0;">
+      <?php echo nl2br(htmlspecialchars($receipt_cfg['terms_notes'])); ?>
+    </div>
+    <?php endif; ?>
     <?php if ($pay_status_norm === 'partial'): ?>
     <div class="jo-r-foot-line" style="color:#92400e;font-weight:700;border:1px solid #fde68a;background:#fef9c3;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:9px;">
       &#9888; This receipt reflects a partial payment.<br>

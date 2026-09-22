@@ -477,9 +477,12 @@ foreach ($TANK_CONFIG_DASH as $tc) {
     $ft_key         = strtolower(trim($fuel_type_base));
     $ugt_str        = 'UGT-' . str_pad($tank_num, 2, '0', STR_PAD_LEFT);
 
-    // Match fi_raw record by UGT number in fuel_type string
+    // Match fi_raw record by exact id or UGT number
     $inv = null;
     foreach ($fi_raw as $r) {
+        if (!empty($tc['id']) && (int)$r['id'] === (int)$tc['id']) {
+            $inv = $r; break;
+        }
         $r_ugt = strtolower(trim($r['ugt_no']));
         $r_ft  = strtolower(trim($r['fuel_type']));
         if (($r_ugt !== '' && $r_ugt === strtolower($ugt_str)) ||

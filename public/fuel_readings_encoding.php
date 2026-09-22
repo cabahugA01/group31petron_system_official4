@@ -347,8 +347,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $difference = max(0, $present_reading - $previous_reading - $calibration_value);
 
                     // Get current stock for projected low-stock warning (display only, no deduction)
-                    $stmt = $pdo->prepare("SELECT current_level AS current_stock FROM fuel_inventory WHERE station_id = ? AND LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))");
-                    $stmt->execute([$station_id, $fuel_type]);
+                    $stock_ft_id = (int)($pump['fuel_type_id'] ?? 0);
+                    $stmt = $pdo->prepare("SELECT current_level AS current_stock FROM fuel_inventory WHERE station_id = ? AND (fuel_type_id = ? OR LOWER(TRIM(fuel_type)) = LOWER(TRIM(?))) ORDER BY (fuel_type_id = ?) DESC LIMIT 1");
+                    $stmt->execute([$station_id, $stock_ft_id, $fuel_type, $stock_ft_id]);
                     $stock_row = $stmt->fetch(PDO::FETCH_ASSOC);
                     $stock_before_amount = (float)($stock_row['current_stock'] ?? 0);
 
@@ -518,6 +519,7 @@ try {
             fp.id,
             fp.pump_number,
             fp.calibration_value,
+            fp.fuel_type_id,
             ft.name AS fuel_type,
             COALESCE(fi.current_level, 0) AS current_stock,
             -- Get last reading for this specific pump
@@ -538,8 +540,9 @@ try {
             ) AS previous_reading
         FROM fuel_pumps fp
         LEFT JOIN fuel_types ft ON fp.fuel_type_id = ft.id
-        LEFT JOIN fuel_inventory fi ON fi.fuel_type_id = fp.fuel_type_id AND fi.station_id = fp.station_id
+        LEFT JOIN fuel_inventory fi ON (fi.fuel_type_id = fp.fuel_type_id OR LOWER(TRIM(fi.fuel_type)) = LOWER(TRIM(ft.name))) AND fi.station_id = fp.station_id
         WHERE fp.station_id = ?
+          AND LOWER(COALESCE(fp.status, 'active')) = 'active'
         ORDER BY 
             CASE 
                 WHEN LOWER(fp.pump_number) LIKE '%diesel 1%' THEN 1
@@ -556,7 +559,7 @@ try {
     $fuel_options = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Get fuel inventory ordered by UGT number so Kerosene (UGT-07) is pinakalast
-    $stmt = $pdo->prepare("SELECT fi.*, COALESCE(fi.current_level, 0) AS current_stock, " . $reorderThresholdExpr . " AS reorder_threshold FROM fuel_inventory fi WHERE station_id = ? ORDER BY CAST(REGEXP_REPLACE(fi.ugt_no, '[^0-9]', '') AS UNSIGNED) ASC, fi.id ASC");
+    $stmt = $pdo->prepare("SELECT fi.*, COALESCE(fi.current_level, 0) AS current_stock, " . $reorderThresholdExpr . " AS reorder_threshold FROM fuel_inventory fi WHERE station_id = ? AND LOWER(COALESCE(fi.status, 'active')) NOT IN ('archived', 'deleted') ORDER BY CAST(REGEXP_REPLACE(fi.ugt_no, '[^0-9]', '') AS UNSIGNED) ASC, fi.id ASC");
     $stmt->execute([$station_id]);
     $fuel_inventory = $stmt->fetchAll(PDO::FETCH_ASSOC);
     

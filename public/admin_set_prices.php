@@ -373,6 +373,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            // 3. Update configured pumps for this fuel product
+            if (!empty($_POST['edit_pump_status']) && is_array($_POST['edit_pump_status'])) {
+                foreach ($_POST['edit_pump_status'] as $p_id => $p_st) {
+                    $p_id = (int)$p_id;
+                    $p_st = in_array(strtolower($p_st), ['active', 'inactive', 'maintenance']) ? ucfirst(strtolower($p_st)) : 'Active';
+                    if ($p_id > 0) {
+                        try {
+                            $pdo->prepare("UPDATE fuel_pumps SET status = ? WHERE id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
+                            $pdo->prepare("UPDATE nozzles SET status = ? WHERE pump_id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
+                        } catch (Exception $e) {}
+                    }
+                }
+            }
+
             // ── Sync to fuel_types & fuel_pricing across all matching tanks ──
             try {
                 $m_stmt = $pdo->prepare("SELECT id, fuel_type_id FROM fuel_inventory WHERE id IN ($in_clause)");
@@ -613,7 +627,9 @@ try {
         $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
         $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
         $inv = null;
-        if ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
+        if (!empty($tc['id']) && isset($fi_lookup_by_id[(int)$tc['id']])) {
+            $inv = $fi_lookup_by_id[(int)$tc['id']];
+        } elseif ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
             $inv = $fi_lookup[$tank_ugt_raw];
         } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
             $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
@@ -1052,9 +1068,14 @@ include __DIR__ . '/../partials/header.php';
     letter-spacing: 0.3px !important;
     text-align: center !important;
     cursor: pointer !important;
+    pointer-events: all !important;
+    user-select: none !important;
+    position: relative !important;
+    z-index: 5 !important;
     margin-bottom: 0 !important;
     box-shadow: none !important;
 }
+.ato-tab * { pointer-events: none !important; }
 .ato-tab:last-child { border-right: none !important; }
 .ato-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .ato-tab.active {
@@ -1245,10 +1266,11 @@ table.pricing-table tbody tr:hover {
     align-items: center !important;
     justify-content: center !important;
     gap: 4px !important;
-    width: 100% !important;
-    max-width: 95px !important;
-    min-height: 26px !important;
-    height: auto !important;
+    width: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 25px !important;
+    height: 25px !important;
     padding: 3px 6px !important;
     border-radius: 5px !important;
     font-size: 11.5px !important;
@@ -1262,6 +1284,7 @@ table.pricing-table tbody tr:hover {
     border: 1.5px solid #cbd5e1 !important;
     text-decoration: none !important;
     box-sizing: border-box !important;
+    text-align: center !important;
 }
 .act-btn i { color: inherit !important; -webkit-text-fill-color: inherit !important; font-size: 11px !important; flex-shrink: 0 !important; }
 
@@ -1576,9 +1599,9 @@ table.pricing-table tbody tr:hover {
 <!-- ── Section Tabs ──────────────────────────────────────────────────── -->
 <input type="hidden" id="activeSection" value="<?php echo htmlspecialchars($active_tab); ?>">
 <div class="ato-tab-bar">
-    <a onclick="switchTab('fuel')" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
-    <a onclick="switchTab('merch')" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
-    <a onclick="switchTab('services')" id="tab-btn-services" class="ato-tab <?php echo $active_tab === 'services' ? 'active' : ''; ?>"><i class="fas fa-wrench"></i> Service Types</a>
+    <a href="javascript:void(0)" onclick="switchTab('fuel'); return false;" id="tab-btn-fuel" class="ato-tab <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>"><i class="fas fa-gas-pump"></i> Fuel Products</a>
+    <a href="javascript:void(0)" onclick="switchTab('merch'); return false;" id="tab-btn-merch" class="ato-tab <?php echo $active_tab === 'merch' ? 'active' : ''; ?>"><i class="fas fa-box"></i> Merchandise</a>
+    <a href="javascript:void(0)" onclick="switchTab('services'); return false;" id="tab-btn-services" class="ato-tab <?php echo $active_tab === 'services' ? 'active' : ''; ?>"><i class="fas fa-wrench"></i> Service Types</a>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -3866,6 +3889,13 @@ function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical,
     var modal = document.getElementById('editPriceModalAdmin');
     if (modal) modal.style.display = 'flex';
 
+    var pumpBadge = document.getElementById('aef_pump_count_badge');
+    if (pumpBadge) pumpBadge.textContent = '...';
+    var pumpCont = document.getElementById('aef_pumps_container');
+    if (pumpCont) {
+        pumpCont.innerHTML = '<div style="grid-column:1/-1;color:#64748b;font-size:13px;font-style:italic;padding:8px 0;"><i class="fas fa-spinner fa-spin"></i> Loading pump configuration...</div>';
+    }
+
     // Fetch fresh live values from DB to overwrite with accurate data
     if (parseInt(id) > 0) {
         fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + parseInt(id))
@@ -3900,13 +3930,59 @@ function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical,
                     radActive.checked   = (liveStatus === 'active');
                     radInactive.checked = (liveStatus !== 'active');
                 }
+
+                // Render Pump & Nozzle Configuration for this fuel product (matches Meter Reading)
+                var pumps = data.pumps || [];
+                if (pumpBadge) pumpBadge.textContent = pumps.length + (pumps.length === 1 ? ' Nozzle / Pump' : ' Nozzles / Pumps');
+
+                if (pumpCont) {
+                    if (pumps.length === 0) {
+                        pumpCont.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:#64748b;font-size:13px;font-style:italic;background:#fff;border-radius:6px;border:1px dashed #cbd5e1;"><i class="fas fa-info-circle"></i> No pumps or nozzles currently assigned to this fuel product.</div>';
+                    } else {
+                        var pHtml = '';
+                        pumps.forEach(function(pm) {
+                            var pSt = (pm.status || 'Active');
+                            var isAct = pSt.toLowerCase() === 'active';
+                            var bgCol = isAct ? '#dcfce7' : '#fee2e2';
+                            var txtCol = isAct ? '#166534' : '#991b1b';
+                            var brdCol = isAct ? '#86efac' : '#fca5a5';
+                            
+                            // Format nozzle label cleanly to Title Case (e.g. "DIESEL 1 - 1" -> "Diesel 1 - 1") matching staff fuel management
+                            var rawLabel = (pm.pump_number || pm.pump_name || ('Pump #' + pm.id)).trim();
+                            var meterLabel = rawLabel.replace(/\b[a-zA-Z]+/g, function(w) {
+                                var up = w.toUpperCase();
+                                if (up === 'XCS' || up === 'UGT' || up === 'UNL') return up;
+                                return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+                            });
+                            
+                            pHtml += '<div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:8px;">' +
+                                '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;">' +
+                                    '<div style="width:26px;height:26px;border-radius:5px;background:#e0f2fe;color:#002F6C;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">' +
+                                        '<i class="fas fa-gas-pump"></i>' +
+                                    '</div>' +
+                                    '<div style="font-weight:800;color:#0f172a;font-size:13px;line-height:1.2;white-space:nowrap;letter-spacing:0.2px;">' +
+                                        meterLabel +
+                                    '</div>' +
+                                '</div>' +
+                                '<select name="edit_pump_status[' + pm.id + ']" style="font-size:11.5px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:4px !important;border:1px solid ' + brdCol + ' !important;background:' + bgCol + ' !important;background-color:' + bgCol + ' !important;color:' + txtCol + ' !important;cursor:pointer;flex-shrink:0;height:24px !important;line-height:1.2 !important;" onchange="this.style.setProperty(\'background\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'background-color\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'color\', this.value === \'Active\' ? \'#166534\' : \'#991b1b\', \'important\'); this.style.setProperty(\'border-color\', this.value === \'Active\' ? \'#86efac\' : \'#fca5a5\', \'important\');">' +
+                                    '<option value="Active"' + (isAct ? ' selected' : '') + '>Active</option>' +
+                                    '<option value="Inactive"' + (!isAct ? ' selected' : '') + '>Inactive</option>' +
+                                '</select>' +
+                            '</div>';
+                        });
+                        pumpCont.innerHTML = pHtml;
+                    }
+                }
             })
             .catch(function() { /* keep inline values on network error */ });
     }
 }
 
 function closeEditPriceModalAdmin() {
-    document.getElementById('editPriceModalAdmin').style.display = 'none';
+    var modal = document.getElementById('editPriceModalAdmin');
+    if (modal) modal.style.display = 'none';
+    var pumpCont = document.getElementById('aef_pumps_container');
+    if (pumpCont) pumpCont.innerHTML = '';
 }
 
 function validateEditFuelForm() {
@@ -4226,9 +4302,8 @@ function openAddProductModal() {
     }
     var numPumpsEl = document.getElementById('newNumPumps');
     if (numPumpsEl) {
-        numPumpsEl.value = '4';
+        numPumpsEl.value = '';
     }
-    updatePumpConfigPreview(4);
 }
 
 function closeAddProductModal() {
@@ -4238,6 +4313,8 @@ function closeAddProductModal() {
     if (form) form.reset();
     var ugtEl = document.getElementById('newUgtNo');
     if (ugtEl) ugtEl.value = '';
+    var numPumpsEl = document.getElementById('newNumPumps');
+    if (numPumpsEl) numPumpsEl.value = '';
 }
 
 // Auto-format UGT number on blur if user typed just digits or 'ugt X'
@@ -4306,22 +4383,23 @@ safeAddListener('addProductForm', 'submit', function(e) {
         return;
     }
 
+    var numPumpsRaw = (document.getElementById('newNumPumps') || {}).value;
+    if (numPumpsRaw === '' || numPumpsRaw === undefined || numPumpsRaw === null) {
+        showCustomAlert('Please enter the Number of Pumps.', 'error');
+        return;
+    }
+    var numPumps = parseInt(numPumpsRaw);
+    if (isNaN(numPumps) || numPumps < 0) {
+        showCustomAlert('Please enter a valid Number of Pumps (0 or more).', 'error');
+        return;
+    }
+
     var btn = e.target.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...'; }
 
-    var numPumps = parseInt((document.getElementById('newNumPumps') || {}).value);
-    if (isNaN(numPumps) || numPumps < 0) numPumps = 0;
-    var pumpConfigs = [];
-    for (var pi = 1; pi <= numPumps; pi++) {
-        var pSel = document.querySelector('.new-pump-status[data-pump-idx="' + pi + '"]');
-        pumpConfigs.push({
-            pump_index: pi,
-            status: pSel ? pSel.value : 'Active'
-        });
-    }
-
     var fd = new FormData();
     fd.append('action',         'add_fuel_product');
+    fd.append('station_id',     '<?php echo (int)$station_id; ?>');
     fd.append('fuel_type',      fuelName);
     fd.append('ugt_no',         ugtNo);
     fd.append('price',          price);
@@ -4331,7 +4409,7 @@ safeAddListener('addProductForm', 'submit', function(e) {
     fd.append('status',         status);
     fd.append('remarks',        remarks);
     fd.append('num_pumps',      numPumps);
-    fd.append('pump_configs',   JSON.stringify(pumpConfigs));
+    fd.append('pump_configs',   '[]');
 
     fetch('admin_set_prices_handler.php', { method: 'POST', body: fd })
         .then(function(r) { return r.json(); })
@@ -5049,76 +5127,91 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 </div>
 
 <!-- Admin Edit Fuel Modal (Direct Update - Option A) -->
-<div id="editPriceModalAdmin" style="display:none;position:fixed;top:70px;left:250px;right:0;bottom:40px;background:rgba(0,0,0,.65);z-index:9999;align-items:flex-start;justify-content:center;padding:25px 20px 20px 20px;box-sizing:border-box;overflow-y:auto;">
-  <div style="background:#fff;border-radius:12px;width:92%;max-width:720px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:15px auto;overflow:hidden;">
-    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <h3 style="margin:0;font-size:17px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:10px;">
-        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
+<div id="editPriceModalAdmin" style="display:none;position:fixed;top:0;left:250px;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:12px 16px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:94%;max-width:690px;box-shadow:0 16px 48px rgba(0,0,0,.35);margin:auto;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#002F6C,#004494);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:15.5px;font-weight:800;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;display:flex;align-items:center;gap:8px;letter-spacing:0.3px;">
+        <i class="fas fa-edit" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:16px;"></i>
         <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">EDIT FUEL PRODUCT</span>
       </h3>
     </div>
-    <form method="POST" action="admin_set_prices.php" style="padding:20px 24px;" onsubmit="return validateEditFuelForm();">
+    <form method="POST" action="admin_set_prices.php" style="padding:12px 20px 12px 20px;" onsubmit="return validateEditFuelForm();">
       <input type="hidden" name="action" value="admin_edit_fuel_direct">
       <input type="hidden" name="active_tab" value="fuel">
       <input type="hidden" id="aef_fuel_id" name="id">
 
       <!-- Row 1: UGT Number + Fuel Name -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">UGT Number</label>
-          <input type="text" id="aef_ugt_no" name="ugt_no" style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">UGT Number</label>
+          <input type="text" id="aef_ugt_no" name="ugt_no" style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;color:#002F70;font-weight:800;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Fuel Name</label>
-          <input type="text" id="aef_fuel_name" name="fuel_name" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Fuel Name</label>
+          <input type="text" id="aef_fuel_name" name="fuel_name" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;color:#0f172a;font-weight:700;box-sizing:border-box;" onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'">
         </div>
       </div>
 
       <!-- Row 2: Price Per Liter + Tank Capacity -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Price / Liter (&#8369;) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
-          <div id="aef_price_notice" style="display:none;margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 10px;align-items:center;gap:8px;">
-              <i class="fas fa-lock" style="color:#92400e;font-size:14.5px;"></i>
-              <span style="font-size:14px;color:#92400e;font-weight:700;">PRICE LOCKED &mdash; A pending price request exists. Approve or reject it first to change the price.</span>
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Price / Liter (&#8369;) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_price" name="price" step="0.01" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" oninput="sanitizeDecimalInput(this)">
+          <div id="aef_price_notice" style="display:none;margin-top:3px;background:#fef3c7;border:1px solid #f59e0b;border-radius:5px;padding:3px 8px;align-items:center;gap:6px;">
+              <i class="fas fa-lock" style="color:#92400e;font-size:11.5px;"></i>
+              <span style="font-size:11.5px;color:#92400e;font-weight:700;">PRICE LOCKED &mdash; A pending price request exists.</span>
           </div>
-          <small style="font-size:15.5px;color:#16a34a;display:block;margin-top:2px;"><i class="fas fa-check-circle"></i> Direct Admin Edit: Updates price immediately.</small>
+          <small style="font-size:11px;color:#16a34a;display:block;margin-top:2px;font-weight:600;"><i class="fas fa-check-circle"></i> Direct Admin Edit: Updates price immediately.</small>
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Tank Capacity (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_capacity" name="capacity" step="1" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" oninput="sanitizeDecimalInput(this)">
         </div>
       </div>
 
       <!-- Row 3: Critical Level + Reorder Level -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7px;">
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Critical Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_critical" name="critical_level" step="1" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" oninput="sanitizeDecimalInput(this)">
         </div>
         <div>
-          <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
-          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15.5px;box-sizing:border-box;"              oninput="sanitizeDecimalInput(this)">
+          <label style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:2px;">Reorder Level (L) <span style="color:#dc2626;">*</span></label>
+          <input type="number" id="aef_reorder" name="reorder_level" step="1" min="0" required style="width:100%;padding:5px 10px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box;" oninput="sanitizeDecimalInput(this)">
         </div>
       </div>
 
       <!-- Row 4: Status -->
-      <div style="margin-bottom:12px;">
-        <label style="display:block;font-size:14px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Status <span style="color:#dc2626;">*</span></label>
-        <div style="display:flex;gap:18px;align-items:center;padding-top:4px;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#166534;">
+      <div style="margin-bottom:7px;display:flex;align-items:center;gap:16px;">
+        <label style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;margin:0;">Status <span style="color:#dc2626;">*</span>:</label>
+        <div style="display:flex;gap:16px;align-items:center;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;font-weight:600;color:#166534;">
             <input type="radio" id="aef_status_active" name="status" value="active" checked style="accent-color:#16a34a;"> Active
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:15.5px;cursor:pointer;font-weight:600;color:#991b1b;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;font-weight:600;color:#991b1b;">
             <input type="radio" id="aef_status_inactive" name="status" value="inactive" style="accent-color:#dc2626;"> Inactive
           </label>
         </div>
       </div>
 
-      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:14px;">
-        <button type="button" onclick="closeEditPriceModalAdmin()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:8px 18px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;transition:all 0.2s;"><i class="fas fa-times-circle"></i> Cancel</button>
-        <button type="submit" style="background:#002F6C !important;color:#ffffff !important;border:none;padding:8px 22px;border-radius:6px;font-size:15.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save &amp; Apply Immediately</button>
+      <!-- Row 5: Dynamic Pump Configuration Card for this Fuel Product -->
+      <div style="margin-bottom:9px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:7px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:11.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.3px;display:flex;align-items:center;gap:5px;">
+            <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP &amp; NOZZLE CONFIGURATION
+          </span>
+          <span id="aef_pump_count_badge" style="background:#e0f2fe;color:#0369a1;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;">
+            0 Nozzles / Pumps
+          </span>
+        </div>
+        <div id="aef_pumps_container" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:6px;max-height:120px;overflow-y:auto;padding-right:2px;">
+          <div style="color:#64748b;font-size:12px;font-style:italic;padding:3px 0;"><i class="fas fa-spinner fa-spin"></i> Loading pump configuration...</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e2e8f0;padding-top:10px;">
+        <button type="button" onclick="closeEditPriceModalAdmin()" style="background:#f1f5f9 !important;color:#00264D !important;border:1px solid #cbd5e1 !important;padding:6px 16px;border-radius:6px;font-size:13.5px;font-weight:700;cursor:pointer;transition:all 0.2s;"><i class="fas fa-times-circle"></i> Cancel</button>
+        <button type="submit" style="background:#002F6C !important;color:#ffffff !important;border:none;padding:6px 20px;border-radius:6px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;"><i class="fas fa-save" style="color:#ffffff !important;"></i> Save &amp; Apply Immediately</button>
       </div>
     </form>
   </div>
@@ -5301,7 +5394,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                 <i class="fas fa-plus-circle" style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;font-size:18px;"></i>
                 <span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">ADD FUEL PRODUCT</span>
             </h3>
-            <button type="button" onclick="closeAddProductModal()" style="background:transparent;border:none;color:#ffffff;font-size:20px;font-weight:700;cursor:pointer;line-height:1;">&times;</button>
         </div>
         <!-- Modal Form Body (Landscape 2-Column Grid with Scroll) -->
         <form id="addProductForm" style="padding:16px 24px 18px;overflow-y:auto;flex:1 1 auto;display:flex;flex-direction:column;">
@@ -5373,17 +5465,17 @@ safeAddListener('addServiceForm', 'submit', function(e) {
             </div>
 
             <!-- Row 4: Number of Pumps + Status -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;align-items:start;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;align-items:start;">
                 <div>
                     <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                         Number of Pumps <span style="color:#dc2626;">*</span>
                     </label>
-                    <input type="number" id="newNumPumps" min="0" max="30" step="1" required value="4"
+                    <input type="number" id="newNumPumps" min="0" max="30" step="1" required value=""
                            style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
-                           placeholder="e.g. 4" oninput="updatePumpConfigPreview(this.value)">
+                           placeholder="e.g. 4">
                     <small style="font-size:11px;color:#64748b;display:block;margin-top:2px;">
-                        <i class="fas fa-info-circle"></i> Station-specific: configure pumps for this station (0 = configure later).
+                        <i class="fas fa-info-circle"></i> Station-specific: total pumps/nozzles for this fuel type (0 = configure later).
                     </small>
                 </div>
                 <div>
@@ -5401,23 +5493,8 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                 </div>
             </div>
 
-            <!-- Row 5: Dynamic Pump Configuration Card -->
-            <div style="margin-bottom:10px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span style="font-size:12.5px;font-weight:800;color:#002F6C;text-transform:uppercase;letter-spacing:0.4px;display:flex;align-items:center;gap:6px;">
-                        <i class="fas fa-gas-pump" style="color:#002F6C;"></i> PUMP CONFIGURATION
-                    </span>
-                    <span id="pumpConfigCountBadge" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;">
-                        4 Pumps
-                    </span>
-                </div>
-                <div id="pumpConfigContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:6px;max-height:120px;overflow-y:auto;padding-right:2px;">
-                    <!-- Dynamically populated via updatePumpConfigPreview() -->
-                </div>
-            </div>
-
-            <!-- Row 6: Remarks -->
-            <div style="margin-bottom:12px;">
+            <!-- Row 5: Remarks -->
+            <div style="margin-bottom:14px;">
                 <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
                     Remarks <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
                 </label>

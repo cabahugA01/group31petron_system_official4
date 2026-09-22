@@ -297,9 +297,18 @@ $tendered = (float) ($tendered ?? 0);
 $change = (float) ($change ?? 0);
 $sale = $sale ?? [];
 
-$logo_path = realpath(__DIR__ . '/../assets/img/Petron Logo.png');
-if (!$logo_path || !file_exists($logo_path)) {
-    $logo_path = realpath(__DIR__ . '/../assets/img/petron_logo.png');
+$logo_path = '';
+if (!empty($receipt_cfg['logo_path'])) {
+    $custom_logo = rp_local_img_path($receipt_cfg['logo_path']);
+    if ($custom_logo && file_exists($custom_logo)) {
+        $logo_path = $custom_logo;
+    }
+}
+if (!$logo_path) {
+    $logo_path = realpath(__DIR__ . '/../assets/img/Petron Logo.png');
+    if (!$logo_path || !file_exists($logo_path)) {
+        $logo_path = realpath(__DIR__ . '/../assets/img/petron_logo.png');
+    }
 }
 $verify_code = (string) ($verify_url ?? $qr_data ?? $txn_id);
 $qr_png = $verify_code !== '' ? rp_qr_png($verify_code) : '';
@@ -431,10 +440,12 @@ table { width: 100%; border-collapse: collapse; }
 <div class="receipt">
   <div class="center">'
     . ($logo_path ? '<img class="logo" src="var:receipt_logo" alt="Petron">' : '')
-    . '<div class="brand">PETRON STATION MANAGEMENT SYSTEM</div>
-    <div class="branch">' . rp_e($station_addr) . '</div>
+    . '<div class="brand">' . rp_e($station_name) . '</div>'
+    . '<div class="branch">' . rp_e($station_addr) . '</div>'
+    . (!empty($station_contact) ? '<div class="tin">Tel: ' . rp_e($station_contact) . '</div>' : '') . '
     <div class="tin">VAT Reg TIN: ' . rp_e($vat_tin) . '</div>
-    <div class="tin">ATP No.: ' . rp_e($atp_no) . '</div>
+    <div class="tin">ATP No.: ' . rp_e($atp_no) . '</div>'
+    . (!empty($min_serial) ? '<div class="tin">MIN: ' . rp_e($min_serial) . '</div>' : '') . '
   </div>
 
   <div class="double"></div>
@@ -447,8 +458,8 @@ table { width: 100%; border-collapse: collapse; }
     . rp_row('OR / Invoice No', rp_e($or_number), true)
     . rp_row('Transaction ID', rp_e($txn_id), true)
     . rp_row('Date & Time', rp_e($disp_date . ' ' . $disp_time))
-    . rp_row('Customer Name', rp_e($customer), true)
-    . rp_row('Staff / Shift', rp_e($staff_name . ($shift_name ? ' (' . $shift_name . ')' : '')))
+    . ($show_customer ? rp_row('Customer Name', rp_e($customer), true) : '')
+    . ($show_cashier ? rp_row('Staff / Shift', rp_e($staff_name . ($shift_name ? ' (' . $shift_name . ')' : ''))) : '')
   . '</table>
 
   <div class="dash"></div>
@@ -458,39 +469,47 @@ table { width: 100%; border-collapse: collapse; }
     <tbody>' . $item_rows . '</tbody>
   </table>'
 
-  . ($job_order_rows ? '<div class="dash"></div><div class="label warn-label">Job Order Details</div><table>' . $job_order_rows . '</table>' : '')
+  . (($job_order_rows && $show_jo_details) ? '<div class="dash"></div><div class="label warn-label">Job Order Details</div><table>' . $job_order_rows . '</table>' : '')
 
-  . '<div class="dash"></div>
+  . ($show_vat ? '<div class="dash"></div>
   <div class="label">Tax Breakdown</div>
   <table>'
     . rp_row('Vatable Sales', rp_money($vatable))
     . rp_row('VAT (12%)', rp_money($vat_amt))
     . rp_row('Zero-Rated Sales', rp_money(0))
     . rp_row('VAT-Exempt Sales', rp_money(0))
-  . '</table>
+  . '</table>' : '')
 
-  <div class="double"></div>
-  <table><tr class="grand"><td>GRAND TOTAL</td><td class="val">' . rp_money($total) . '</td></tr></table>
-  <div class="dash"></div>
-
+  . '<div class="double"></div>
+  <table><tr class="grand"><td>GRAND TOTAL</td><td class="val">' . rp_money($total) . '</td></tr></table>'
+  . ($show_payment_details ? '<div class="dash"></div>
   <div class="label">Totals & Payment</div>
-  <table>' . $payment_rows . '</table>
-  <div class="dash"></div>'
+  <table>' . $payment_rows . '</table>' : '')
+  . '<div class="dash"></div>'
+  . ($show_qr && $qr_png !== '' ? '<div class="qr"><div class="qr-label">Scan to Verify</div><img src="var:receipt_qr" alt="QR"><div class="foot-meta">' . rp_e($txn_id) . '</div></div><div class="dash"></div>' : '') . '
 
-  . '<div class="footer">
-    <div class="foot-title" style="font-weight: bold; font-size: 8.5px; margin-bottom: .4mm;">Official Sales Invoice / Receipt</div>
+  <div class="footer">
+    <div class="foot-title" style="font-weight: bold; font-size: 8.5px; margin-bottom: .4mm;">' . rp_e(!empty($receipt_cfg['footer_title']) ? $receipt_cfg['footer_title'] : 'Official Sales Invoice / Receipt') . '</div>
     <div class="foot-line">TIN: ' . rp_e($vat_tin) . ' | VAT Reg: ' . rp_e($vat_reg_no) . '</div>
-    <div class="foot-line">ATP No.: ' . rp_e($atp_no) . '</div>
-    <div class="foot-line" style="font-weight: bold; color: #003d7a; margin: 1mm 0;">Thank you for your purchase!</div>
+    <div class="foot-line">ATP No.: ' . rp_e($atp_no) . (!empty($min_serial) ? ' | MIN: ' . rp_e($min_serial) : '') . '</div>
+    <div class="foot-line" style="font-weight: bold; color: #003d7a; margin: 1mm 0;">' . rp_e(!empty($receipt_cfg['footer_message']) ? $receipt_cfg['footer_message'] : 'Thank you for your purchase!') . '</div>'
+    . (!empty($receipt_cfg['terms_notes']) ? '<div class="foot-line" style="font-size:7px;color:#666;">' . nl2br(rp_e($receipt_cfg['terms_notes'])) . '</div>' : '') . '
     <div class="foot-meta">Printed: ' . date('M j, Y h:i A') . ' | ' . rp_e($txn_id) . '</div>
   </div>
 </div>
 </body>
 </html>';
 
+$pdf_format = match($paper_size ?? 'thermal_80mm') {
+    'a4'     => 'A4',
+    'letter' => 'Letter',
+    'thermal_58mm' => [58, 220],
+    default  => [80, 260],
+};
+
 $mpdf = new \Mpdf\Mpdf([
     'mode' => 'utf-8',
-    'format' => [80, 260],
+    'format' => $pdf_format,
     'margin_left' => 2,
     'margin_right' => 2,
     'margin_top' => 3,

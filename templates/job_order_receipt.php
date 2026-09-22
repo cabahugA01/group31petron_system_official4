@@ -23,9 +23,36 @@ $pay_status     = $j['payment_status']  ?? 'Pending';
 $total          = (float)($j['estimated_cost'] ?? 0);
 $paid           = (float)($j['amount_paid']    ?? 0);
 $sukli          = (float)($j['sukli']          ?? 0);
-$station_name   = $j['station_name']    ?? 'Petron Station';
-$vat_tin        = $j['station_vat_tin'] ?: '236-002-207-0000';
-$station_addr   = $j['station_address'] ?: ($j['station_location'] ?? '');
+
+// ── Load receipt_config for this station ─────────────────────────────────────
+$_jo_receipt_cfg = null;
+$_jo_station_id  = (int)($j['station_id'] ?? 0);
+try {
+    if (isset($pdo)) {
+        $_rc = $pdo->prepare("SELECT * FROM receipt_config WHERE station_id = ? OR station_id = 0 ORDER BY (station_id = ?) DESC LIMIT 1");
+        $_rc->execute([$_jo_station_id, $_jo_station_id]);
+        $_jo_receipt_cfg = $_rc->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+} catch (Exception $_e) {}
+
+// ── Station fields — receipt_config takes priority ───────────────────────────
+$_raw_station_name = $j['station_name'] ?? '';
+// Smart detection: if the station name looks like a system name or street, use PETRON CORPORATION
+if (preg_match('/(station management|blvd|street|st\.|road|city|misamis)/i', $_raw_station_name)) {
+    $_raw_station_name = 'PETRON CORPORATION';
+}
+
+$station_header = !empty($_jo_receipt_cfg['station_header']) ? $_jo_receipt_cfg['station_header'] : $_raw_station_name;
+$branch_name    = !empty($_jo_receipt_cfg['branch_name'])    ? $_jo_receipt_cfg['branch_name']    : '';
+$station_addr   = !empty($_jo_receipt_cfg['station_address']) ? $_jo_receipt_cfg['station_address']
+                   : ($j['station_address'] ?: ($j['station_location'] ?? 'Vamenta Blvd., Carmen, Cagayan de Oro City, Misamis Oriental'));
+$vat_tin        = !empty($_jo_receipt_cfg['station_vat_tin']) ? $_jo_receipt_cfg['station_vat_tin']
+                   : ($j['station_vat_tin'] ?: '248-719-305-00000');
+$atp_no         = !empty($_jo_receipt_cfg['atp_no'])   ? $_jo_receipt_cfg['atp_no']   : 'BIR-ATP-2026-00984712';
+$min_serial     = !empty($_jo_receipt_cfg['min_serial']) ? $_jo_receipt_cfg['min_serial'] : '';
+$footer_title   = !empty($_jo_receipt_cfg['footer_title'])   ? $_jo_receipt_cfg['footer_title']   : 'Official Job Order Document';
+$footer_msg     = !empty($_jo_receipt_cfg['footer_message']) ? $_jo_receipt_cfg['footer_message'] : 'Thank you for choosing Petron!';
+$terms_notes    = $_jo_receipt_cfg['terms_notes'] ?? '';
 
 // ── Receipt number ────────────────────────────────────────────────────────────
 $rcpt_no = $j['receipt_number'] ?? ('RCPT-' . strtoupper(substr(md5($jo_id . $created_at), 0, 8)));
@@ -50,14 +77,12 @@ $manual_parts = array_values(array_filter($all_parts, fn($p) => ($p['type'] ?? '
 $vatable = $total > 0 ? $total / 1.12 : 0;
 $vat_amt = $total - $vatable;
 
-// ── QR data ───────────────────────────────────────────────────────────────────
-$qr_data = "JO:{$jo_id}|RCPT:{$rcpt_no}|AMT:{$total}|TIN:{$vat_tin}";
-$qr_url  = 'https://api.qrserver.com/v1/create-qr-code/?size=88x88&data=' . urlencode($qr_data);
-
 // ── Logo — absolute path from web root ───────────────────────────────────────
-// Detect base path dynamically so it works on any install
 $base = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
 $logo = $base . '/assets/img/Petron Logo.png';
+if (!empty($_jo_receipt_cfg['logo_path'])) {
+    $logo = $base . '/' . ltrim($_jo_receipt_cfg['logo_path'], '/');
+}
 ?>
 <div class="jo-receipt">
 
@@ -67,10 +92,16 @@ $logo = $base . '/assets/img/Petron Logo.png';
          alt="Petron"
          class="jo-r-logo-img"
          onerror="this.style.display='none'">
-    <div class="jo-r-brand">PETRON STATION MANAGEMENT SYSTEM</div>
-    <div class="jo-r-branch"><?php echo htmlspecialchars($station_name); ?></div>
+    <div class="jo-r-brand"><?php echo htmlspecialchars($station_header); ?></div>
+    <?php if (!empty($branch_name)): ?>
+    <div class="jo-r-branch" style="font-weight:700;color:#003d7a;"><?php echo htmlspecialchars($branch_name); ?></div>
+    <?php endif; ?>
     <div class="jo-r-address"><?php echo htmlspecialchars($station_addr); ?></div>
     <div class="jo-r-tin">VAT REG TIN: <?php echo $vat_tin; ?></div>
+    <div class="jo-r-tin">ATP No.: <?php echo htmlspecialchars($atp_no); ?></div>
+    <?php if (!empty($min_serial)): ?>
+    <div class="jo-r-tin">MIN: <?php echo htmlspecialchars($min_serial); ?></div>
+    <?php endif; ?>
   </div>
 
   <div class="jo-r-div2"></div>
@@ -296,23 +327,15 @@ $logo = $base . '/assets/img/Petron Logo.png';
   
   <div class="jo-r-div"></div>
 
-  <!-- ══ QR CODE ═══════════════════════════════════════════════════════════════ -->
-  <div class="jo-r-qr">
-    <div class="jo-r-qr-lbl">Scan to verify this document</div>
-    <img src="<?php echo htmlspecialchars($qr_url); ?>"
-         alt="QR"
-         onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-    <div class="jo-r-qr-txt" style="display:none"><?php echo htmlspecialchars($qr_data); ?></div>
-  </div>
-
-  <div class="jo-r-div"></div>
-
   <!-- ══ FOOTER ════════════════════════════════════════════════════════════════ -->
   <div class="jo-r-foot">
-    <div class="jo-r-foot-title">Official Job Order Document</div>
-    <div class="jo-r-foot-line">This document is valid as an official service record.</div>
-    <div class="jo-r-foot-line">VAT-Registered &nbsp;|&nbsp; TIN: <?php echo $vat_tin; ?></div>
-    <div class="jo-r-foot-line">Thank you for choosing Petron!</div>
+    <div class="jo-r-foot-title"><?php echo htmlspecialchars($footer_title); ?></div>
+    <div class="jo-r-foot-line">TIN: <?php echo htmlspecialchars($vat_tin); ?> &nbsp;|&nbsp; VAT Reg: Registered</div>
+    <div class="jo-r-foot-line">ATP No.: <?php echo htmlspecialchars($atp_no); ?><?php if (!empty($min_serial)): ?> &nbsp;|&nbsp; MIN: <?php echo htmlspecialchars($min_serial); ?><?php endif; ?></div>
+    <div class="jo-r-foot-line" style="font-weight:700;color:#003d7a;"><?php echo htmlspecialchars($footer_msg); ?></div>
+    <?php if (!empty($terms_notes)): ?>
+    <div class="jo-r-foot-line" style="font-size:8px;color:#666;"><?php echo nl2br(htmlspecialchars($terms_notes)); ?></div>
+    <?php endif; ?>
     <div class="jo-r-foot-meta">
       Printed: <?php echo date('M j, Y h:i A'); ?> &nbsp;|&nbsp; <?php echo htmlspecialchars($jo_id); ?>
     </div>

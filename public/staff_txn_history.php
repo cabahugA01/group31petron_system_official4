@@ -390,9 +390,6 @@ require_login();
       <i class="fas fa-list-alt" style="color:#002F70;font-size:18px;"></i>
       <h3 style="margin:0;font-size:16.5px;font-weight:800;color:#002F70;">All Transactions</h3>
     </div>
-    <span style="background:#f1f5f9;color:#334155;font-size:12.5px;font-weight:700;padding:4px 12px;border-radius:20px;border:1px solid #cbd5e1;display:inline-flex;align-items:center;gap:6px;">
-      <i class="fas fa-eye" style="color:#002F70;"></i> Read-only
-    </span>
   </div>
   <div class="txn-card-body" style="padding:0">
 <?php if (empty($recent_merch)): ?>

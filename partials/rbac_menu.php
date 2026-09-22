@@ -30,7 +30,7 @@ $master_menu = [
     // Product Management - Manager (view/manage products & pricing)
     ['id'=>'product_management','label'=>'Product Management','ico'=>'fas fa-boxes','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory','approve_transactions','manage_job_orders'],'station_specific'=>true,'sub_items'=>[
         ['id'=>'mgr_prod_merchandise','label'=>'Merchandise Products','href'=>'manager_product_merchandise.php','permissions'=>['manage_inventory','view_inventory']],
-        ['id'=>'mgr_prod_fuel',       'label'=>'Fuel Products',       'href'=>'manager_product_fuel.php',       'permissions'=>['manage_inventory','view_inventory']],
+
         ['id'=>'mgr_prod_services',   'label'=>'Service Types',       'href'=>'manager_service_types.php',      'permissions'=>['manage_inventory','view_inventory','manage_job_orders']],
         ['id'=>'mgr_prod_prices',     'label'=>'Approve Prices',      'href'=>'manager_approve_prices.php',     'permissions'=>['approve_transactions','manage_job_orders']],
     ]],
@@ -126,29 +126,31 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     ['id' => 'staff_new_transaction',          'label' => 'New Transaction',          'href' => 'staff_transactions_hub.php?section=merchandise&active_tab=merchandise', 'ico' => 'fas fa-plus-circle',   'permissions' => ['create_transactions'], 'desc' => 'Create and process new job order, merchandise, or combined transactions.'],
                     ['id' => 'staff_transaction_history',      'label' => 'Transaction History',      'href' => 'staff_transactions_hub.php?section=history',                          'ico' => 'fas fa-history',        'permissions' => ['view_transactions'],   'desc' => 'View and track previously encoded transactions and receipts.'],
                     ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',          'href' => 'manager_validated_transactions.php',                                 'ico' => 'fas fa-list-check',     'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Monitor and manage merchandise, job order, and combined transactions.'],
+                    ['id' => 'admin_receipt_management',       'label' => 'Receipt Management',         'href' => 'admin_receipt_management.php',                                       'ico' => 'fas fa-file-invoice',   'permissions' => ['view_transactions', 'approve_transactions', 'view_all_reports', 'manage_system_settings'], 'desc' => 'Configure receipt templates, reissue correction receipts, and manage audit trail for issued receipts.'],
                     ['id' => 'manager_request_data_management', 'label' => 'Master Data Requests',     'href' => 'manager_request_data_management.php',                                'ico' => 'fas fa-clipboard-list', 'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Review and process staff requests for products, services, and vehicles.'],
                     ['id' => 'manager_mechanics_management',    'label' => 'Mechanics Management',      'href' => 'manager_mechanics_management.php',                                   'ico' => 'fas fa-wrench',         'permissions' => ['view_transactions', 'approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
                 ],
             ],
-            // 4. Fuel Management — 6-Pillar Structured Fuel Management Suite
+
+            // 4. Fuel Management — same items as Staff + Manager
             [
                 'id'               => 'admin_fuel_management',
                 'label'            => 'Fuel Management',
                 'ico'              => 'fas fa-gas-pump',
-                'href'             => 'fuel_management.php',
+                'href'             => 'staff_transactions_hub.php?section=fuel',
                 'permissions'      => ['encode_fuel', 'manage_fuel', 'view_all_reports', 'view_dashboard'],
                 'station_specific' => true,
-                'desc'             => 'Fuel Products, Tank Configuration, Pump & Nozzle Configuration, Fuel Sales, Fuel Closing, and Fuel Reconciliation.',
+                'desc'             => 'Fuel Sales, Fuel Transaction Validation, Adjustments, and Calibration Review.',
                 'sub_items'        => [
-                    ['id' => 'fuel_products',           'label' => 'Fuel Products',                'href' => 'manager_set_prices.php?tab=fuel',         'ico' => 'fas fa-tint',            'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage fuel products, pricing, and pump count.'],
-                    ['id' => 'fuel_tank_config',        'label' => 'Tank Configuration',           'href' => 'manager_inventory_fuel.php',              'ico' => 'fas fa-database',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Configure and monitor UGT physical fuel tanks.'],
-                    ['id' => 'fuel_pump_nozzle_config', 'label' => 'Pump & Nozzle Configuration',  'href' => 'manager_pump_nozzle_config.php',          'ico' => 'fas fa-gas-pump',        'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Configure station-specific pumps and nozzles.'],
-                    ['id' => 'fuel_sales',              'label' => 'Fuel Sales',                   'href' => 'staff_transactions_hub.php?section=fuel',  'ico' => 'fas fa-tachometer-alt',  'permissions' => ['encode_fuel', 'manage_fuel'],       'desc' => 'Record pump meter readings and shift sales.'],
-                    ['id' => 'fuel_closing',            'label' => 'Fuel Closing',                 'href' => 'staff_fuel_sales_closing.php',            'ico' => 'fas fa-lock',            'permissions' => ['encode_fuel', 'manage_fuel'],       'desc' => 'Daily fuel sales shift closing and validation.'],
-                    ['id' => 'fuel_reconciliation',     'label' => 'Fuel Reconciliation',          'href' => 'manager_fuel_reconciliation.php',         'ico' => 'fas fa-calculator',      'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Reconcile fuel deliveries, sales, and tank dips.'],
+                    ['id' => 'fuel_sales',                   'label' => 'Meter Reading',                'href' => 'staff_transactions_hub.php?section=fuel',          'ico' => 'fas fa-tachometer-alt', 'permissions' => ['encode_fuel', 'manage_fuel'],       'desc' => 'Record pump meter readings and shift sales.'],
+                    ['id' => 'fuel_transactions_validation', 'label' => 'Fuel Transaction Validation', 'href' => 'manager_fuel_transaction_validation.php',          'ico' => 'fas fa-check-double',   'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Review and validate staff-encoded fuel transactions.'],
+                    ['id' => 'fuel_adjustments',             'label' => 'Adjustments',                 'href' => 'manager_fuel_adjustments.php',                     'ico' => 'fas fa-sliders-h',      'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Apply corrections for tank levels, stock, or price changes.'],
+                    ['id' => 'fuel_pump_master',             'label' => 'Calibration Review',          'href' => 'manager_fuel_pump_master.php',                     'ico' => 'fas fa-ruler',          'permissions' => ['manage_fuel', 'view_all_reports'], 'desc' => 'Manage calibration values for accurate pump readings.'],
                 ],
             ],
+
             // 5. Inventory Management — Operational, Manager Stock-In/Review & Oversight
+
             [
                 'id' => 'admin_inventory',
                 'label' => 'Inventory',
@@ -421,6 +423,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
                     ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',       'href' => 'manager_validated_transactions.php',  'ico' => 'fas fa-list-check',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Monitor and manage merchandise, job order, and combined transactions in one page.'],
+                    ['id' => 'admin_receipt_management',       'label' => 'Receipt Management',     'href' => 'admin_receipt_management.php',         'ico' => 'fas fa-file-invoice',     'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Configure receipt templates, reissue correction receipts, and manage audit trail for issued receipts.'],
                     ['id' => 'manager_request_data_management','label' => 'Master Data Requests',   'href' => 'manager_request_data_management.php', 'ico' => 'fas fa-clipboard-list',   'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and process staff requests for products, services, and vehicles.'],
                     ['id' => 'manager_mechanics_management',   'label' => 'Mechanics Management',  'href' => 'manager_mechanics_management.php',    'ico' => 'fas fa-wrench',           'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
                 ];
@@ -505,7 +508,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['href']  = 'manager_product_merchandise.php';
                 $filtered_item['sub_items'] = [
                     ['id'=>'mgr_prod_merchandise', 'label'=>'Merchandise Products', 'href'=>'manager_product_merchandise.php',  'permissions'=>['manage_inventory','view_inventory']],
-                    ['id'=>'mgr_prod_fuel',        'label'=>'Fuel Products',        'href'=>'manager_product_fuel.php',         'permissions'=>['manage_inventory','view_inventory']],
+
                     ['id'=>'mgr_prod_prices',      'label'=>'Price History',        'href'=>'manager_approve_prices.php',       'permissions'=>['approve_transactions','manage_job_orders']],
                     ['id'=>'mgr_prod_adjustment',  'label'=>'Adjustment',           'href'=>'manager_fuel_adjustments.php',     'permissions'=>['manage_inventory','manage_fuel']],
                 ];
