@@ -4488,27 +4488,24 @@ require_once __DIR__ . '/rbac_menu.php';
                 } elseif ($has_custom_logo) {
                     $logo_path = $app_base_path . '/' . $raw_logo_clean;
                     $show_header_logo = true;
+                } elseif (file_exists(__DIR__ . '/../assets/img/Petron Logo.png')) {
+                    $logo_path = $app_base_path . '/assets/img/Petron%20Logo.png';
+                    $show_header_logo = true;
                 } elseif (file_exists(__DIR__ . '/../assets/img/petron_logo.png')) {
                     $logo_path = $app_base_path . '/assets/img/petron_logo.png';
                     $show_header_logo = true;
-                } elseif (file_exists(__DIR__ . '/../assets/img/Petron Logo.png')) {
-                    $logo_path = $app_base_path . '/assets/img/Petron Logo.png';
-                    $show_header_logo = true;
-                } elseif (file_exists(__DIR__ . '/../assets/img/petron_logo_full.png')) {
-                    $logo_path = $app_base_path . '/assets/img/petron_logo_full.png';
-                    $show_header_logo = true;
                 } else {
-                    $logo_path = $app_base_path . '/assets/img/petron_logo.png';
+                    $logo_path = $app_base_path . '/assets/img/Petron%20Logo.png';
                     $show_header_logo = true;
                 }
-                $fallback_logo = $app_base_path . '/assets/img/petron_logo.png';
+                $fallback_logo = $app_base_path . '/assets/img/Petron%20Logo.png';
                 $system_name = $station_settings['system_name'] ?? 'Petron Station Management System';
-                $logo_ver = file_exists($logo_file_sys) ? filemtime($logo_file_sys) : (file_exists(__DIR__ . '/../assets/img/petron_logo.png') ? filemtime(__DIR__ . '/../assets/img/petron_logo.png') : time());
+                $logo_ver = file_exists($logo_file_sys) ? filemtime($logo_file_sys) : (file_exists(__DIR__ . '/../assets/img/Petron Logo.png') ? filemtime(__DIR__ . '/../assets/img/Petron Logo.png') : time());
                 $logo_display_src = !empty($logo_path) ? ($logo_path . (strpos($logo_path, '?') === false ? '?v=' . $logo_ver : '')) : '';
             ?>
             <img src="<?php echo htmlspecialchars($logo_display_src); ?>" 
                  <?php if ($show_header_logo): ?>
-                 onerror="if(this.src!=='<?php echo htmlspecialchars($fallback_logo); ?>') this.src='<?php echo htmlspecialchars($fallback_logo); ?>';" 
+                 onerror="if(this.src.indexOf('Petron%20Logo.png')===-1 && this.src.indexOf('petron_logo.png')===-1){ this.src='<?php echo htmlspecialchars($fallback_logo); ?>'; }" 
                  <?php endif; ?>
                  alt="Petron Logo" class="brand-mark" id="petronLogo" style="<?php echo $show_header_logo ? 'display: inline-block !important;' : 'display: none !important;'; ?> height: 48px; width: auto; max-width: 60px; object-fit: contain; vertical-align: middle; margin-right: 12px; flex-shrink: 0;">
             <div class="brand-text">

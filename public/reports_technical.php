@@ -526,6 +526,19 @@ html, body {
     box-sizing: border-box !important;
 }
 
+/* Summary Cards matching Manager Fuel Transaction Validation standard */
+.afto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.afto-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.05); position: relative; overflow: hidden; }
+.afto-card-info { display: flex; flex-direction: column; }
+.afto-card-lbl { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.afto-card-val { font-size: 20px; font-weight: 700; color: #1e293b; }
+.afto-card-icon { font-size: 24px; opacity: 0.8; }
+.afto-card.blue .afto-card-icon { color: #2563eb; }
+.afto-card.yellow .afto-card-icon { color: #d97706; }
+.afto-card.green .afto-card-icon { color: #16a34a; }
+.afto-card.red .afto-card-icon { color: #dc2626; }
+.afto-card.purple .afto-card-icon { color: #8b5cf6; }
+
 /* Combined Filter & Export Bar */
 .rpt-filter-bar {
     display: flex !important;
@@ -820,55 +833,47 @@ a.rpt-action-btn:hover,
         </h1>
     </div>
 
-    <!-- Summary Cards Grid (4 Top Metric Cards - Elder Friendly) -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">
+    <!-- Summary Cards Grid (Matching Manager Fuel Transaction Validation Standard) -->
+    <div class="afto-cards">
         
         <!-- System Uptime -->
-        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
-            <div style="background: rgba(0,38,77,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="fas fa-desktop" style="font-size: 22px; color: var(--petron-blue, #00264D);"></i>
+        <div class="afto-card blue">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">System Uptime</span>
+                <span class="afto-card-val" id="sr_uptime"><?php echo htmlspecialchars($uptimeVal); ?></span>
+                <span style="font-size:11px; color:#16a34a; font-weight:600; margin-top:3px;"><i class="fas fa-check-circle"></i> Operational</span>
             </div>
-            <div>
-                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">System Uptime</div>
-                <div id="sr_uptime" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo htmlspecialchars($uptimeVal); ?></div>
-                <div style="font-size: 13.5px; color: #16a34a; font-weight: 600; margin-top: 4px;"><i class="fas fa-check-circle"></i> Operational</div>
-            </div>
+            <div class="afto-card-icon"><i class="fas fa-desktop"></i></div>
         </div>
 
         <!-- Database Size -->
-        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
-            <div style="background: rgba(40,167,69,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="fas fa-database" style="font-size: 22px; color: #28a745;"></i>
+        <div class="afto-card green">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Database Size</span>
+                <span class="afto-card-val" id="sr_db_size"><?php echo htmlspecialchars($dbSizeFormatted); ?></span>
+                <span class="afto-card-sub" id="sr_db_sub" style="font-size:11px; color:#64748b; font-weight:600; margin-top:3px;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</span>
             </div>
-            <div>
-                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Database Size</div>
-                <div id="sr_db_size" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo htmlspecialchars($dbSizeFormatted); ?></div>
-                <div id="sr_db_sub" style="font-size: 13.5px; color: #666; font-weight: 500; margin-top: 4px;"><?php echo $totalTablesCount; ?> Tables &bull; <?php echo number_format($totalRecordsCount); ?> Records</div>
-            </div>
+            <div class="afto-card-icon"><i class="fas fa-database"></i></div>
         </div>
 
         <!-- System Errors -->
-        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
-            <div style="background: rgba(255,193,7,.15); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="fas fa-exclamation-triangle" style="font-size: 22px; color: #b8860b;"></i>
+        <div class="afto-card yellow">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">System Errors</span>
+                <span class="afto-card-val" id="sr_errors"><?php echo $activeErrorsCount; ?> Active Errors</span>
+                <span style="font-size:11px; color:#d97706; font-weight:600; margin-top:3px;"><i class="fas fa-info-circle"></i> Tracking unresolved logs</span>
             </div>
-            <div>
-                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">System Errors</div>
-                <div id="sr_errors" style="font-size: 32px; font-weight: 800; color: #00264D; line-height: 1.1; margin: 2px 0;"><?php echo $activeErrorsCount; ?> Active Errors</div>
-                <div style="font-size: 13.5px; color: #b8860b; font-weight: 600; margin-top: 4px;"><i class="fas fa-info-circle"></i> Tracking unresolved logs</div>
-            </div>
+            <div class="afto-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
         </div>
 
         <!-- Latest Backup -->
-        <div style="background: #ffffff; border: 1px solid #eaeaea; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px;">
-            <div style="background: rgba(0,38,77,.1); width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i class="fas fa-hdd" style="font-size: 22px; color: var(--petron-blue, #00264D);"></i>
+        <div class="afto-card purple">
+            <div class="afto-card-info">
+                <span class="afto-card-lbl">Latest Backup</span>
+                <span class="afto-card-val" id="sr_latest_backup" style="font-size:16px;"><?php echo htmlspecialchars($latestBackupDate); ?></span>
+                <span style="font-size:11px; color:#64748b; font-weight:600; margin-top:3px;"><i class="fas fa-shield-alt"></i> Verified Backup</span>
             </div>
-            <div>
-                <div style="font-size: 15px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">Latest Backup</div>
-                <div id="sr_latest_backup" style="font-size: 20px; font-weight: 800; color: #00264D; line-height: 1.2; margin: 4px 0;"><?php echo htmlspecialchars($latestBackupDate); ?></div>
-                <div style="font-size: 13.5px; color: #666; font-weight: 600; margin-top: 4px;"><i class="fas fa-shield-alt"></i> Verified Backup</div>
-            </div>
+            <div class="afto-card-icon"><i class="fas fa-hdd"></i></div>
         </div>
 
     </div>

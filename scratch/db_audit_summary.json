@@ -1,0 +1,2937 @@
+{
+    "total_tables": 110,
+    "active_count": 109,
+    "unused_count": 1,
+    "tables": {
+        "activity_logs": {
+            "rows": 204,
+            "refs": 56,
+            "columns": [
+                "id",
+                "user_id",
+                "action",
+                "details",
+                "reference",
+                "ip_address",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "app\\master_data\\products\\inventory_history.php",
+                "app\\master_data\\roles_permissions\\rbac.php",
+                "backend\\api\\developer_operations.php",
+                "backend\\api\\developer_reports_api.php",
+                "backend\\api\\get_transaction_details.php"
+            ]
+        },
+        "adjustment_history": {
+            "rows": 0,
+            "refs": 4,
+            "columns": [
+                "id",
+                "transaction_id",
+                "transaction_db_id",
+                "adjustment_type_id",
+                "request_id",
+                "requested_by",
+                "approved_by",
+                "reason",
+                "old_values_json",
+                "new_values_json",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\save_adjustment.php",
+                "backend\\get_transaction_details.php",
+                "backend\\transaction_schema_fix.php",
+                "public\\admin_all_transactions.php"
+            ]
+        },
+        "adjustment_types": {
+            "rows": 6,
+            "refs": 2,
+            "columns": [
+                "id",
+                "name",
+                "description",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\adjustment_types.php",
+                "public\\admin_fuel_adjustments_oversight.php"
+            ]
+        },
+        "admin_compliance_deadlines": {
+            "rows": 0,
+            "refs": 1,
+            "columns": [
+                "id",
+                "station_id",
+                "deadline_type",
+                "title",
+                "description",
+                "deadline_date",
+                "status",
+                "assigned_to",
+                "created_by",
+                "created_at",
+                "completed_at"
+            ],
+            "files": [
+                "public\\admin_calendar.php"
+            ]
+        },
+        "audit_logs": {
+            "rows": 29,
+            "refs": 50,
+            "columns": [
+                "id",
+                "user_id",
+                "log_type",
+                "action_type",
+                "action_details",
+                "entity_type",
+                "entity_id",
+                "old_values",
+                "new_values",
+                "ip_address",
+                "user_agent",
+                "status",
+                "error_message",
+                "created_at"
+            ],
+            "files": [
+                "app\\master_data\\users\\archived_users.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\admin_reports_audit_api.php"
+            ]
+        },
+        "audit_trail": {
+            "rows": 0,
+            "refs": 40,
+            "columns": [
+                "id",
+                "transaction_id",
+                "manager_id",
+                "action_type",
+                "new_value",
+                "old_value",
+                "station_id",
+                "entity_type",
+                "created_at",
+                "source_table",
+                "user_id",
+                "user_name",
+                "user_role",
+                "shift_period",
+                "action",
+                "module",
+                "or_number",
+                "request_id",
+                "old_values_json",
+                "new_values_json",
+                "reason",
+                "ip_address"
+            ],
+            "files": [
+                "backend\\api\\adjust_transaction.php",
+                "backend\\api\\admin_deliveries_oversight_api.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\approve_transaction.php",
+                "backend\\api\\developer_reports_api.php"
+            ]
+        },
+        "categories": {
+            "rows": 4,
+            "refs": 35,
+            "columns": [
+                "id",
+                "name",
+                "description",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "app\\master_data\\services\\services_staff.php",
+                "backend\\api\\get_service_types.php",
+                "backend\\api\\merchandise_batch_api.php",
+                "backend\\api\\required_parts.php",
+                "backend\\api\\service_categories.php"
+            ]
+        },
+        "customer_accounts_receivable": {
+            "rows": 0,
+            "refs": 11,
+            "columns": [
+                "id",
+                "customer_id",
+                "transaction_id",
+                "transaction_db_id",
+                "or_number",
+                "total_amount",
+                "amount_paid",
+                "outstanding_balance",
+                "status",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\customer_ar_api.php",
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\api\\save_adjustment.php",
+                "backend\\api\\void_transaction_manager.php",
+                "backend\\get_transaction_details.php"
+            ]
+        },
+        "customer_credit_transactions": {
+            "rows": 0,
+            "refs": 13,
+            "columns": [
+                "id",
+                "station_id",
+                "customer_id",
+                "amount",
+                "payment_method",
+                "remarks",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\customer_ar_api.php",
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\process_merchandise_cart_transaction.php",
+                "backend\\process_merchandise_transaction.php"
+            ]
+        },
+        "customer_requests": {
+            "rows": 0,
+            "refs": 6,
+            "columns": [
+                "id",
+                "station_id",
+                "requested_by",
+                "first_name",
+                "middle_name",
+                "last_name",
+                "contact_number",
+                "address",
+                "customer_type",
+                "vehicle_plate",
+                "vehicle_make",
+                "vehicle_model",
+                "vehicle_type",
+                "request_reason",
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "manager_remarks",
+                "customer_record_id",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\notifications_api.php",
+                "backend\\customer_module_helpers.php",
+                "partials\\header.php",
+                "public\\manager_customer_operations.php",
+                "public\\reports\\admin_reports_data.php"
+            ]
+        },
+        "customer_timeline": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "customer_id",
+                "event_type",
+                "description",
+                "created_by",
+                "created_at"
+            ],
+            "files": [
+                "backend\\customer_module_helpers.php",
+                "public\\manager_customer_operations.php"
+            ]
+        },
+        "customer_vehicles": {
+            "rows": 2,
+            "refs": 6,
+            "columns": [
+                "id",
+                "customer_id",
+                "plate_number",
+                "vehicle_type",
+                "brand",
+                "model",
+                "year_model",
+                "color",
+                "engine_no",
+                "chassis_no",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "backend\\customer_module_helpers.php",
+                "backend\\get_transaction_details.php",
+                "public\\manager_customer_operations.php",
+                "public\\reports\\admin_reports_data.php",
+                "public\\search.php"
+            ]
+        },
+        "customers": {
+            "rows": 2,
+            "refs": 78,
+            "columns": [
+                "id",
+                "name",
+                "contact_number",
+                "contact_person",
+                "phone",
+                "email",
+                "address",
+                "type",
+                "merchandise_type",
+                "credit_limit",
+                "current_balance",
+                "points",
+                "status",
+                "station_id",
+                "created_at",
+                "balance",
+                "id_type",
+                "id_number",
+                "account_status",
+                "mgr_status",
+                "mgr_notes",
+                "mgr_reviewed_by",
+                "mgr_reviewed_at",
+                "gov_id_image",
+                "cr_document",
+                "verification_status",
+                "verified_by",
+                "verified_at",
+                "first_name",
+                "middle_name",
+                "last_name",
+                "customer_type",
+                "registered_by",
+                "registered_at",
+                "customer_id",
+                "gov_id_type",
+                "company_name",
+                "company_address",
+                "company_contact_person",
+                "company_contact_number",
+                "verification_remarks",
+                "updated_by",
+                "updated_at",
+                "vehicle_plate",
+                "vehicle_make",
+                "vehicle_brand",
+                "vehicle_model",
+                "vehicle_type",
+                "engine_number",
+                "chassis_number",
+                "outstanding_balance",
+                "credit_terms",
+                "gov_id_file",
+                "cr_file",
+                "or_file",
+                "archived_at",
+                "archived_by",
+                "archive_reason",
+                "archive_remarks"
+            ],
+            "files": [
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\check_vehicle_security.php"
+            ]
+        },
+        "database_backups": {
+            "rows": 0,
+            "refs": 4,
+            "columns": [
+                "id",
+                "backup_name",
+                "backup_file",
+                "backup_size",
+                "backup_type",
+                "station_id",
+                "created_by",
+                "status",
+                "backup_path",
+                "notes",
+                "created_at",
+                "completed_at",
+                "compression",
+                "verified"
+            ],
+            "files": [
+                "public\\database_management.php",
+                "public\\db_download.php",
+                "public\\reports_technical.php",
+                "public\\super_admin_dashboard.php"
+            ]
+        },
+        "deliveries_oversight": {
+            "rows": 0,
+            "refs": 43,
+            "columns": [
+                "id",
+                "delivery_type",
+                "delivery_ref",
+                "supplier",
+                "product",
+                "quantity",
+                "expected_quantity",
+                "actual_quantity",
+                "damaged_quantity",
+                "unit_price",
+                "expected_amount",
+                "payable_amount",
+                "unit",
+                "delivery_date",
+                "dr_number",
+                "encoded_by",
+                "station_id",
+                "status",
+                "admin_id",
+                "admin_action_at",
+                "admin_notes",
+                "source_ref",
+                "created_at",
+                "updated_at",
+                "remarks",
+                "returned_at",
+                "return_reason",
+                "manager_id",
+                "manager_action_at",
+                "manager_notes",
+                "batch_id",
+                "unit_cost",
+                "expiry_date",
+                "received_by_name",
+                "category",
+                "discrepancy_type",
+                "resolution_action",
+                "resolved_at",
+                "resolved_by",
+                "finalized_at",
+                "finalized_by",
+                "delivery_time",
+                "sales_invoice_no",
+                "received_shift"
+            ],
+            "files": [
+                "backend\\api\\admin_deliveries_oversight_api.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\manager_merchandise_deliveries_api.php"
+            ]
+        },
+        "employee_documents": {
+            "rows": 20,
+            "refs": 2,
+            "columns": [
+                "id",
+                "user_id",
+                "doc_type",
+                "status",
+                "file_name",
+                "file_path",
+                "uploaded_at",
+                "updated_at"
+            ],
+            "files": [
+                "public\\export_employee_list.php",
+                "public\\users.php"
+            ]
+        },
+        "error_tracking_logs": {
+            "rows": 5,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "error_type",
+                "error_message",
+                "error_code",
+                "module_name",
+                "severity",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "partials\\reports\\technical_reports.php",
+                "public\\reports_technical.php",
+                "public\\super_admin_dashboard.php"
+            ]
+        },
+        "fuel_adjustments": {
+            "rows": 0,
+            "refs": 40,
+            "columns": [
+                "id",
+                "station_id",
+                "adjustment_date",
+                "fuel_type",
+                "fuel_type_id",
+                "adjustment_type",
+                "adjustment_type_id",
+                "liters",
+                "previous_value",
+                "new_value",
+                "reason",
+                "user_id",
+                "notes",
+                "status",
+                "approved_by",
+                "approved_at",
+                "created_at",
+                "updated_at",
+                "ugt_no",
+                "adjustment_direction",
+                "variance"
+            ],
+            "files": [
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\fuel_adjustments.php",
+                "backend\\api\\live_system_sync.php",
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_stock_in.php"
+            ]
+        },
+        "fuel_batches": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "fuel_type_id",
+                "station_id",
+                "batch_number",
+                "delivery_id",
+                "quantity_received",
+                "remaining_qty",
+                "unit_cost",
+                "selling_price_per_liter",
+                "supplier",
+                "date_received",
+                "encoded_by",
+                "status",
+                "notes",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_stock_in.php"
+            ]
+        },
+        "fuel_calibration_records": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_type",
+                "calibration_liters",
+                "calibration_reason",
+                "staff_id",
+                "calibration_date",
+                "shift_period",
+                "pump_number",
+                "previous_reading",
+                "notes",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "backend\\calendar_module_helpers.php",
+                "public\\api_fuel_readings.php",
+                "public\\staff_transactions_hub.php"
+            ]
+        },
+        "fuel_config_history": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_inventory_id",
+                "fuel_type",
+                "field_name",
+                "old_value",
+                "new_value",
+                "updated_by",
+                "updated_by_name",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices.php",
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "fuel_deliveries": {
+            "rows": 0,
+            "refs": 55,
+            "columns": [
+                "id",
+                "station_id",
+                "delivery_date",
+                "fuel_type",
+                "supplier",
+                "invoice_no",
+                "delivery_liters",
+                "tank_assigned",
+                "tanker_number",
+                "received_by",
+                "verified_by",
+                "verified_at",
+                "notes",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\deliveries_management_api.php",
+                "backend\\api\\fuel_adjustments.php",
+                "backend\\api\\manager_reports_api.php",
+                "backend\\api\\manager_stock_in.php"
+            ]
+        },
+        "fuel_inventory": {
+            "rows": 7,
+            "refs": 92,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_type_id",
+                "current_stock",
+                "fuel_type",
+                "current_level",
+                "capacity",
+                "reorder_level",
+                "critical_level",
+                "price_per_liter",
+                "latest_calibration",
+                "calibration_date",
+                "calibration_staff",
+                "status",
+                "last_updated",
+                "updated_by",
+                "ugt_no"
+            ],
+            "files": [
+                "app\\master_data\\categories_types\\fuel_types.php",
+                "app\\master_data\\products\\inventory.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\database_tables.php",
+                "backend\\api\\developer_operations.php"
+            ]
+        },
+        "fuel_management_config": {
+            "rows": 8,
+            "refs": 1,
+            "columns": [
+                "id",
+                "station_id",
+                "config_key",
+                "config_value",
+                "data_type",
+                "description",
+                "updated_by",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\manager_fuel_config.php"
+            ]
+        },
+        "fuel_price_history": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_id",
+                "fuel_type",
+                "old_price",
+                "new_price",
+                "difference",
+                "reason",
+                "requested_by",
+                "requested_by_name",
+                "approved_by",
+                "approved_by_name",
+                "updated_by",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices.php",
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "fuel_price_log": {
+            "rows": 0,
+            "refs": 5,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_type_id",
+                "fuel_type",
+                "old_price",
+                "new_price",
+                "price_difference",
+                "change_type",
+                "reason_for_change",
+                "changed_by",
+                "changed_by_name",
+                "ip_address",
+                "user_agent",
+                "change_timestamp"
+            ],
+            "files": [
+                "backend\\api\\fuel_price_change_log.php",
+                "backend\\api\\module_config_api.php",
+                "public\\fuel_price_change_log.php",
+                "public\\manager_fuel_management_complete.php",
+                "public\\product_management.php"
+            ]
+        },
+        "fuel_pricing": {
+            "rows": 9,
+            "refs": 16,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_type_id",
+                "price_per_liter",
+                "effective_date",
+                "is_active",
+                "created_by",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\calendar_module_helpers.php",
+                "backend\\sync_fuel_prices.php",
+                "public\\admin_inventory_fuel.php",
+                "public\\admin_purchase_orders.php",
+                "public\\admin_set_prices.php"
+            ]
+        },
+        "fuel_pumps": {
+            "rows": 17,
+            "refs": 48,
+            "columns": [
+                "id",
+                "station_id",
+                "pump_number",
+                "pump_name",
+                "nozzle_number",
+                "fuel_type_id",
+                "tank_id",
+                "ugt_no",
+                "capacity",
+                "status",
+                "created_at",
+                "calibration_value",
+                "calibration_updated_by",
+                "calibration_updated_at",
+                "calibration_notes"
+            ],
+            "files": [
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\developer_operations.php",
+                "backend\\api\\fuel_reconciliation_manager.php",
+                "backend\\api\\nozzles.php",
+                "backend\\api\\pumps.php"
+            ]
+        },
+        "fuel_purchase_orders": {
+            "rows": 0,
+            "refs": 18,
+            "columns": [
+                "id",
+                "po_number",
+                "station_id",
+                "fuel_type_id",
+                "volume",
+                "unit_price",
+                "total_amount",
+                "supplier_id",
+                "expected_delivery_date",
+                "actual_volume",
+                "delivery_date",
+                "delivery_notes",
+                "status",
+                "created_by",
+                "created_at",
+                "delivered_by",
+                "notes",
+                "approved_by",
+                "approved_at",
+                "batch_id",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\admin_deliveries_oversight_api.php",
+                "backend\\api\\deliveries_management_api.php",
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\notifications_api.php",
+                "public\\admin_po_ajax.php"
+            ]
+        },
+        "fuel_sales_closing": {
+            "rows": 0,
+            "refs": 20,
+            "columns": [
+                "id",
+                "station_id",
+                "report_date",
+                "shift",
+                "shift_period",
+                "total_fuel_sales",
+                "total_liters",
+                "diesel_sales",
+                "turbo_diesel_sales",
+                "xcs_plus_sales",
+                "xtra_advance_sales",
+                "kerosene_sales",
+                "olg_sales",
+                "tba_sales",
+                "service_income",
+                "other_sales",
+                "ar_collected",
+                "total_store_sales",
+                "cash_shift1",
+                "cash_shift2",
+                "total_cash",
+                "ar_shift1",
+                "ar_shift2",
+                "total_ar",
+                "gross_sales",
+                "expected_cash",
+                "total_cash_bank",
+                "encoded_by",
+                "encoded_at",
+                "status",
+                "beginning_cash",
+                "cash_sales",
+                "cash_expenses",
+                "actual_cash",
+                "cash_variance",
+                "new_ar",
+                "outstanding_ar",
+                "total_ar_balance",
+                "beginning_bank_balance",
+                "bank_deposits",
+                "bank_movements",
+                "total_adjustments",
+                "overall_total",
+                "merchandise_sales",
+                "job_order_sales",
+                "total_sales_revenue",
+                "other_bank_in",
+                "bank_withdrawals",
+                "bank_expenses",
+                "beginning_ar",
+                "ar_adjustments",
+                "ar_voided",
+                "ending_ar",
+                "other_cash_in",
+                "bank_withdrawal",
+                "net_sales",
+                "verified_by",
+                "checked_by"
+            ],
+            "files": [
+                "backend\\api\\notifications_api.php",
+                "backend\\calendar_module_helpers.php",
+                "backend\\lib.php",
+                "public\\admin_dashboard.php",
+                "public\\api_fuel_readings.php"
+            ]
+        },
+        "fuel_status_history": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "fuel_inventory_id",
+                "fuel_type",
+                "old_status",
+                "new_status",
+                "status",
+                "reason",
+                "changed_by",
+                "changed_by_name",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices.php",
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "fuel_stock_in": {
+            "rows": 0,
+            "refs": 9,
+            "columns": [
+                "id",
+                "delivery_id",
+                "invoice_no",
+                "station_id",
+                "fuel_type",
+                "qty_expected",
+                "qty_received",
+                "qty_variance",
+                "condition_flag",
+                "remarks",
+                "level_before",
+                "level_after",
+                "encoded_by",
+                "encoded_at",
+                "batch_ref",
+                "delivery_ref",
+                "selling_price_per_liter"
+            ],
+            "files": [
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_stock_in.php",
+                "backend\\inventory.php",
+                "partials\\staff_inventory_summary.php",
+                "public\\admin_supplier_billing.php"
+            ]
+        },
+        "fuel_stock_request_audit": {
+            "rows": 0,
+            "refs": 5,
+            "columns": [
+                "id",
+                "request_id",
+                "action_type",
+                "performed_by",
+                "performed_by_role",
+                "old_status",
+                "new_status",
+                "notes",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\fuel_stock_request.php",
+                "public\\admin_purchase_orders.php",
+                "public\\db_connect.php",
+                "public\\manager_fuel_stock_requests.php",
+                "public\\manager_stock_request_review.php"
+            ]
+        },
+        "fuel_stock_requests": {
+            "rows": 0,
+            "refs": 17,
+            "columns": [
+                "id",
+                "request_no",
+                "staff_id",
+                "station_id",
+                "fuel_type_id",
+                "fuel_type",
+                "current_level",
+                "capacity",
+                "stock_status",
+                "requested_liters",
+                "remarks",
+                "status",
+                "approved_liters",
+                "manager_id",
+                "manager_notes",
+                "processed_at",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\fuel_stock_request.php",
+                "backend\\api\\notifications_api.php",
+                "backend\\api\\stock_request.php",
+                "partials\\manager_inventory_summary.php",
+                "partials\\staff_inventory_summary.php"
+            ]
+        },
+        "fuel_suppliers": {
+            "rows": 2,
+            "refs": 7,
+            "columns": [
+                "id",
+                "supplier_name",
+                "contact_person",
+                "contact_phone",
+                "contact_email",
+                "address",
+                "registration_details",
+                "delivery_terms",
+                "is_active",
+                "station_id",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\deliveries_management_api.php",
+                "backend\\manager_fuel_config.php",
+                "public\\manager_deliveries_management.php",
+                "public\\manager_fuel_management_complete.php",
+                "public\\manager_record_delivery.php"
+            ]
+        },
+        "fuel_transactions": {
+            "rows": 0,
+            "refs": 83,
+            "columns": [
+                "id",
+                "transaction_id",
+                "station_id",
+                "pump_id",
+                "fuel_type",
+                "present_reading",
+                "previous_reading",
+                "calibration",
+                "staff_calibration",
+                "price_per_liter",
+                "liters_sold",
+                "total_amount",
+                "payment_method",
+                "shift_period",
+                "staff_id",
+                "transaction_date",
+                "status",
+                "validated_by",
+                "validated_at",
+                "created_at",
+                "shift_name",
+                "shift_id",
+                "notes",
+                "reject_reason",
+                "manager_id",
+                "customer_id",
+                "inventory_deducted"
+            ],
+            "files": [
+                "backend\\api\\adjust_transaction.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\approve_transaction.php"
+            ]
+        },
+        "fuel_types": {
+            "rows": 9,
+            "refs": 97,
+            "columns": [
+                "id",
+                "category_id",
+                "name",
+                "description",
+                "price_per_liter"
+            ],
+            "files": [
+                "app\\master_data\\categories_types\\fuel_types.php",
+                "app\\master_data\\departments_offices_counters\\station_operations.php",
+                "app\\master_data\\departments_offices_counters\\station_profiles.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\check_stock.php"
+            ]
+        },
+        "fuel_variance_reports": {
+            "rows": 0,
+            "refs": 23,
+            "columns": [
+                "id",
+                "station_id",
+                "pump_id",
+                "tank_id",
+                "variance_liters",
+                "variance_type",
+                "notes",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\fuel_reconciliation_manager.php",
+                "backend\\api\\manager_reports_api.php"
+            ]
+        },
+        "integration_audit": {
+            "rows": 0,
+            "refs": 1,
+            "columns": [
+                "id",
+                "action_type",
+                "endpoint_name",
+                "changed_by",
+                "changed_by_name",
+                "details",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\superadmin_notification_generator.php"
+            ]
+        },
+        "inventory_logs": {
+            "rows": 0,
+            "refs": 25,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "user_id",
+                "action",
+                "movement_type",
+                "reason",
+                "quantity_before",
+                "quantity_after",
+                "quantity_change",
+                "reference_type",
+                "reference_id",
+                "reference_no",
+                "notes",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_adjustments.php",
+                "backend\\api\\merchandise_stock_in.php",
+                "backend\\api\\merchandise_transactions.php"
+            ]
+        },
+        "inventory_products": {
+            "rows": 338,
+            "refs": 103,
+            "columns": [
+                "id",
+                "product_name",
+                "sku",
+                "barcode",
+                "category",
+                "category_id",
+                "brand",
+                "size",
+                "unit",
+                "description",
+                "cost_price",
+                "unit_price",
+                "unit_cost",
+                "selling_price",
+                "stock",
+                "stock_quantity",
+                "min_stock",
+                "max_stock",
+                "reorder_level",
+                "critical_level",
+                "station_id",
+                "status",
+                "created_at",
+                "updated_at",
+                "expiration_date"
+            ],
+            "files": [
+                "app\\master_data\\categories_types\\fuel_types.php",
+                "backend\\api\\add_product.php",
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php"
+            ]
+        },
+        "job_order_parts": {
+            "rows": 0,
+            "refs": 8,
+            "columns": [
+                "id",
+                "job_order_id",
+                "product_id",
+                "quantity_used",
+                "unit_cost",
+                "total_cost",
+                "created_at"
+            ],
+            "files": [
+                "backend\\clear_job_orders.php",
+                "backend\\job_order_operations.php",
+                "public\\job_order_operations.php",
+                "public\\reports\\admin_daily_merchandise_service_report.php",
+                "public\\reports\\admin_shift_reports.php"
+            ]
+        },
+        "job_order_service_types": {
+            "rows": 101,
+            "refs": 24,
+            "columns": [
+                "id",
+                "service_code",
+                "service_key",
+                "service_name",
+                "category",
+                "base_rate_per_hour",
+                "icon_class",
+                "color_class",
+                "allows_custom_input",
+                "allows_manual_parts",
+                "active",
+                "sort_order",
+                "status",
+                "submitted_by",
+                "reviewed_by",
+                "review_note",
+                "created_at",
+                "updated_at",
+                "service_price",
+                "labor_fee",
+                "estimated_duration",
+                "required_mechanics",
+                "description",
+                "station_id",
+                "created_by",
+                "min_price",
+                "max_price",
+                "price_description",
+                "pricing_notes"
+            ],
+            "files": [
+                "backend\\activate_all_services.php",
+                "backend\\api\\approve_master_data_request.php",
+                "backend\\api\\get_service_types.php",
+                "backend\\api\\module_config_api.php",
+                "backend\\api\\required_parts.php"
+            ]
+        },
+        "job_orders": {
+            "rows": 0,
+            "refs": 118,
+            "columns": [
+                "id",
+                "job_order_number",
+                "station_id",
+                "user_id",
+                "customer_id",
+                "vehicle_plate",
+                "vehicle_type",
+                "engine_number",
+                "chassis_number",
+                "service_category_id",
+                "assigned_mechanic_id",
+                "assigned_by",
+                "service_description",
+                "has_manual_input",
+                "estimated_duration",
+                "status",
+                "notes",
+                "started_at",
+                "completed_at",
+                "created_at",
+                "updated_at",
+                "requires_approval",
+                "reviewed_by",
+                "reviewed_at",
+                "staff_editable",
+                "approved_by",
+                "approved_at",
+                "admin_remarks",
+                "estimated_labor_cost",
+                "estimated_parts_cost",
+                "actual_labor_cost",
+                "actual_parts_cost",
+                "total_cost",
+                "actual_duration",
+                "billing_locked",
+                "amount_paid",
+                "sukli",
+                "payment_status",
+                "ar_status",
+                "job_order_id",
+                "validation_status",
+                "estimated_cost",
+                "shift_id",
+                "customer_name",
+                "service_type",
+                "required_parts",
+                "additional_notes",
+                "payment_method",
+                "created_by",
+                "service_price_details",
+                "validated_by",
+                "validated_at",
+                "adjustment_reason",
+                "is_credit",
+                "rejection_reason",
+                "balance_due",
+                "due_date",
+                "void_reason",
+                "manager_remarks",
+                "vehicle_brand",
+                "vehicle_model",
+                "year_model",
+                "contact_number"
+            ],
+            "files": [
+                "backend\\admin_unlock_operations.php",
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\admin_unlock_operations.php"
+            ]
+        },
+        "labor_sessions": {
+            "rows": 18,
+            "refs": 31,
+            "columns": [
+                "id",
+                "user_id",
+                "station_id",
+                "start_time",
+                "end_time",
+                "hours_worked",
+                "created_at",
+                "shift_period",
+                "shift_name"
+            ],
+            "files": [
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\labor.php",
+                "backend\\api\\manager_reports_api.php"
+            ]
+        },
+        "login_attempts": {
+            "rows": 16,
+            "refs": 4,
+            "columns": [
+                "id",
+                "user_id",
+                "username",
+                "ip_address",
+                "user_agent",
+                "attempt_time",
+                "status",
+                "failure_reason",
+                "attempts_count"
+            ],
+            "files": [
+                "backend\\api\\developer_reports_api.php",
+                "public\\login.php",
+                "public\\reports\\admin_reports_data.php",
+                "public\\superadmin_audit_trail.php"
+            ]
+        },
+        "loyalty_accounts": {
+            "rows": 2,
+            "refs": 3,
+            "columns": [
+                "id",
+                "customer_id",
+                "program_id",
+                "card_number",
+                "points_balance",
+                "expiry_date",
+                "status",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\loyalty_schema_fix.php",
+                "public\\manager_customer_operations.php"
+            ]
+        },
+        "loyalty_programs": {
+            "rows": 1,
+            "refs": 3,
+            "columns": [
+                "id",
+                "program_name",
+                "points_per_amount",
+                "minimum_redeem_points",
+                "redemption_value",
+                "status",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\loyalty_schema_fix.php",
+                "public\\staff_transactions_hub.php"
+            ]
+        },
+        "loyalty_transactions": {
+            "rows": 0,
+            "refs": 4,
+            "columns": [
+                "id",
+                "loyalty_account_id",
+                "customer_id",
+                "reference_id",
+                "transaction_type",
+                "points_earned",
+                "points_redeemed",
+                "points_balance_after",
+                "created_by",
+                "created_at",
+                "remarks"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\loyalty_schema_fix.php",
+                "public\\loyalty.php",
+                "public\\manager_customer_operations.php"
+            ]
+        },
+        "manager_color_config": {
+            "rows": 2,
+            "refs": 2,
+            "columns": [
+                "id",
+                "user_id",
+                "color_code",
+                "color_name",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\staff_color_config.php",
+                "public\\staff_calendar_event_management.php"
+            ]
+        },
+        "manager_meetings": {
+            "rows": 0,
+            "refs": 0,
+            "columns": [
+                "id",
+                "station_id",
+                "meeting_title",
+                "meeting_type",
+                "meeting_date",
+                "start_time",
+                "end_time",
+                "attendees",
+                "agenda",
+                "status",
+                "created_by",
+                "created_at"
+            ],
+            "files": []
+        },
+        "master_data_requests": {
+            "rows": 0,
+            "refs": 16,
+            "columns": [
+                "id",
+                "request_no",
+                "category",
+                "source_module",
+                "requested_by",
+                "station_id",
+                "status",
+                "data_payload",
+                "rejection_reason",
+                "reviewed_by",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\approve_master_data_request.php",
+                "backend\\api\\submit_master_data_request.php",
+                "backend\\helpers\\get_pending_requests_count.php",
+                "database\\recreate_master_data_requests.php",
+                "public\\admin_dashboard.php"
+            ]
+        },
+        "mechanics": {
+            "rows": 4,
+            "refs": 23,
+            "columns": [
+                "id",
+                "first_name",
+                "middle_name",
+                "last_name",
+                "full_name",
+                "specialization",
+                "shift_assignment",
+                "date_hired",
+                "contact_no",
+                "address",
+                "status",
+                "archived",
+                "archive_reason",
+                "station_id",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\manager_reports_api.php",
+                "backend\\api\\shift_transactions.php",
+                "backend\\clear_job_orders.php",
+                "backend\\job_order_operations.php"
+            ]
+        },
+        "merchandise_adjustments": {
+            "rows": 0,
+            "refs": 6,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "product_name",
+                "sku",
+                "category",
+                "current_stock",
+                "adjusted_stock",
+                "quantity_change",
+                "adjustment_type",
+                "reason",
+                "status",
+                "requested_by",
+                "requested_at",
+                "approved_by",
+                "approved_at",
+                "rejection_reason",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\inventory_adjustment.php",
+                "backend\\api\\merchandise_adjustments.php",
+                "public\\admin_dashboard.php",
+                "public\\admin_inventory_merchandise.php",
+                "public\\manager_inventory_merchandise.php"
+            ]
+        },
+        "merchandise_batches": {
+            "rows": 0,
+            "refs": 15,
+            "columns": [
+                "id",
+                "product_id",
+                "station_id",
+                "batch_number",
+                "delivery_id",
+                "quantity_received",
+                "remaining_qty",
+                "unit_cost",
+                "supplier",
+                "date_received",
+                "encoded_by",
+                "validated_by",
+                "validated_at",
+                "status",
+                "notes",
+                "created_at",
+                "updated_at",
+                "selling_price"
+            ],
+            "files": [
+                "backend\\api\\manager_merchandise_deliveries_api.php",
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_batch_api.php",
+                "backend\\api\\merchandise_stock_in.php",
+                "backend\\api\\merchandise_transactions.php"
+            ]
+        },
+        "merchandise_stock_in": {
+            "rows": 0,
+            "refs": 22,
+            "columns": [
+                "id",
+                "po_id",
+                "po_number",
+                "station_id",
+                "product_id",
+                "product_name",
+                "sku",
+                "category",
+                "qty_ordered",
+                "qty_received",
+                "qty_variance",
+                "unit_cost",
+                "total_cost",
+                "condition_flag",
+                "remarks",
+                "stock_before",
+                "stock_after",
+                "encoded_by",
+                "encoded_at",
+                "batch_ref",
+                "delivery_id",
+                "selling_price"
+            ],
+            "files": [
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\merchandise_stock_in.php",
+                "database\\create_merchandise_stock_in_table.php",
+                "partials\\staff_inventory_summary.php",
+                "public\\admin_dashboard.php"
+            ]
+        },
+        "merchandise_transaction_audit": {
+            "rows": 0,
+            "refs": 1,
+            "columns": [
+                "id",
+                "transaction_id",
+                "user_id",
+                "action",
+                "details",
+                "ip_address",
+                "user_agent",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php"
+            ]
+        },
+        "merchandise_transaction_items": {
+            "rows": 0,
+            "refs": 53,
+            "columns": [
+                "id",
+                "transaction_id",
+                "product_id",
+                "batch_id",
+                "product_name",
+                "category",
+                "size_variant",
+                "quantity",
+                "unit_price",
+                "subtotal",
+                "item_type",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\get_transaction_items.php",
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\api\\process_transaction_request.php",
+                "backend\\api\\save_adjustment.php"
+            ]
+        },
+        "merchandise_transactions": {
+            "rows": 0,
+            "refs": 111,
+            "columns": [
+                "id",
+                "transaction_id",
+                "station_id",
+                "item_sku",
+                "quantity",
+                "unit_price",
+                "total_amount",
+                "staff_id",
+                "transaction_date",
+                "created_at",
+                "validation_status",
+                "customer_name",
+                "payment_method",
+                "payment_method_id",
+                "validated_by",
+                "validated_at",
+                "rejection_reason",
+                "adjustment_reason",
+                "credit_customer_id",
+                "remarks",
+                "shift_period",
+                "shift_name",
+                "shift_id",
+                "amount_tendered",
+                "change_amount",
+                "card_reference",
+                "card_type",
+                "ewallet_reference",
+                "ewallet_provider",
+                "efuel_card_number",
+                "updated_at",
+                "job_order_id",
+                "job_order_db_id",
+                "job_order_service",
+                "job_order_description",
+                "job_order_vehicle_plate",
+                "job_order_vehicle_type",
+                "job_order_engine_number",
+                "job_order_chassis_number",
+                "job_order_mechanic_id",
+                "job_order_mechanic_name",
+                "job_order_contact",
+                "subtotal_amount",
+                "vat_amount",
+                "customer_first_name",
+                "customer_last_name",
+                "customer_contact",
+                "transaction_type",
+                "payment_status",
+                "ar_status",
+                "workflow_status",
+                "manager_notes",
+                "manager_remarks",
+                "inventory_deducted",
+                "void_reason",
+                "amount_paid",
+                "balance_due",
+                "staff_remarks",
+                "due_date",
+                "card_last_four",
+                "efuel_reference",
+                "fleet_card_number",
+                "fleet_company_name",
+                "fleet_auth_number",
+                "credit_company_name",
+                "credit_account_number",
+                "credit_po_number",
+                "credit_due_date",
+                "customer_id",
+                "loyalty_type",
+                "loyalty_card_no",
+                "loyalty_points_earned",
+                "loyalty_points_redeemed",
+                "job_order_vehicle_brand",
+                "job_order_vehicle_model",
+                "job_order_year_model",
+                "job_order_estimated_duration"
+            ],
+            "files": [
+                "backend\\api\\adjust_transaction.php",
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_api.php"
+            ]
+        },
+        "module_config": {
+            "rows": 92,
+            "refs": 8,
+            "columns": [
+                "id",
+                "module_key",
+                "config_key",
+                "config_value",
+                "config_type",
+                "config_category",
+                "description",
+                "is_encrypted",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\module_config_api.php",
+                "backend\\api\\superadmin_module_config_api.php",
+                "backend\\lib.php",
+                "backend\\module_config.php",
+                "partials\\rbac_menu.php"
+            ]
+        },
+        "module_config_audit": {
+            "rows": 0,
+            "refs": 5,
+            "columns": [
+                "id",
+                "module_key",
+                "config_key",
+                "action_type",
+                "old_value",
+                "new_value",
+                "changed_by",
+                "changed_by_role",
+                "ip_address",
+                "user_agent",
+                "timestamp"
+            ],
+            "files": [
+                "backend\\api\\module_config_api.php",
+                "backend\\api\\superadmin_module_config_api.php",
+                "backend\\api\\superadmin_notification_generator.php",
+                "backend\\module_config.php",
+                "public\\superadmin_audit_trail.php"
+            ]
+        },
+        "module_settings": {
+            "rows": 12,
+            "refs": 8,
+            "columns": [
+                "id",
+                "module_key",
+                "module_code",
+                "module_name",
+                "module_description",
+                "is_enabled",
+                "user_access",
+                "module_order",
+                "created_at",
+                "updated_at",
+                "version",
+                "last_updated"
+            ],
+            "files": [
+                "backend\\api\\module_config_api.php",
+                "backend\\api\\superadmin_module_config_api.php",
+                "backend\\lib.php",
+                "backend\\module_config.php",
+                "partials\\rbac_menu.php"
+            ]
+        },
+        "module_station_config": {
+            "rows": 4,
+            "refs": 2,
+            "columns": [
+                "id",
+                "module_key",
+                "station_id",
+                "config_data",
+                "updated_by",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\lib.php",
+                "public\\module_configuration.php"
+            ]
+        },
+        "notifications": {
+            "rows": 0,
+            "refs": 40,
+            "columns": [
+                "id",
+                "user_id",
+                "recipient_role",
+                "type",
+                "title",
+                "message",
+                "event_type",
+                "severity",
+                "source_key",
+                "redirect_url",
+                "reference_type",
+                "reference_id",
+                "shift_period",
+                "status",
+                "created_at",
+                "read_at"
+            ],
+            "files": [
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\fuel_stock_request.php",
+                "backend\\api\\inventory_adjustment.php",
+                "backend\\api\\live_system_sync.php"
+            ]
+        },
+        "nozzles": {
+            "rows": 17,
+            "refs": 12,
+            "columns": [
+                "id",
+                "station_id",
+                "pump_id",
+                "pump_name",
+                "nozzle_number",
+                "fuel_type_id",
+                "tank_id",
+                "ugt_no",
+                "status",
+                "calibration_value",
+                "last_calibrated_date",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\nozzles.php",
+                "backend\\api\\pumps.php",
+                "public\\admin_set_prices.php",
+                "public\\admin_set_prices_handler.php",
+                "public\\fuel_management.php"
+            ]
+        },
+        "password_reset_tokens": {
+            "rows": 0,
+            "refs": 5,
+            "columns": [
+                "id",
+                "user_id",
+                "token",
+                "token_type",
+                "expires_at",
+                "used_at",
+                "ip_address",
+                "is_used",
+                "created_at",
+                "attempts"
+            ],
+            "files": [
+                "backend\\lib.php",
+                "config\\password_reset_whitelist.php",
+                "public\\forgot_password.php",
+                "public\\forgot_password_reset.php",
+                "public\\verify_otp.php"
+            ]
+        },
+        "payment_audit_log": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "record_id",
+                "record_source",
+                "staff_id",
+                "station_id",
+                "amount_paid",
+                "payment_method",
+                "balance_due",
+                "payment_status",
+                "remarks",
+                "logged_at"
+            ],
+            "files": [
+                "backend\\transaction_schema_fix.php",
+                "public\\manager_customer_operations.php",
+                "public\\staff_transactions_hub.php"
+            ]
+        },
+        "payment_methods": {
+            "rows": 7,
+            "refs": 4,
+            "columns": [
+                "id",
+                "name",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\api\\payment_methods.php",
+                "public\\manager_customer_operations.php",
+                "public\\transactions.php"
+            ]
+        },
+        "pending_price_approvals": {
+            "rows": 0,
+            "refs": 15,
+            "columns": [
+                "id",
+                "product_id",
+                "product_type",
+                "product_name",
+                "field_name",
+                "old_value",
+                "new_value",
+                "requested_by",
+                "station_id",
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "reviewer_notes",
+                "created_at",
+                "fuel_type_id",
+                "service_type_id",
+                "old_cost",
+                "new_cost",
+                "old_price",
+                "new_price",
+                "manager_id",
+                "admin_id",
+                "rejection_reason",
+                "updated_at",
+                "reason"
+            ],
+            "files": [
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\live_system_sync.php",
+                "backend\\api\\notifications_api.php",
+                "backend\\lib.php",
+                "database\\verify_and_clean.php"
+            ]
+        },
+        "ph_regions": {
+            "rows": 17,
+            "refs": 2,
+            "columns": [
+                "id",
+                "name",
+                "sort_order"
+            ],
+            "files": [
+                "backend\\api\\superadmin_station_management_api.php",
+                "public\\superadmin_station_management.php"
+            ]
+        },
+        "product_categories": {
+            "rows": 23,
+            "refs": 25,
+            "columns": [
+                "id",
+                "name",
+                "description",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\inventory_adjustment.php",
+                "backend\\api\\manager_stock_in.php",
+                "backend\\api\\products.php",
+                "backend\\api\\staff_transaction_options.php",
+                "backend\\api\\stock_request.php"
+            ]
+        },
+        "product_config_history": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "field_name",
+                "old_value",
+                "new_value",
+                "changed_by",
+                "changed_by_name",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "product_price_history": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "old_price",
+                "new_price",
+                "requested_by",
+                "requested_by_name",
+                "approved_by",
+                "approved_by_name",
+                "status",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "product_status_history": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "old_status",
+                "new_status",
+                "changed_by",
+                "changed_by_name",
+                "reason",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "product_types": {
+            "rows": 3,
+            "refs": 11,
+            "columns": [
+                "id",
+                "name",
+                "description"
+            ],
+            "files": [
+                "app\\master_data\\departments_offices_counters\\station_status.php",
+                "backend\\fuel_pos_sync.php",
+                "backend\\fuel_process_review.php",
+                "backend\\fuel_process_verification.php",
+                "backend\\inventory_automation.php"
+            ]
+        },
+        "products": {
+            "rows": 266,
+            "refs": 127,
+            "columns": [
+                "id",
+                "sku",
+                "barcode",
+                "name",
+                "brand",
+                "description",
+                "type_id",
+                "fuel_type_id",
+                "category_id",
+                "top_category_id",
+                "cost",
+                "price",
+                "created_at",
+                "updated_at",
+                "min_stock_level",
+                "max_stock_level",
+                "station_id",
+                "current_stock",
+                "unit",
+                "capacity",
+                "status",
+                "expiration_date"
+            ],
+            "files": [
+                "app\\master_data\\departments_offices_counters\\station_status.php",
+                "app\\master_data\\products\\merchandise_inventory.php",
+                "app\\master_data\\products\\products.php",
+                "backend\\api\\add_product.php",
+                "backend\\api\\admin_reports_api.php"
+            ]
+        },
+        "purchase_order_items": {
+            "rows": 0,
+            "refs": 13,
+            "columns": [
+                "id",
+                "po_id",
+                "item_name",
+                "quantity",
+                "product_id",
+                "quantity_ordered",
+                "unit_price",
+                "total_price",
+                "quantity_received",
+                "received_at",
+                "received_by",
+                "received_quantity"
+            ],
+            "files": [
+                "backend\\api\\manager_merchandise_deliveries_api.php",
+                "backend\\api\\stock_request.php",
+                "public\\admin_inventory_merchandise.php",
+                "public\\admin_supplier_billing.php",
+                "public\\manager_deliveries_management.php"
+            ]
+        },
+        "purchase_orders": {
+            "rows": 0,
+            "refs": 51,
+            "columns": [
+                "id",
+                "request_id",
+                "product_name",
+                "quantity",
+                "unit_price",
+                "total_amount",
+                "type",
+                "po_number",
+                "station_id",
+                "supplier_id",
+                "created_by",
+                "status",
+                "expected_delivery_date",
+                "remarks",
+                "created_at",
+                "updated_at",
+                "rejection_reason",
+                "approved_by",
+                "approved_at",
+                "submitted_at",
+                "withdrawn_at",
+                "admin_finalized",
+                "admin_finalized_at",
+                "stock_in_done",
+                "delivery_validated",
+                "delivery_validated_at",
+                "delivery_flag",
+                "admin_id",
+                "admin_notes",
+                "stock_in_at",
+                "stock_in_by",
+                "batch_id",
+                "delivery_validated_by",
+                "delivery_notes",
+                "actual_qty_received",
+                "supplier_name",
+                "expected_delivery",
+                "notes"
+            ],
+            "files": [
+                "backend\\api\\admin_deliveries_oversight_api.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\lib.php",
+                "backend\\api\\live_system_sync.php"
+            ]
+        },
+        "receipt_config": {
+            "rows": 1,
+            "refs": 4,
+            "columns": [
+                "id",
+                "station_id",
+                "receipt_title",
+                "receipt_number_prefix",
+                "station_header",
+                "station_address",
+                "station_contact",
+                "station_vat_tin",
+                "logo_path",
+                "footer_message",
+                "terms_notes",
+                "show_vat",
+                "show_payment_details",
+                "show_cashier",
+                "show_customer",
+                "paper_size",
+                "updated_by",
+                "updated_at",
+                "branch_name",
+                "atp_no",
+                "min_serial",
+                "footer_title",
+                "show_jo_details",
+                "show_qr"
+            ],
+            "files": [
+                "public\\admin_receipt_management.php",
+                "public\\admin_receipt_management_handler.php",
+                "public\\receipt.php",
+                "templates\\job_order_receipt.php"
+            ]
+        },
+        "receipt_corrections": {
+            "rows": 0,
+            "refs": 1,
+            "columns": [
+                "id",
+                "station_id",
+                "transaction_id",
+                "transaction_type",
+                "original_receipt_data",
+                "reason",
+                "correction_type",
+                "requested_by",
+                "requested_at",
+                "approved_by",
+                "approved_at",
+                "status",
+                "admin_notes",
+                "reissued_reference"
+            ],
+            "files": [
+                "public\\admin_receipt_management_handler.php"
+            ]
+        },
+        "restore_logs": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "backup_name",
+                "restored_by",
+                "status",
+                "details",
+                "restored_at"
+            ],
+            "files": [
+                "backend\\api\\database_api.php",
+                "public\\database_management.php",
+                "public\\superadmin_audit_trail.php"
+            ]
+        },
+        "service_categories": {
+            "rows": 14,
+            "refs": 13,
+            "columns": [
+                "id",
+                "name",
+                "description",
+                "default_parts_cost",
+                "default_labor_cost",
+                "default_duration",
+                "is_active",
+                "created_at"
+            ],
+            "files": [
+                "app\\master_data\\services\\get_service.php",
+                "app\\master_data\\services\\services_staff.php",
+                "backend\\api\\service_categories.php",
+                "backend\\job_order_operations.php",
+                "backend\\notification_system.php"
+            ]
+        },
+        "service_fee_history": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "service_id",
+                "change_type",
+                "old_service_fee",
+                "new_service_fee",
+                "old_labor_fee",
+                "new_labor_fee",
+                "notes",
+                "changed_by",
+                "changed_by_name",
+                "changed_by_role",
+                "approval_status",
+                "approval_id",
+                "created_at"
+            ],
+            "files": [
+                "public\\admin_set_prices_handler.php",
+                "public\\manager_set_prices_handler.php"
+            ]
+        },
+        "service_parts_mapping": {
+            "rows": 0,
+            "refs": 4,
+            "columns": [
+                "id",
+                "service_category_id",
+                "product_id",
+                "service_key",
+                "product_name",
+                "category",
+                "default_quantity",
+                "is_required",
+                "sort_order",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\database_pricing.php",
+                "backend\\api\\get_service_parts.php",
+                "backend\\api\\multi_service_operations.php",
+                "backend\\api\\service_parts.php"
+            ]
+        },
+        "service_rates": {
+            "rows": 20,
+            "refs": 3,
+            "columns": [
+                "id",
+                "service_category_id",
+                "station_id",
+                "rate_name",
+                "flat_rate",
+                "estimated_duration",
+                "is_active",
+                "effective_date",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "app\\master_data\\services\\get_service.php",
+                "public\\joborder_stats.php",
+                "public\\settings.php"
+            ]
+        },
+        "shift_periods": {
+            "rows": 2,
+            "refs": 18,
+            "columns": [
+                "id",
+                "shift_key",
+                "shift_name",
+                "start_time",
+                "end_time",
+                "description",
+                "is_active",
+                "sort_order",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\merchandise_transactions.php",
+                "backend\\api\\staff_shift_api.php",
+                "backend\\classes\\ShiftPeriodConfig.php",
+                "backend\\export\\export_manager_shift_summary.php",
+                "backend\\lib\\shift_transaction_binding.php"
+            ]
+        },
+        "shifts": {
+            "rows": 0,
+            "refs": 58,
+            "columns": [
+                "id",
+                "name",
+                "start_time",
+                "end_time",
+                "description",
+                "sort_order",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "app\\master_data\\users\\users.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\export_merchandise_validation.php"
+            ]
+        },
+        "staff_calendar_events": {
+            "rows": 0,
+            "refs": 8,
+            "columns": [
+                "id",
+                "station_id",
+                "event_type_id",
+                "staff_encoder_id",
+                "manager_assigned_id",
+                "event_date",
+                "start_time",
+                "end_time",
+                "work_description",
+                "status",
+                "notes",
+                "metadata",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\staff_calendar_api.php",
+                "backend\\calendar_module_helpers.php",
+                "public\\admin_calendar.php",
+                "public\\manager_calendar.php",
+                "public\\search.php"
+            ]
+        },
+        "staff_color_config": {
+            "rows": 0,
+            "refs": 3,
+            "columns": [
+                "id",
+                "user_id",
+                "color_code",
+                "color_name",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\staff_color_config.php",
+                "public\\staff_calendar_event_management.php",
+                "public\\staff_calendar_widget.php"
+            ]
+        },
+        "staff_event_types": {
+            "rows": 12,
+            "refs": 8,
+            "columns": [
+                "id",
+                "station_id",
+                "created_by",
+                "type_key",
+                "type_name",
+                "description",
+                "icon_class",
+                "color_class",
+                "sort_order",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\staff_calendar_api.php",
+                "backend\\calendar_module_helpers.php",
+                "public\\admin_calendar.php",
+                "public\\manager_calendar.php",
+                "public\\search.php"
+            ]
+        },
+        "station_inventory": {
+            "rows": 331,
+            "refs": 96,
+            "columns": [
+                "id",
+                "station_id",
+                "product_id",
+                "stock_level",
+                "cost",
+                "price",
+                "closing_stock",
+                "closing_date",
+                "closing_shift",
+                "reorder_level",
+                "critical_level",
+                "capacity",
+                "unit",
+                "status",
+                "last_updated",
+                "physical_count",
+                "variance",
+                "expiration_date"
+            ],
+            "files": [
+                "app\\master_data\\categories_types\\fuel_types.php",
+                "backend\\api\\add_product.php",
+                "backend\\api\\admin_direct_txn_action.php",
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php"
+            ]
+        },
+        "stations": {
+            "rows": 1412,
+            "refs": 157,
+            "columns": [
+                "id",
+                "name",
+                "location",
+                "address",
+                "region",
+                "outlet_type",
+                "region_id",
+                "contact_number",
+                "vat_tin",
+                "latitude",
+                "longitude",
+                "map_url",
+                "status",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "app\\master_data\\departments_offices_counters\\create_station_admin.php",
+                "app\\master_data\\departments_offices_counters\\station_operations.php",
+                "app\\master_data\\departments_offices_counters\\station_profiles.php",
+                "app\\master_data\\departments_offices_counters\\station_status.php",
+                "app\\master_data\\departments_offices_counters\\view_stations.php"
+            ]
+        },
+        "stock_request_audit": {
+            "rows": 0,
+            "refs": 7,
+            "columns": [
+                "id",
+                "stock_request_id",
+                "request_id",
+                "action_type",
+                "performed_by",
+                "performed_by_role",
+                "old_status",
+                "new_status",
+                "notes",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\stock_request.php",
+                "backend\\api\\stock_requests.php",
+                "backend\\api\\stock_request_action.php",
+                "public\\admin_purchase_orders.php",
+                "public\\db_connect.php"
+            ]
+        },
+        "stock_requests": {
+            "rows": 0,
+            "refs": 44,
+            "columns": [
+                "id",
+                "request_no",
+                "staff_id",
+                "station_id",
+                "item_id",
+                "item_sku",
+                "item_name",
+                "item_category",
+                "current_stock",
+                "requested_quantity",
+                "remarks",
+                "status",
+                "approved_quantity",
+                "manager_id",
+                "manager_notes",
+                "processed_at",
+                "created_at",
+                "updated_at",
+                "approved_price"
+            ],
+            "files": [
+                "app\\master_data\\products\\inventory.php",
+                "backend\\api\\deliveries_management_api.php",
+                "backend\\api\\live_system_sync.php",
+                "backend\\api\\low_stock_alerts.php",
+                "backend\\api\\manager_notification_generator.php"
+            ]
+        },
+        "suppliers": {
+            "rows": 1,
+            "refs": 37,
+            "columns": [
+                "id",
+                "name",
+                "contact_person",
+                "phone",
+                "email",
+                "address",
+                "registration_details",
+                "delivery_terms",
+                "station_id",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\admin_deliveries_oversight_api.php",
+                "backend\\api\\admin_reports_api.php",
+                "backend\\api\\admin_reports_audit_api.php",
+                "backend\\api\\po_delivery_inventory_api.php",
+                "backend\\calendar_module_helpers.php"
+            ]
+        },
+        "sys_health_report_log": {
+            "rows": 10,
+            "refs": 2,
+            "columns": [
+                "id",
+                "station_id",
+                "recorded_by",
+                "recorded_date",
+                "server_status",
+                "database_status",
+                "system_uptime",
+                "cpu_usage",
+                "memory_usage",
+                "disk_usage",
+                "overall_status",
+                "recorded_at"
+            ],
+            "files": [
+                "public\\reports_technical.php",
+                "public\\super_admin_dashboard.php"
+            ]
+        },
+        "system_config": {
+            "rows": 7,
+            "refs": 2,
+            "columns": [
+                "id",
+                "station_id",
+                "config_key",
+                "config_value",
+                "description",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\database_api.php",
+                "public\\database_management.php"
+            ]
+        },
+        "system_error_logs": {
+            "rows": 0,
+            "refs": 2,
+            "columns": [
+                "id",
+                "user_id",
+                "error_type",
+                "severity",
+                "message",
+                "stack_trace",
+                "url",
+                "ip_address",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\superadmin_notification_generator.php",
+                "backend\\api\\system_logs_api.php"
+            ]
+        },
+        "system_settings": {
+            "rows": 35,
+            "refs": 22,
+            "columns": [
+                "id",
+                "station_id",
+                "setting_key",
+                "setting_value",
+                "setting_type",
+                "category",
+                "description",
+                "is_public",
+                "updated_by",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\developer_reports_api.php",
+                "backend\\api\\maintenance_status.php",
+                "backend\\api\\superadmin_notification_generator.php",
+                "backend\\api\\system_settings_api.php",
+                "backend\\lib.php"
+            ]
+        },
+        "system_settings_audit": {
+            "rows": 0,
+            "refs": 1,
+            "columns": [
+                "id",
+                "setting_key",
+                "old_value",
+                "new_value",
+                "changed_by",
+                "changed_by_name",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\superadmin_notification_generator.php"
+            ]
+        },
+        "transaction_adjustments": {
+            "rows": 0,
+            "refs": 7,
+            "columns": [
+                "id",
+                "transaction_id",
+                "transaction_type",
+                "customer_name",
+                "original_amount",
+                "updated_amount",
+                "amount_difference",
+                "adjustment_reason",
+                "manager_remarks",
+                "adjusted_by",
+                "adjustment_date",
+                "station_id",
+                "fields_changed"
+            ],
+            "files": [
+                "backend\\api\\save_adjustment.php",
+                "public\\admin_transaction_adjustments.php",
+                "public\\manager_audit_trail.php",
+                "public\\manager_transaction_monitoring.php",
+                "public\\manager_validated_transactions.php"
+            ]
+        },
+        "transaction_requests": {
+            "rows": 0,
+            "refs": 14,
+            "columns": [
+                "id",
+                "station_id",
+                "transaction_id",
+                "record_source",
+                "request_type",
+                "request_reason",
+                "requested_by",
+                "requested_at",
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "review_remarks",
+                "new_amount",
+                "correction_field",
+                "current_value",
+                "requested_value",
+                "remarks"
+            ],
+            "files": [
+                "backend\\api\\get_transaction_items.php",
+                "backend\\api\\process_transaction_request.php",
+                "backend\\api\\request_transaction_action.php",
+                "backend\\api\\save_adjustment.php",
+                "backend\\api\\void_transaction_manager.php"
+            ]
+        },
+        "ui_config": {
+            "rows": 8,
+            "refs": 7,
+            "columns": [
+                "id",
+                "station_id",
+                "config_key",
+                "config_value",
+                "config_type",
+                "description",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\generate_theme_css.php",
+                "backend\\ui_config.php",
+                "public\\manager_fuel_deliveries.php",
+                "public\\manager_fuel_management_complete.php",
+                "public\\manager_fuel_transactions.php"
+            ]
+        },
+        "user_form_drafts": {
+            "rows": 34,
+            "refs": 4,
+            "columns": [
+                "id",
+                "user_id",
+                "station_id",
+                "module_key",
+                "draft_key",
+                "form_data",
+                "status",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\lib.php",
+                "public\\manager_audit_trail.php",
+                "public\\staff_activity_report.php",
+                "public\\staff_transactions_hub.php"
+            ]
+        },
+        "user_preferences": {
+            "rows": 79,
+            "refs": 3,
+            "columns": [
+                "id",
+                "user_id",
+                "preference_key",
+                "preference_value",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\badge_seen.php",
+                "backend\\api\\notifications_api.php",
+                "partials\\header.php"
+            ]
+        },
+        "users": {
+            "rows": 4,
+            "refs": 311,
+            "columns": [
+                "id",
+                "employee_id",
+                "first_name",
+                "last_name",
+                "username",
+                "password_hash",
+                "role",
+                "assigned_shift",
+                "shift_assignment",
+                "shift_start_time",
+                "shift_end_time",
+                "email",
+                "phone_number",
+                "station_id",
+                "status",
+                "created_at",
+                "updated_at",
+                "name",
+                "profile_picture",
+                "remarks"
+            ],
+            "files": [
+                "add_export_bar.php",
+                "app\\master_data\\departments_offices_counters\\create_station_admin.php",
+                "app\\master_data\\departments_offices_counters\\station_operations.php",
+                "app\\master_data\\departments_offices_counters\\station_profiles.php",
+                "app\\master_data\\departments_offices_counters\\station_status.php"
+            ]
+        },
+        "variance_alerts": {
+            "rows": 0,
+            "refs": 8,
+            "columns": [
+                "id",
+                "station_id",
+                "user_id",
+                "transaction_type",
+                "item_identifier",
+                "variance_amount",
+                "status",
+                "investigation_notes",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\admin_notifications_seeder.php",
+                "backend\\api\\admin_notification_generator.php",
+                "backend\\api\\manager_validation_metrics.php",
+                "backend\\export\\export_admin_variance_alerts.php",
+                "backend\\lib.php"
+            ]
+        },
+        "vehicle_inspection_items": {
+            "rows": 13,
+            "refs": 5,
+            "columns": [
+                "id",
+                "station_id",
+                "item_name",
+                "description",
+                "category",
+                "is_active",
+                "created_by",
+                "created_at"
+            ],
+            "files": [
+                "backend\\api\\approve_master_data_request.php",
+                "backend\\api\\submit_master_data_request.php",
+                "public\\api_inspection_items.php",
+                "public\\db_connect.php",
+                "public\\staff_transactions_hub.php"
+            ]
+        },
+        "vehicle_types": {
+            "rows": 43,
+            "refs": 3,
+            "columns": [
+                "id",
+                "station_id",
+                "category",
+                "vehicle_name",
+                "sort_order",
+                "status",
+                "submitted_by",
+                "reviewed_by",
+                "review_note",
+                "is_active",
+                "created_at",
+                "updated_at"
+            ],
+            "files": [
+                "backend\\api\\approve_master_data_request.php",
+                "backend\\api\\get_vehicle_types.php",
+                "backend\\api\\submit_master_data_request.php"
+            ]
+        },
+        "voided_transactions": {
+            "rows": 0,
+            "refs": 8,
+            "columns": [
+                "id",
+                "merchandise_txn_id",
+                "transaction_id",
+                "customer_name",
+                "transaction_type",
+                "amount",
+                "void_reason",
+                "manager_remarks",
+                "voided_by",
+                "voided_by_name",
+                "station_id",
+                "void_date",
+                "fields_changed",
+                "job_order_no",
+                "vehicle_plate",
+                "payment_method"
+            ],
+            "files": [
+                "backend\\api\\void_transaction_manager.php",
+                "backend\\lib.php",
+                "public\\admin_voided_transactions.php",
+                "public\\manager_validated_transactions.php",
+                "public\\manager_voided_transactions.php"
+            ]
+        }
+    }
+}

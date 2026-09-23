@@ -1,6 +1,6 @@
 <?php
 /**
- * ADMIN / MANAGER — Receipt Management
+ * ADMIN ONLY — Receipt Management
  * Dedicated Receipt Template / Configuration Module for Admin & Station Authority.
  * Configures receipt headers, station details, logo, title, prefix, paper size,
  * footer message, terms/notes, and field visibility with real-time live preview.
@@ -19,7 +19,7 @@ $role       = role_key($me['role'] ?? '');
 $station_id = (int) user_station_id();
 $user_id    = (int) ($me['id'] ?? ($_SESSION['user_id'] ?? 0));
 
-if (!in_array($role, ['admin', 'owner', 'manager', 'superadmin', 'developer'], true)) {
+if (!in_array($role, ['admin', 'owner', 'superadmin', 'developer'], true)) {
     header('Location: dashboard.php');
     exit;
 }

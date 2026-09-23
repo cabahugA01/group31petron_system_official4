@@ -25,7 +25,7 @@ $user_id    = (int) ($me['id'] ?? ($_SESSION['user_id'] ?? 0));
 
 $can_edit_template   = in_array($role, ['admin', 'owner', 'superadmin', 'developer'], true);
 $can_approve         = in_array($role, ['admin', 'owner', 'superadmin', 'developer'], true);
-$has_access          = in_array($role, ['admin', 'owner', 'manager', 'superadmin', 'developer'], true);
+$has_access          = in_array($role, ['admin', 'owner', 'superadmin', 'developer'], true);
 
 if (!$has_access) {
     echo json_encode(['success' => false, 'message' => 'Access denied.']);

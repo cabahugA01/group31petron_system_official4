@@ -997,30 +997,32 @@ html, body {
 
     <!-- TOP CONTROLS & EXPORT BAR -->
     <div class="controls-bar-sales no-print" style="background:#fff; border-top:1px solid #cbd5e1; border-bottom:2px solid #002F6C; padding:10px 16px; margin-bottom:14px;">
-        <form method="GET" action="" id="auditFilterForm" class="controls-filter-group">
+        <form method="GET" action="" id="auditFilterForm" class="controls-filter-group" style="gap:8px !important;">
             <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>">
 
             <label>FROM</label>
-            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" class="controls-input">
+            <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" class="controls-input" style="padding:8px 10px !important;">
 
             <label>TO</label>
-            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="controls-input">
+            <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" class="controls-input" style="padding:8px 10px !important;">
 
             <label>MODULE</label>
-            <input type="text" name="filter_module" value="<?= htmlspecialchars($filter_module) ?>" placeholder="Module..." class="controls-input" style="width:110px;">
+            <input type="text" name="filter_module" value="<?= htmlspecialchars($filter_module) ?>" placeholder="Module..." class="controls-input" style="width:95px; padding:8px 10px !important;">
 
             <label>ACTION</label>
-            <input type="text" name="filter_action" value="<?= htmlspecialchars($filter_action) ?>" placeholder="Action..." class="controls-input" style="width:110px;">
+            <input type="text" name="filter_action" value="<?= htmlspecialchars($filter_action) ?>" placeholder="Action..." class="controls-input" style="width:95px; padding:8px 10px !important;">
 
             <label>SEARCH</label>
-            <input type="text" name="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search keyword..." class="controls-input" style="width:140px;">
+            <input type="text" name="filter_search" value="<?= htmlspecialchars($filter_search) ?>" placeholder="Search keyword..." class="controls-input" style="width:120px; padding:8px 10px !important;">
 
-            <button type="submit" class="btn btn-primary fw-bold" style="background:#002F6C; border-color:#002F6C; font-size:14.5px; padding:9px 20px; border-radius:6px;">
-                <i class="fas fa-filter me-1"></i> Apply
-            </button>
-            <a href="?tab=<?= urlencode($active_tab) ?>" style="font-size:13.5px; padding:9px 16px; font-weight:700; background:#ffffff; color:#475569; border:1.5px solid #cbd5e1; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                <i class="fas fa-times"></i> Reset
-            </a>
+            <div style="display:inline-flex; align-items:center; gap:8px; flex-shrink:0;">
+                <button type="submit" class="btn btn-primary fw-bold" style="background:#002F6C; border-color:#002F6C; font-size:14px; padding:8px 18px; border-radius:6px; white-space:nowrap;">
+                    <i class="fas fa-filter me-1"></i> Apply
+                </button>
+                <a href="?tab=<?= urlencode($active_tab) ?>" style="font-size:13.5px; padding:8px 14px; font-weight:700; background:#ffffff; color:#475569; border:1.5px solid #cbd5e1; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap;">
+                    <i class="fas fa-times"></i> Reset
+                </a>
+            </div>
         </form>
 
         <!-- Right Side Export Buttons -->

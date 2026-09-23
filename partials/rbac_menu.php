@@ -423,7 +423,6 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                 $filtered_item['label'] = 'Transactions';
                 $filtered_item['sub_items'] = [
                     ['id' => 'validated_transactions_manager', 'label' => 'All Transactions',       'href' => 'manager_validated_transactions.php',  'ico' => 'fas fa-list-check',       'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Monitor and manage merchandise, job order, and combined transactions in one page.'],
-                    ['id' => 'admin_receipt_management',       'label' => 'Receipt Management',     'href' => 'admin_receipt_management.php',         'ico' => 'fas fa-file-invoice',     'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Configure receipt templates, reissue correction receipts, and manage audit trail for issued receipts.'],
                     ['id' => 'manager_request_data_management','label' => 'Master Data Requests',   'href' => 'manager_request_data_management.php', 'ico' => 'fas fa-clipboard-list',   'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Review and process staff requests for products, services, and vehicles.'],
                     ['id' => 'manager_mechanics_management',   'label' => 'Mechanics Management',  'href' => 'manager_mechanics_management.php',    'ico' => 'fas fa-wrench',           'permissions' => ['view_transactions','approve_transactions'], 'desc' => 'Manage mechanic records used in job orders.'],
                 ];

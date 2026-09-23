@@ -491,58 +491,19 @@ html, body {
   margin: 6px 0 24px !important;
 }
 
-/* Stat cards - Elder Friendly 32px values & 15px labels */
-.db-stat-row {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
-  gap: 14px !important;
-  margin-bottom: 24px !important;
-}
-.db-stat-card {
-  background: #fff !important;
-  border: 1px solid #eaeaea !important;
-  border-radius: 14px !important;
-  padding: 20px 22px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 14px !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,.04) !important;
-}
-.db-stat-icon {
-  width: 50px !important;
-  height: 50px !important;
-  border-radius: 12px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-size: 22px !important;
-  flex-shrink: 0 !important;
-}
-.db-stat-icon.blue   { background: rgba(0,38,77,.1) !important; color: var(--petron-blue, #00264D) !important; }
-.db-stat-icon.green  { background: rgba(40,167,69,.1) !important; color: #28a745 !important; }
-.db-stat-icon.yellow { background: rgba(255,193,7,.15) !important; color: #b8860b !important; }
-.db-stat-icon.red    { background: rgba(204,0,0,.1) !important; color: #cc0000 !important; }
-.db-stat-label {
-  font-size: 15px !important;
-  color: #666 !important;
-  font-weight: 600 !important;
-  text-transform: uppercase !important;
-  letter-spacing: .3px !important;
-  margin-bottom: 4px !important;
-  line-height: 1.2 !important;
-}
-.db-stat-val {
-  font-size: 32px !important;
-  font-weight: 800 !important;
-  color: var(--petron-blue, #002F6C) !important;
-  line-height: 1.1 !important;
-}
-.db-stat-sub {
-  font-size: 13.5px !important;
-  color: #666 !important;
-  margin-top: 4px !important;
-  font-weight: 500 !important;
-}
+/* Stat cards - Matching Manager Fuel Transaction Validation Standard */
+.afto-cards, .db-stat-row { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important; gap: 16px !important; margin-bottom: 24px !important; }
+.afto-card, .db-stat-card { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 10px !important; padding: 16px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; box-shadow: 0 1px 3px rgba(0,0,0,.05) !important; position: relative !important; overflow: hidden !important; }
+.afto-card-info, .db-stat-info { display: flex !important; flex-direction: column !important; }
+.afto-card-lbl, .db-stat-label { font-size: 11px !important; font-weight: 700 !important; color: #64748b !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; margin-bottom: 4px !important; line-height: 1.2 !important; }
+.afto-card-val, .db-stat-val { font-size: 20px !important; font-weight: 700 !important; color: #1e293b !important; line-height: 1.2 !important; }
+.afto-card-sub, .db-stat-sub { font-size: 11px !important; color: #64748b !important; font-weight: 600 !important; margin-top: 3px !important; }
+.afto-card-icon, .db-stat-icon { font-size: 24px !important; opacity: 0.8 !important; width: auto !important; height: auto !important; background: transparent !important; border-radius: 0 !important; display: inline-block !important; margin: 0 !important; padding: 0 !important; }
+.afto-card.blue .afto-card-icon, .db-stat-card.blue .db-stat-icon, .db-stat-icon.blue   { color: #2563eb !important; background: transparent !important; }
+.afto-card.green .afto-card-icon, .db-stat-card.green .db-stat-icon, .db-stat-icon.green  { color: #16a34a !important; background: transparent !important; }
+.afto-card.yellow .afto-card-icon, .db-stat-card.yellow .db-stat-icon, .db-stat-icon.yellow { color: #d97706 !important; background: transparent !important; }
+.afto-card.purple .afto-card-icon, .db-stat-card.purple .db-stat-icon, .db-stat-icon.purple { color: #8b5cf6 !important; background: transparent !important; }
+.afto-card.red .afto-card-icon, .db-stat-card.red .db-stat-icon, .db-stat-icon.red { color: #dc2626 !important; background: transparent !important; }
 
 /* Tabs - Elder Friendly Boxed Design */
 .db-tab-bar {
@@ -1039,43 +1000,43 @@ if (!empty($msg) && !empty($success)) {
 var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
 </script>
 
-  <!-- Stat Cards -->
-  <div class="db-stat-row">
-    <div class="db-stat-card">
-      <div class="db-stat-icon blue"><i class="fas fa-hdd"></i></div>
-      <div>
-        <div class="db-stat-label">Total Backups</div>
-        <div class="db-stat-val" id="stat_total_backups"><?= count($backup_history) ?></div>
-        <div class="db-stat-sub" id="stat_total_backups_sub">Records on file</div>
+  <!-- Stat Cards (Matching Manager Fuel Transaction Validation Standard) -->
+  <div class="afto-cards">
+    <div class="afto-card blue">
+      <div class="afto-card-info">
+        <span class="afto-card-lbl">Total Backups</span>
+        <span class="afto-card-val" id="stat_total_backups"><?= count($backup_history) ?></span>
+        <span class="afto-card-sub" id="stat_total_backups_sub">Records on file</span>
       </div>
+      <div class="afto-card-icon"><i class="fas fa-hdd"></i></div>
     </div>
-    <div class="db-stat-card">
-      <div class="db-stat-icon green"><i class="fas fa-check-double"></i></div>
-      <div>
-        <div class="db-stat-label">Verified</div>
-        <div class="db-stat-val" id="stat_verified"><?= count(array_filter($backup_history, fn($b) => !empty($b['verified']))) ?></div>
-        <div class="db-stat-sub">Integrity confirmed</div>
+    <div class="afto-card green">
+      <div class="afto-card-info">
+        <span class="afto-card-lbl">Verified</span>
+        <span class="afto-card-val" id="stat_verified"><?= count(array_filter($backup_history, fn($b) => !empty($b['verified']))) ?></span>
+        <span class="afto-card-sub" style="color:#16a34a;"><i class="fas fa-check-circle"></i> Integrity confirmed</span>
       </div>
+      <div class="afto-card-icon"><i class="fas fa-check-double"></i></div>
     </div>
-    <div class="db-stat-card">
-      <div class="db-stat-icon yellow"><i class="fas fa-weight-hanging"></i></div>
-      <div>
-        <div class="db-stat-label">DB Size</div>
-        <div class="db-stat-val" id="stat_db_size"><?= $db_size_row['size_mb'] ?? '—' ?> MB</div>
-        <div class="db-stat-sub" id="stat_db_tables"><?= $db_size_row['table_count'] ?? '—' ?> tables</div>
+    <div class="afto-card yellow">
+      <div class="afto-card-info">
+        <span class="afto-card-lbl">DB Size</span>
+        <span class="afto-card-val" id="stat_db_size"><?= $db_size_row['size_mb'] ?? '—' ?> MB</span>
+        <span class="afto-card-sub" id="stat_db_tables"><?= $db_size_row['table_count'] ?? '—' ?> tables</span>
       </div>
+      <div class="afto-card-icon"><i class="fas fa-database"></i></div>
     </div>
-    <div class="db-stat-card">
-      <div class="db-stat-icon blue"><i class="fas fa-calendar-alt"></i></div>
-      <div>
-        <div class="db-stat-label">Last Backup</div>
-        <div class="db-stat-val" id="stat_last_backup_date" style="font-size:20px !important; font-weight:800 !important; line-height:1.2;">
-          <?= !empty($backup_history) ? date('M d', strtotime($backup_history[0]['created_at'])) : '—' ?>
-        </div>
-        <div class="db-stat-sub" id="stat_last_backup_time">
-          <?= !empty($backup_history) ? date('h:i A', strtotime($backup_history[0]['created_at'])) : 'No backups yet' ?>
-        </div>
+    <div class="afto-card purple">
+      <div class="afto-card-info">
+        <span class="afto-card-lbl">Last Backup</span>
+        <span class="afto-card-val" id="stat_last_backup_date" style="font-size:16px !important;">
+          <?= !empty($backup_history) ? date('M d, Y • h:i A', strtotime($backup_history[0]['created_at'])) : '—' ?>
+        </span>
+        <span class="afto-card-sub" id="stat_last_backup_time">
+          <?= !empty($backup_history) ? '<i class="fas fa-shield-alt"></i> Verified Backup' : 'No backups yet' ?>
+        </span>
       </div>
+      <div class="afto-card-icon"><i class="fas fa-calendar-alt"></i></div>
     </div>
   </div>
 

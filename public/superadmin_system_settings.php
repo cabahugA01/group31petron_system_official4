@@ -1091,7 +1091,11 @@ function populateFormFields(s) {
 
     if (logoImg) {
         if (hasLogo) {
-            logoImg.src = s.company_logo;
+            let logoSrc = s.company_logo;
+            if (!logoSrc.startsWith('http') && !logoSrc.startsWith('/') && !logoSrc.startsWith('../')) {
+                logoSrc = '../' + logoSrc;
+            }
+            logoImg.src = logoSrc;
             logoImg.style.display = 'inline-block';
             if (noLogoTxt) noLogoTxt.style.display = 'none';
             if (btnRemove) btnRemove.style.display = 'inline-flex';
@@ -1107,7 +1111,11 @@ function populateFormFields(s) {
     const headerLogo = document.getElementById('petronLogo');
     if (headerLogo) {
         if (hasLogo) {
-            headerLogo.src = s.company_logo + '?t=' + Date.now();
+            let headerLogoSrc = s.company_logo;
+            if (!headerLogoSrc.startsWith('http') && !headerLogoSrc.startsWith('/') && !headerLogoSrc.startsWith('../')) {
+                headerLogoSrc = '../' + headerLogoSrc;
+            }
+            headerLogo.src = headerLogoSrc + '?t=' + Date.now();
             headerLogo.style.display = 'inline-block';
         } else {
             headerLogo.src = '';
@@ -1124,7 +1132,11 @@ function updateHeaderBranding(logoUrl, systemName) {
     const headerLogo = document.getElementById('petronLogo');
     if (headerLogo) {
         if (logoUrl && logoUrl !== 'none' && logoUrl !== '') {
-            headerLogo.src = logoUrl;
+            let src = logoUrl;
+            if (!src.startsWith('http') && !src.startsWith('/') && !src.startsWith('../')) {
+                src = '../' + src;
+            }
+            headerLogo.src = src;
             headerLogo.style.display = 'inline-block';
         } else {
             headerLogo.src = '';
@@ -1157,13 +1169,17 @@ async function uploadLogo() {
         const res = await fetch(API_URL, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
+            let logoUrl = data.logo_url;
+            if (!logoUrl.startsWith('http') && !logoUrl.startsWith('/') && !logoUrl.startsWith('../')) {
+                logoUrl = '../' + logoUrl;
+            }
             // Update settings page preview
             const logoImg = document.getElementById('logo_preview_img');
             const noLogoTxt = document.getElementById('no_logo_placeholder');
             const btnRemove = document.getElementById('btn_remove_logo');
 
             if (logoImg) {
-                logoImg.src = data.logo_url;
+                logoImg.src = logoUrl;
                 logoImg.style.display = 'inline-block';
             }
             if (noLogoTxt) noLogoTxt.style.display = 'none';
@@ -1172,7 +1188,7 @@ async function uploadLogo() {
             // Live-update header logo immediately with cache-busting & show it
             const headerLogo = document.getElementById('petronLogo');
             if (headerLogo) {
-                headerLogo.src = data.logo_url + '?t=' + Date.now();
+                headerLogo.src = logoUrl + '?t=' + Date.now();
                 headerLogo.style.display = 'inline-block';
             }
             showToast('Logo Uploaded', data.message || 'Company logo uploaded successfully.');
