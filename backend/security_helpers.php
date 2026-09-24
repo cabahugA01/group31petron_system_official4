@@ -255,7 +255,7 @@ if (!function_exists('enforce_server_security')) {
             if (function_exists('has_permission') && !has_permission($required_permission, $role)) {
                 if (function_exists('get_user_permissions')) {
                     $perms = get_user_permissions($role);
-                    if (!in_array($required_permission, $perms, true) && !in_array('superadmin', [$role], true)) {
+                    if (!in_array($required_permission, $perms, true) && !in_array($role, ['superadmin', 'admin'], true)) {
                         sec_reject_request(403, 'Forbidden: Insufficient permissions for action (' . $required_permission . ').');
                     }
                 }

@@ -70,17 +70,38 @@ $role_permissions = [
     ],
     
     'admin' => [
-        // Station-specific permissions
+        // Admin has full operational authority: all manager capabilities + all staff capabilities + admin oversight
         VIEW_STATION_PROFILE,
+        VIEW_MANAGER_DASHBOARD,
+        REVIEW_PENDING_JOB_ORDERS,
+        VIEW_JOB_ORDER_HISTORY,
+        VERIFY_FUEL_RECONCILIATION,
+        VERIFY_SHIFT_REPORTS,
+        VIEW_LOGS,
+        APPROVE_REPORTS,
+        MANAGE_PURCHASE_ORDERS,
+        MANAGE_DELIVERIES,
         RESET_PASSWORD,
         DEACTIVATE_USER,
-        VIEW_ALL_USERS, // Limited to their station
-        GENERATE_NATIONWIDE_SALES_REPORT, // Limited to their station
-        GENERATE_FUEL_REPORT, // Limited to their station
-        GENERATE_JOB_ORDER_REPORT, // Limited to their station
-        VIEW_USER_LOGS, // Limited to their station
-        VIEW_TRANSACTION_LOGS, // Limited to their station
-        VIEW_INVENTORY_LOGS, // Limited to their station
+        VIEW_ALL_USERS,
+        GENERATE_NATIONWIDE_SALES_REPORT,
+        GENERATE_FUEL_REPORT,
+        GENERATE_JOB_ORDER_REPORT,
+        GENERATE_CUSTOMER_CREDIT_REPORT,
+        VIEW_USER_LOGS,
+        VIEW_TRANSACTION_LOGS,
+        VIEW_INVENTORY_LOGS,
+        MANAGE_SERVICE_RATES,
+        MANAGE_CALIBRATION_VALUES,
+        'CREATE_TRANSACTION',
+        'VIEW_OWN_TRANSACTIONS',
+        'CREATE_JOB_ORDER',
+        'VIEW_JOB_ORDERS',
+        'UPDATE_JOB_ORDER_STATUS',
+        'RECORD_FUEL_READING',
+        'VIEW_FUEL_READINGS',
+        'RECORD_CUSTOMER_CREDIT',
+        'VIEW_CUSTOMER_CREDIT',
     ],
     
     'manager' => [
@@ -168,6 +189,11 @@ function has_permission($permission, $user_role = null) {
     if ($user_role === 'super admin') $user_role = 'superadmin';
     if ($user_role === 'administrator') $user_role = 'admin';
     // operations_staff role removed - all operational roles now use 'staff'
+    
+    // Superadmin and Admin have authority over all operational and management modules
+    if ($user_role === 'superadmin' || $user_role === 'admin') {
+        return true;
+    }
     
     return isset($role_permissions[$user_role]) && 
            in_array($permission, $role_permissions[$user_role]);

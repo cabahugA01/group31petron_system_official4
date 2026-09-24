@@ -1692,7 +1692,7 @@ select.filter-select:focus {
     box-shadow: 0 0 0 2px rgba(0, 47, 112, 0.15) !important;
 }
 
-/* ── Guaranteed Downward Filter Dropdowns (Mo-abli paubos pirme - Exact Fuel Inventory Style) ── */
+/* ── Guaranteed Downward Filter Dropdowns (Opens downward - Exact Fuel Inventory Style) ── */
 .petron-dropdown-source {
     display: none !important;
 }

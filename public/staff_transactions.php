@@ -727,7 +727,7 @@ Merchandise Inventory
                                 </div>
                                 <div>
                                     <div style="font-weight: 600; color: #856404; font-size: 0.85rem;">Pending</div>
-                                    <div style="font-size: 0.75rem; color: #856404;">gi‑submit nga request</div>
+                                    <div style="font-size: 0.75rem; color: #856404;">Submitted request</div>
                                 </div>
                             </div>
                             
@@ -737,7 +737,7 @@ Merchandise Inventory
                                 </div>
                                 <div>
                                     <div style="font-weight: 600; color: #0c5460; font-size: 0.85rem;">Approved</div>
-                                    <div style="font-size: 0.75rem; color: #0c5460;">gi‑validate na sa Manager</div>
+                                    <div style="font-size: 0.75rem; color: #0c5460;">Validated by Manager</div>
                                 </div>
                             </div>
                             
@@ -747,7 +747,7 @@ Merchandise Inventory
                                 </div>
                                 <div>
                                     <div style="font-weight: 600; color: #155724; font-size: 0.85rem;">Completed</div>
-                                    <div style="font-size: 0.75rem; color: #155724;">gi‑process na ug nadeliver na</div>
+                                    <div style="font-size: 0.75rem; color: #155724;">Processed and delivered</div>
                                 </div>
                             </div>
                         </div>

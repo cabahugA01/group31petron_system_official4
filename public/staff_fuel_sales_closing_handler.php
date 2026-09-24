@@ -252,10 +252,6 @@ if ($action === 'save_closing') {
                 $readings_by_admin = true;
             }
         } catch (Exception $e) {}
-
-        // User business rule:
-        // 1. If admin performed meter reading (or admin closes): Auto-approved ("dili nana e approve ha automatic nana and dira na dayun mupadulong sa fuel sales report")
-        // 2. If staff performed meter reading: Must be approved by manager ("e approve pana ni manager pag si staff ang nag meter reading")
         $is_auto_approved = ($readings_by_admin || $is_admin_closing);
         $closing_status   = $is_auto_approved ? 'Verified' : 'CLOSING_COMPLETED';
         $txn_status       = $is_auto_approved ? 'Verified' : 'CLOSING_COMPLETED';

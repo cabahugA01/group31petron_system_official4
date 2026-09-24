@@ -649,12 +649,12 @@ function saveTemplate(e) {
                 btn.disabled = false;
                 btn.innerHTML = oldHtml;
             }
-            showErrorBanner('NETWORK ERROR', 'Palihog i-try pag-usab.');
+            showErrorBanner('NETWORK ERROR', 'Please try again.');
         });
 }
 
 function resetForm() {
-    if (!confirm('I-reset ang form? Mawala ang unsaved changes.')) return;
+    if (!confirm('Reset the form? Unsaved changes will be lost.')) return;
     document.getElementById('frmTemplate').reset();
     liveUpdate();
 }
@@ -666,7 +666,7 @@ function showSuccessBanner(title = 'SUCCESSFULLY CHANGED', desc = 'Receipt templ
     showBanner('success', title, desc);
 }
 
-function showErrorBanner(title = 'FAILED TO SAVE', desc = 'Palihog i-check ang form ug i-try pag-usab.') {
+function showErrorBanner(title = 'FAILED TO SAVE', desc = 'Please check the form and try again.') {
     showBanner('error', title, desc);
 }
 

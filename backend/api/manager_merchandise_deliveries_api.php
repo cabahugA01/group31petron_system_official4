@@ -487,7 +487,7 @@ try {
             }
             break;
 
-        // ── POST: flag discrepancy (kulang/guba) → Pending Resolution ─────────
+        // ── POST: flag discrepancy (shortage/damaged) -> Pending Resolution ─────────
         case 'flag_discrepancy':
             $input       = json_decode(file_get_contents('php://input'), true) ?? [];
             $id          = (int)($input['id'] ?? 0);

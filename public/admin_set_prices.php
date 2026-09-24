@@ -2189,24 +2189,26 @@ table.pricing-table tbody tr:hover {
                 <table class="pricing-table" style="width:100% !important;table-layout:fixed !important;border-collapse:collapse !important;">
                     <colgroup>
                         <col style="width:7%;">    <!-- Code -->
-                        <col style="width:22%;">   <!-- Service Name -->
-                        <col style="width:13%;">   <!-- Category -->
-                        <col style="width:10%;">   <!-- Service Fee -->
-                        <col style="width:10%;">   <!-- Labor Fee -->
-                        <col style="width:9%;">    <!-- Status -->
-                        <col style="width:13%;">   <!-- Last Updated -->
-                        <col style="width:16%;">   <!-- Action -->
+                        <col style="width:19%;">   <!-- Service Name -->
+                        <col style="width:12%;">   <!-- Category -->
+                        <col style="width:9%;">    <!-- Service Fee -->
+                        <col style="width:9%;">    <!-- Labor Fee -->
+                        <col style="width:11%;">   <!-- Price Req. -->
+                        <col style="width:8%;">    <!-- Status -->
+                        <col style="width:10%;">   <!-- Last Updated -->
+                        <col style="width:15%;">   <!-- Action -->
                     </colgroup>
                     <thead>
                         <tr style="background:#002F6C !important;">
                             <th style="color:#fff;width:7%;text-align:left;">Code</th>
-                            <th style="color:#fff;width:22%;text-align:left;">Service Name</th>
-                            <th style="color:#fff;width:13%;text-align:left;">Category</th>
-                            <th style="color:#fff;width:10%;text-align:right;">Service Fee</th>
-                            <th style="color:#fff;width:10%;text-align:right;">Labor Fee</th>
-                            <th style="color:#fff;width:9%;text-align:center;">Status</th>
-                            <th style="color:#fff;width:13%;text-align:center;">Last Updated</th>
-                            <th style="color:#fff;width:16%;text-align:center;">Action</th>
+                            <th style="color:#fff;width:19%;text-align:left;">Service Name</th>
+                            <th style="color:#fff;width:12%;text-align:left;">Category</th>
+                            <th style="color:#fff;width:9%;text-align:right;">Service Fee</th>
+                            <th style="color:#fff;width:9%;text-align:right;">Labor Fee</th>
+                            <th style="color:#fff;width:11%;text-align:center;">Price Req.</th>
+                            <th style="color:#fff;width:8%;text-align:center;">Status</th>
+                            <th style="color:#fff;width:10%;text-align:center;">Last Updated</th>
+                            <th style="color:#fff;width:15%;text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2288,17 +2290,25 @@ table.pricing-table tbody tr:hover {
                                 <?php endif; ?>
                             </td>
 
+                            <!-- Price Request Status -->
+                            <td style="vertical-align:middle;text-align:center;padding:8px 4px;">
+                                <?php if ($hasPending): ?>
+                                    <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;padding:3px 6px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;" title="Manager requested: Svc Fee ₱<?php echo number_format($pendSvcFee, 2); ?><?php echo $pendLabFee > 0 ? ' | Labor ₱'.number_format($pendLabFee, 2) : ''; ?>">
+                                        <i class="fas fa-clock" style="font-size:9px;"></i> Pending (&#8369;<?php echo number_format($pendSvcFee, 2); ?>)
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;font-weight:700;padding:3px 6px;font-size:11px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;">
+                                        <i class="fas fa-check-circle" style="font-size:9px;"></i> None / Approved
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+
                             <!-- Status -->
                             <td style="vertical-align:middle;text-align:center;">
                                 <?php if ($isActive): ?>
                                 <span class="badge badge-available" style="padding:5px 10px;font-size:12px;font-weight:700;white-space:nowrap;">Active</span>
                                 <?php else: ?>
                                 <span class="badge badge-out" style="padding:5px 10px;font-size:12px;font-weight:700;white-space:nowrap;">Inactive</span>
-                                <?php endif; ?>
-                                <?php if ($hasPending): ?>
-                                <div style="margin-top:3px;">
-                                    <span class="badge badge-low" style="padding:3px 7px;font-size:11px;font-weight:700;white-space:nowrap;"><i class="fas fa-hourglass-half" style="font-size:9px;"></i> Pending</span>
-                                </div>
                                 <?php endif; ?>
                             </td>
 
@@ -2320,7 +2330,7 @@ table.pricing-table tbody tr:hover {
                                         <i class="fas fa-check"></i> Approve
                                     </button>
                                     <button type="button"
-                                        onclick="openRejectModal(<?php echo $approvalId; ?>, 'services')"
+                                        onclick="openRejectPriceModalAdmin(<?php echo $approvalId; ?>, '<?php echo htmlspecialchars(addslashes($svc['service_name'])); ?>', <?php echo $currentSvcFee; ?>, <?php echo $pendSvcFee; ?>, 'services')"
                                         class="act-btn act-btn-reject">
                                         <i class="fas fa-times"></i> Reject
                                     </button>
@@ -4036,8 +4046,11 @@ function validateEditFuelForm() {
     return true;
 }
 
-function openRejectPriceModalAdmin(approvalId, productName, oldPrice, newPrice) {
+function openRejectPriceModalAdmin(approvalId, productName, oldPrice, newPrice, tab) {
+    tab = tab || 'fuel';
     document.getElementById('adminRejectApprovalId').value = approvalId;
+    var tabInput = document.getElementById('adminRejectActiveTab');
+    if (tabInput) tabInput.value = tab;
     document.getElementById('adminRejectProdName').textContent = productName;
     document.getElementById('adminRejectOldPrice').textContent = '₱' + parseFloat(oldPrice).toFixed(2);
     document.getElementById('adminRejectNewPrice').textContent = '₱' + parseFloat(newPrice).toFixed(2);
@@ -4518,6 +4531,7 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
 
     var formData = new FormData();
     formData.append('action', 'add_merchandise');
+    formData.append('station_id', '<?php echo (int)$station_id; ?>');
     formData.append('product_name', name);
     formData.append('category', category);
     formData.append('brand', brand);
@@ -4918,6 +4932,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
 
     var fd = new FormData();
     fd.append('action',               'add_service');
+    fd.append('station_id',           '<?php echo (int)$station_id; ?>');
     fd.append('service_name',         name);
     fd.append('category',             category);
     fd.append('service_price',        svcFee);
@@ -5231,7 +5246,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     </div>
     <form method="POST" action="admin_set_prices.php" style="padding:20px 22px;">
       <input type="hidden" name="action" value="reject_price">
-      <input type="hidden" name="active_tab" value="fuel">
+      <input type="hidden" id="adminRejectActiveTab" name="active_tab" value="fuel">
       <input type="hidden" id="adminRejectApprovalId" name="approval_id">
       <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
         <strong style="color:#991b1b;display:block;font-size:15.5px;margin-bottom:6px;" id="adminRejectProdName">Fuel Product</strong>

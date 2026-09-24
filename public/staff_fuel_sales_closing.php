@@ -1,7 +1,7 @@
 <?php
 /**
  * Official Petron Fuel Sales Closing Page
- * Staff enters raw numbers gikan sa external paper report, system automatically computes all derived totals.
+ * Staff enters raw numbers from external paper report, system automatically computes all derived totals.
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

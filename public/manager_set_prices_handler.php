@@ -1179,16 +1179,43 @@ try {
                 exit;
             }
 
+            // Station-scoped duplicate check: block if same product name already in this station
+            try {
+                $dup_ip = $pdo->prepare("
+                    SELECT ip.id FROM inventory_products ip
+                    INNER JOIN station_inventory si ON si.product_id = ip.id
+                    WHERE si.station_id = ? AND LOWER(ip.product_name) = LOWER(?)
+                    LIMIT 1
+                ");
+                $dup_ip->execute([$station_id, $product_name]);
+                if ($dup_ip->fetch()) {
+                    echo json_encode(['success' => false, 'message' => 'A merchandise product with this name already exists at your station.']);
+                    exit;
+                }
+                // Also check products table (legacy path)
+                $dup_p = $pdo->prepare("
+                    SELECT p.id FROM products p
+                    INNER JOIN station_inventory si ON si.product_id = p.id
+                    WHERE si.station_id = ? AND LOWER(p.name) = LOWER(?)
+                    LIMIT 1
+                ");
+                $dup_p->execute([$station_id, $product_name]);
+                if ($dup_p->fetch()) {
+                    echo json_encode(['success' => false, 'message' => 'A merchandise product with this name already exists at your station.']);
+                    exit;
+                }
+            } catch (Exception $e) { /* non-fatal, proceed */ }
+
             $new_id = 0;
             try {
                 $stmt = $pdo->prepare("
                     INSERT INTO inventory_products
                     (product_name, category, brand, unit_cost, unit_price, sku, barcode, size,
-                     reorder_level, critical_level, stock_quantity, status, created_at, expiration_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', NOW(), ?)
+                     reorder_level, critical_level, stock_quantity, status, created_at, station_id, expiration_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', NOW(), ?, ?)
                 ");
                 $stmt->execute([$product_name, $category, $brand, $unit_cost, $unit_price,
-                                $sku ?: null, $barcode ?: null, $size ?: 'pcs', $reorder_level, $critical_level, $expiration_date]);
+                                $sku ?: null, $barcode ?: null, $size ?: 'pcs', $reorder_level, $critical_level, $station_id, $expiration_date]);
                 $new_id = (int)$pdo->lastInsertId();
 
                 // Auto-generate SKU if user left it blank
@@ -1823,12 +1850,25 @@ try {
                 $service_key = trim($service_key, '_');
             }
 
-            // Ensure service_key uniqueness
+            // Station-scoped service name duplicate check
+            $svc_dup = $pdo->prepare("
+                SELECT id FROM job_order_service_types
+                WHERE station_id = ? AND LOWER(service_name) = LOWER(?)
+                LIMIT 1
+            ");
+            $svc_dup->execute([$station_id, $service_name]);
+            if ($svc_dup->fetch()) {
+                echo json_encode(['success' => false, 'message' => 'A service with this name already exists at your station.']);
+                exit;
+            }
+
+            // Ensure service_key uniqueness — scoped to THIS station only
+            // Different stations are allowed to use the same service key name
             $base_key = $service_key;
             $suffix = 1;
             while (true) {
-                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key = ? LIMIT 1");
-                $chk->execute([$service_key]);
+                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key = ? AND station_id = ? LIMIT 1");
+                $chk->execute([$service_key, $station_id]);
                 if (!$chk->fetch()) break;
                 $service_key = $base_key . '_' . $suffix++;
             }
@@ -1904,16 +1944,16 @@ try {
                 $service_key = trim($service_key, '_');
             }
 
-            // Get current service
-            $stmt = $pdo->prepare("SELECT * FROM job_order_service_types WHERE id=? LIMIT 1");
-            $stmt->execute([$id]);
+            // Get current service — verify it belongs to THIS station
+            $stmt = $pdo->prepare("SELECT * FROM job_order_service_types WHERE id=? AND station_id=? LIMIT 1");
+            $stmt->execute([$id, $station_id]);
             $svc = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$svc) { echo json_encode(['success'=>false,'message'=>'Service not found']); exit; }
+            if (!$svc) { echo json_encode(['success'=>false,'message'=>'Service not found or does not belong to your station']); exit; }
 
-            // Check key uniqueness (excluding self)
+            // Check key uniqueness (excluding self) — scoped to THIS station only
             if (!empty($service_key)) {
-                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key=? AND id!=? LIMIT 1");
-                $chk->execute([$service_key, $id]);
+                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key=? AND station_id=? AND id!=? LIMIT 1");
+                $chk->execute([$service_key, $station_id, $id]);
                 if ($chk->fetch()) {
                     // Auto-deduplicate key
                     $service_key = $service_key . '_' . $id;
@@ -2073,28 +2113,28 @@ try {
                 exit;
             }
             
-            // Get service name
+            // Get service — verify it belongs to THIS station
             $stmt = $pdo->prepare("
                 SELECT service_name 
                 FROM job_order_service_types 
-                WHERE id = ?
+                WHERE id = ? AND station_id = ?
                 LIMIT 1
             ");
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $station_id]);
             $service = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$service) {
-                echo json_encode(['success' => false, 'message' => 'Service not found']);
+                echo json_encode(['success' => false, 'message' => 'Service not found or does not belong to your station']);
                 exit;
             }
             
-            // Update status to inactive
+            // Update status to inactive — also scoped to station
             $stmt = $pdo->prepare("
                 UPDATE job_order_service_types 
                 SET active = 0
-                WHERE id = ?
+                WHERE id = ? AND station_id = ?
             ");
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $station_id]);
 
             // Log to history
             try {
@@ -2202,28 +2242,28 @@ try {
                 exit;
             }
             
-            // Get service name
+            // Get service — verify it belongs to THIS station
             $stmt = $pdo->prepare("
                 SELECT service_name 
                 FROM job_order_service_types 
-                WHERE id = ?
+                WHERE id = ? AND station_id = ?
                 LIMIT 1
             ");
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $station_id]);
             $service = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$service) {
-                echo json_encode(['success' => false, 'message' => 'Service not found']);
+                echo json_encode(['success' => false, 'message' => 'Service not found or does not belong to your station']);
                 exit;
             }
             
-            // Update status to active
+            // Update status to active — scoped to station
             $stmt = $pdo->prepare("
                 UPDATE job_order_service_types 
                 SET active = 1
-                WHERE id = ?
+                WHERE id = ? AND station_id = ?
             ");
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $station_id]);
 
             // Log to history
             try {

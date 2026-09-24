@@ -196,7 +196,7 @@ if ($action === 'save_template') {
         echo json_encode(['success' => true, 'message' => 'Receipt template saved successfully.', 'logo_url' => $logo_url]);
     } catch (Exception $e) {
         error_log('Receipt config save error: ' . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Database error. Palihog i-try pag-usab.']);
+        echo json_encode(['success' => false, 'message' => 'Database error. Please try again.']);
     }
     exit;
 }
@@ -272,7 +272,7 @@ if ($action === 'request_correction') {
         echo json_encode(['success' => true, 'message' => 'Correction request submitted. Admin will review.']);
     } catch (Exception $e) {
         error_log('Correction request error: ' . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Database error. Palihog i-try pag-usab.']);
+        echo json_encode(['success' => false, 'message' => 'Database error. Please try again.']);
     }
     exit;
 }
@@ -316,7 +316,7 @@ if ($action === 'resolve_correction') {
         echo json_encode(['success' => true, 'message' => "Correction request #$correction_id $resolution successfully."]);
     } catch (Exception $e) {
         error_log('Correction resolve error: ' . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Database error. Palihog i-try pag-usab.']);
+        echo json_encode(['success' => false, 'message' => 'Database error. Please try again.']);
     }
     exit;
 }

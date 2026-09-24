@@ -267,7 +267,7 @@ try {
                 case 'Other':
                     $exact_data[$service_name] = [
                         'Merchandise' => [
-                            'Staff encode manually kung wala sa list'
+                            'Staff encode manually if not in list'
                         ]
                     ];
                     break;

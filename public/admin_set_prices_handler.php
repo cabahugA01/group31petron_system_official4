@@ -396,6 +396,33 @@ try {
                 exit;
             }
 
+            // Station-scoped duplicate check: block if same product name already in this station
+            try {
+                $dup_ip = $pdo->prepare("
+                    SELECT ip.id FROM inventory_products ip
+                    INNER JOIN station_inventory si ON si.product_id = ip.id
+                    WHERE si.station_id = ? AND LOWER(ip.product_name) = LOWER(?)
+                    LIMIT 1
+                ");
+                $dup_ip->execute([$station_id, $product_name]);
+                if ($dup_ip->fetch()) {
+                    echo json_encode(['success' => false, 'message' => 'A merchandise product with this name already exists at this station.']);
+                    exit;
+                }
+                // Also check products table (legacy path)
+                $dup_p = $pdo->prepare("
+                    SELECT p.id FROM products p
+                    INNER JOIN station_inventory si ON si.product_id = p.id
+                    WHERE si.station_id = ? AND LOWER(p.name) = LOWER(?)
+                    LIMIT 1
+                ");
+                $dup_p->execute([$station_id, $product_name]);
+                if ($dup_p->fetch()) {
+                    echo json_encode(['success' => false, 'message' => 'A merchandise product with this name already exists at this station.']);
+                    exit;
+                }
+            } catch (Exception $e) { /* non-fatal, proceed */ }
+
             $new_id = 0;
             try {
                 $stmt = $pdo->prepare("
@@ -558,6 +585,18 @@ try {
                 exit;
             }
 
+            // Station-scoped service name duplicate check
+            $svc_dup = $pdo->prepare("
+                SELECT id FROM job_order_service_types
+                WHERE station_id = ? AND LOWER(service_name) = LOWER(?)
+                LIMIT 1
+            ");
+            $svc_dup->execute([$station_id, $service_name]);
+            if ($svc_dup->fetch()) {
+                echo json_encode(['success' => false, 'message' => 'A service with this name already exists at this station.']);
+                exit;
+            }
+
             if (empty($service_key)) {
                 $service_key = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $service_name));
                 $service_key = trim($service_key, '_');
@@ -566,8 +605,8 @@ try {
             $base_key = $service_key;
             $suffix = 1;
             while (true) {
-                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key = ? LIMIT 1");
-                $chk->execute([$service_key]);
+                $chk = $pdo->prepare("SELECT id FROM job_order_service_types WHERE service_key = ? AND station_id = ? LIMIT 1");
+                $chk->execute([$service_key, $station_id]);
                 if (!$chk->fetch()) break;
                 $service_key = $base_key . '_' . $suffix++;
             }

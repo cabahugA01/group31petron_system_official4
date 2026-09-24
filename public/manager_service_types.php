@@ -156,15 +156,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['error'] = 'Service price cannot be negative.';
         } else {
             try {
-                // Check if price changed
-                $stmt = $pdo->prepare("SELECT service_price FROM job_order_service_types WHERE id=?");
-                $stmt->execute([$id]);
-                $old_price = (float)($stmt->fetchColumn() ?: 0);
+                // Check if price changed (scoped to manager station)
+                $stmt = $pdo->prepare("SELECT service_price FROM job_order_service_types WHERE id=? AND station_id=?");
+                $stmt->execute([$id, $station_id]);
+                $old_price_col = $stmt->fetchColumn();
+                if ($old_price_col === false) {
+                    $_SESSION['error'] = 'Service not found or does not belong to your station.';
+                    header('Location: manager_service_types.php'); exit;
+                }
+                $old_price = (float)$old_price_col;
 
                 if ($old_price != $price) {
                     // Update non-pricing fields including category
-                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
-                        ->execute([$name, $category, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=? AND station_id=?")
+                        ->execute([$name, $category, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id, $station_id]);
                     
                     // Insert into pending_price_approvals
                     $pdo->prepare("INSERT INTO pending_price_approvals (station_id, product_type, product_id, product_name, field_name, old_value, new_value, old_price, new_price, requested_by, manager_id, status, created_at) VALUES (?, 'service', ?, ?, 'price', ?, ?, ?, ?, ?, ?, 'pending', NOW())")
@@ -173,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['success'] = "Service details updated. Price change submitted for Admin approval.";
                     $log_msg = "Service '$name' updated. Price change submitted: ₱".number_format($old_price, 2)." → ₱".number_format($price, 2)." (Pending Approval)";
                 } else {
-                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_price=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=?")
-                        ->execute([$name, $category, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id]);
+                    $pdo->prepare("UPDATE job_order_service_types SET service_name=?, category=?, service_price=?, min_price=?, max_price=?, price_description=?, pricing_notes=?, icon_class=?, color_class=? WHERE id=? AND station_id=?")
+                        ->execute([$name, $category, $price, $min_price, $max_price, $price_desc, $notes, $icon, $color, $id, $station_id]);
                     $_SESSION['success'] = "Service type updated.";
                     $log_msg = "Service type '$name' (Category: $category) updated.";
                 }
@@ -193,13 +198,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newStatus = ($_POST['new_status'] ?? '') === 'inactive' ? 0 : 1; // Use 0/1 for active column
         if ($id) {
             try {
-                $stmt = $pdo->prepare("SELECT service_name FROM job_order_service_types WHERE id=?");
-                $stmt->execute([$id]);
+                $stmt = $pdo->prepare("SELECT service_name FROM job_order_service_types WHERE id=? AND station_id=?");
+                $stmt->execute([$id, $station_id]);
                 $sname = $stmt->fetchColumn();
+                if (!$sname) {
+                    $_SESSION['error'] = 'Service not found or does not belong to your station.';
+                    header('Location: manager_service_types.php'); exit;
+                }
 
                 // Update active column (1 = active, 0 = inactive)
-                $stmt = $pdo->prepare("UPDATE job_order_service_types SET active=? WHERE id=?");
-                $stmt->execute([$newStatus, $id]);
+                $stmt = $pdo->prepare("UPDATE job_order_service_types SET active=? WHERE id=? AND station_id=?");
+                $stmt->execute([$newStatus, $id, $station_id]);
                 
                 // Verify update worked
                 $verify = $pdo->prepare("SELECT active FROM job_order_service_types WHERE id=?");

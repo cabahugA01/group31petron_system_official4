@@ -872,10 +872,13 @@ function get_user_permissions($role) {
 
                 // Staff & User management
                 'manage_staff',
+                'manage_staff_oversight',
+                'assign_shifts',
                 'manage_shifts',
                 'manage_stations',
                 'manage_all_users',
                 'manage_users_station',
+                'view_team_reports',
 
                 // Reports (Personal, operational, financial, audit, all)
                 'view_personal_reports',
@@ -983,6 +986,11 @@ function get_user_permissions($role) {
  * Check if user can access a specific menu item
  */
 function user_can_access_menu($menu_id, $user_role, $required_permissions = []) {
+    $role = role_key($user_role);
+    if ($role === 'superadmin' || $role === 'admin') {
+        return true;
+    }
+
     $user_permissions = get_user_permissions($user_role);
     
     // If no specific permissions required, allow access

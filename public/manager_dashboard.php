@@ -1736,23 +1736,23 @@ if (typeof Chart === 'undefined') {
                 <!-- MERCHANDISE VIEW -->
                 <div id="mgr_inv_view_merchandise">
                     <div class="mgr-metric-list">
-                        <div onclick="openMgrMerchInvModal('available')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view available/healthy stock merchandise items">
+                        <div class="mgr-metric-item" title="Available/healthy stock merchandise items">
                             <span class="mgr-metric-label" style="color: #15803D;"><i class="fas fa-circle-check"></i> Available (In Stock)</span>
                             <span class="mgr-metric-value" id="op_inv_available" style="color: #15803D;"><?= number_format($available_merch_count) ?></span>
                         </div>
-                        <div onclick="openMgrMerchInvModal('low')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view low stock merchandise items">
+                        <div class="mgr-metric-item" title="Low stock merchandise items">
                             <span class="mgr-metric-label" style="color: #D97706;"><i class="fas fa-triangle-exclamation"></i> Low Stock</span>
                             <span class="mgr-metric-value" id="op_inv_low" style="color: #D97706;"><?= number_format($low_merch_count) ?></span>
                         </div>
-                        <div onclick="openMgrMerchInvModal('critical')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view critical stock merchandise items">
+                        <div class="mgr-metric-item" title="Critical stock merchandise items">
                             <span class="mgr-metric-label" style="color: #DC2626;"><i class="fas fa-circle-exclamation"></i> Critical Stock</span>
                             <span class="mgr-metric-value" id="op_inv_critical" style="color: #DC2626;"><?= number_format($crit_merch_count) ?></span>
                         </div>
-                        <div onclick="openMgrMerchInvModal('out')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view out-of-stock merchandise items">
+                        <div class="mgr-metric-item" title="Out-of-stock merchandise items">
                             <span class="mgr-metric-label" style="color: #991B1B;"><i class="fas fa-circle-xmark"></i> Out of Stock</span>
                             <span class="mgr-metric-value" id="op_inv_out" style="color: #991B1B;"><?= number_format($out_merch_count) ?></span>
                         </div>
-                        <div onclick="openMgrMerchInvModal('variance')" class="mgr-metric-item" style="cursor:pointer; transition:background 0.15s ease;" title="Click to view physical count variances detected">
+                        <div class="mgr-metric-item" title="Physical count variances detected">
                             <span class="mgr-metric-label" style="color: #7C3AED;"><i class="fas fa-clipboard-check"></i> Variance Detected (P-Count)</span>
                             <span class="mgr-metric-value" id="op_inv_variance" style="color: #7C3AED;"><?= number_format($variance_merch_count) ?></span>
                         </div>
@@ -1763,19 +1763,19 @@ if (typeof Chart === 'undefined') {
                 <div id="mgr_inv_view_fuel" style="display:none;">
                     <!-- Summary badges row -->
                     <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; margin-bottom:10px;">
-                        <div onclick="openMgrFuelInvModal('normal')" style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Normal tanks">
+                        <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:6px 4px; border-radius:8px; text-align:center; min-width:0; overflow:hidden;" title="Normal tanks">
                             <div style="font-size:11.5px; font-weight:700; color:#15803D; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-check"></i> Normal</div>
                             <div style="font-size:18px; font-weight:800; color:#15803D;"><?= $normal_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('low')" style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Low tanks">
+                        <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:6px 4px; border-radius:8px; text-align:center; min-width:0; overflow:hidden;" title="Low tanks">
                             <div style="font-size:11.5px; font-weight:700; color:#B45309; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-triangle-exclamation"></i> Low</div>
                             <div style="font-size:18px; font-weight:800; color:#B45309;"><?= $low_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('critical')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Critical tanks">
+                        <div style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; min-width:0; overflow:hidden;" title="Critical tanks">
                             <div style="font-size:11.5px; font-weight:700; color:#DC2626; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-exclamation"></i> Critical</div>
                             <div style="font-size:18px; font-weight:800; color:#DC2626;"><?= $crit_fuel_count ?></div>
                         </div>
-                        <div onclick="openMgrFuelInvModal('out')" style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; cursor:pointer; min-width:0; overflow:hidden;" title="Out of stock tanks">
+                        <div style="background:#FEF2F2; border:1px solid #FECACA; padding:6px 4px; border-radius:8px; text-align:center; min-width:0; overflow:hidden;" title="Out of stock tanks">
                             <div style="font-size:11.5px; font-weight:700; color:#991B1B; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-circle-xmark"></i> Out</div>
                             <div style="font-size:18px; font-weight:800; color:#991B1B;"><?= $out_fuel_count ?></div>
                         </div>
@@ -2392,211 +2392,6 @@ if (typeof Chart === 'undefined') {
     </div>
     <?php endif; ?>
 
-<!-- ========================================================================= -->
-<!-- MANAGER MERCHANDISE INVENTORY MODAL -->
-<!-- ========================================================================= -->
-<div id="mgrMerchInvModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#ffffff; border-radius:12px; max-width:900px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
-        <!-- Header -->
-        <div style="padding:16px 20px; background:#002F6C; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <i class="fas fa-boxes" style="font-size:20px; color:#FCD34D;"></i>
-                <div>
-                    <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Merchandise Inventory Catalog &amp; Stock Status</h3>
-                    <p style="margin:0; font-size:12px; color:#93C5FD;">Live overview of all products, stock levels, reorder thresholds &amp; physical counts</p>
-                </div>
-            </div>
-            <button type="button" onclick="closeMgrMerchInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
-        </div>
-
-        <!-- Controls / Filter Tabs -->
-        <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" class="mgrmerch-flt-btn active" id="mgrmflt_all" onclick="filterMgrMerchModal('all')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
-                    All (<?= $total_products_count ?>)
-                </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_available" onclick="filterMgrMerchModal('available')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
-                    <i class="fas fa-circle-check"></i> Available (<?= $available_merch_count ?>)
-                </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_low" onclick="filterMgrMerchModal('low')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
-                    <i class="fas fa-triangle-exclamation"></i> Low Stock (<?= $low_merch_count ?>)
-                </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_critical" onclick="filterMgrMerchModal('critical')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
-                    <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_merch_count ?>)
-                </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_out" onclick="filterMgrMerchModal('out')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
-                    <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_merch_count ?>)
-                </button>
-                <button type="button" class="mgrmerch-flt-btn" id="mgrmflt_variance" onclick="filterMgrMerchModal('variance')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#7C3AED; cursor:pointer;">
-                    <i class="fas fa-clipboard-check"></i> Variance (<?= $variance_merch_count ?>)
-                </button>
-            </div>
-            <input type="text" id="mgrMerchModalSearch" placeholder="Search product..." onkeyup="searchMgrMerchModal()" style="padding:6px 12px; font-size:13px; border:1px solid #CBD5E1; border-radius:6px; width:200px;">
-        </div>
-
-        <!-- Table Body -->
-        <div style="padding:0; overflow-y:auto; overflow-x:hidden; flex:1;">
-            <table class="mgr-table report-table no-min-width print-table" style="margin:0; width:100%;">
-                <colgroup>
-                    <col style="width: 32%;">
-                    <col style="width: 18%;">
-                    <col style="width: 14%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th class="text-left">Product Name</th>
-                        <th class="text-left">Category</th>
-                        <th class="text-right">Current Stock</th>
-                        <th class="text-right">Reorder Level</th>
-                        <th class="text-right">Critical Level</th>
-                        <th class="text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="mgrMerchModalTableBody">
-                    <?php if (empty($merch_inv_stats)): ?>
-                        <tr><td colspan="6" class="text-center" style="color:#64748B; padding:24px;">No merchandise products found.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($merch_inv_stats as $item): ?>
-                            <tr class="mgrmerch-modal-row" data-type="<?= $item['alert_type'] ?>" data-has-variance="<?= $item['has_variance'] ? 'true' : 'false' ?>" data-name="<?= strtolower(htmlspecialchars($item['product_name'] . ' ' . $item['category'])) ?>">
-                                <td class="text-left">
-                                    <strong><?= mgr_h($item['product_name']) ?></strong>
-                                    <?php if ($item['has_variance']): ?>
-                                        <span style="display:inline-block; margin-left:6px; padding:2px 7px; font-size:10px; font-weight:800; border-radius:4px; background:#F5F3FF; color:#7C3AED; border:1px solid #DDD6FE;">Variance <?= ($item['variance'] > 0 ? '+' : '') . (float)$item['variance'] ?></span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-left"><span style="color:#64748B; font-size:12.5px;"><?= mgr_h($item['category']) ?></span></td>
-                                <td class="text-right" style="font-weight:800; font-size:13px; color:<?= $item['alert_type'] === 'out' ? '#991B1B' : ($item['alert_type'] === 'critical' ? '#DC2626' : ($item['alert_type'] === 'low' ? '#B45309' : '#15803D')) ?>;">
-                                    <?= number_format((float)$item['stock_level']) ?> <?= mgr_h($item['unit']) ?>
-                                </td>
-                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format((float)$item['reorder_level']) ?></td>
-                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format((float)$item['critical_level']) ?></td>
-                                <td class="text-center">
-                                    <span style="display:inline-block; padding:4px 10px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $item['badge_bg'] ?? '#F1F5F9' ?>; color:<?= $item['badge_color'] ?? '#475569' ?>; border:1.5px solid <?= $item['badge_border'] ?? '#CBD5E1' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($item['alert_status']) ?></span>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Footer -->
-        <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:12.5px; color:#64748B;">Total Products Catalog: <strong><?= number_format($total_products_count) ?></strong></span>
-            <div style="display:flex; gap:8px;">
-                <button type="button" onclick="closeMgrMerchInvModal()" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
-                <a href="manager_inventory_merchandise.php" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                    <i class="fas fa-boxes"></i> Open Merchandise Module
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================================================= -->
-<!-- MANAGER FUEL INVENTORY ALERT MODAL -->
-<!-- ========================================================================= -->
-<div id="mgrFuelInvModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#ffffff; border-radius:12px; max-width:850px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #E2E8F0; overflow:hidden;">
-        <!-- Header -->
-        <div style="padding:16px 20px; background:#002F6C; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <i class="fas fa-gas-pump" style="font-size:20px; color:#FCD34D;"></i>
-                <div>
-                    <h3 style="margin:0; font-size:16px; font-weight:800; color:#FFFFFF;">Manager Fuel Tanks Inventory &amp; Status</h3>
-                    <p style="margin:0; font-size:12px; color:#93C5FD;">Station Underground Tanks (UGT) capacity, volume, and stock levels</p>
-                </div>
-            </div>
-            <button type="button" onclick="closeMgrFuelInvModal()" style="background:transparent; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; line-height:1;">&times;</button>
-        </div>
-
-        <!-- Controls / Filter Tabs -->
-        <div style="padding:12px 20px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-                <button type="button" class="mgrfuel-flt-btn active" id="mgrfflt_all" onclick="filterMgrFuelModal('all')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#002F6C; color:#FFF; cursor:pointer;">
-                    All Tanks (<?= count($fuel_tanks) ?>)
-                </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_normal" onclick="filterMgrFuelModal('normal')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#15803D; cursor:pointer;">
-                    <i class="fas fa-circle-check"></i> Normal (<?= $normal_fuel_count ?>)
-                </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_low" onclick="filterMgrFuelModal('low')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#B45309; cursor:pointer;">
-                    <i class="fas fa-triangle-exclamation"></i> Low (<?= $low_fuel_count ?>)
-                </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_critical" onclick="filterMgrFuelModal('critical')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#DC2626; cursor:pointer;">
-                    <i class="fas fa-circle-exclamation"></i> Critical (<?= $crit_fuel_count ?>)
-                </button>
-                <button type="button" class="mgrfuel-flt-btn" id="mgrfflt_out" onclick="filterMgrFuelModal('out')" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFF; color:#991B1B; cursor:pointer;">
-                    <i class="fas fa-circle-xmark"></i> Out of Stock (<?= $out_fuel_count ?>)
-                </button>
-            </div>
-            <input type="text" id="mgrFuelModalSearch" placeholder="Search fuel tank..." onkeyup="searchMgrFuelModal()" style="padding:6px 12px; font-size:13px; border:1px solid #CBD5E1; border-radius:6px; width:200px;">
-        </div>
-
-        <!-- Table Body -->
-        <div style="padding:0; overflow-y:auto; overflow-x:hidden; flex:1;">
-            <table class="mgr-table report-table no-min-width print-table" style="margin:0; width:100%;">
-                <colgroup>
-                    <col style="width: 26%;">
-                    <col style="width: 20%;">
-                    <col style="width: 18%;">
-                    <col style="width: 22%;">
-                    <col style="width: 14%;">
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th class="text-left">Fuel Tank / UGT</th>
-                        <th class="text-right">Current Volume</th>
-                        <th class="text-right">Capacity</th>
-                        <th class="text-center">Level Gauge</th>
-                        <th class="text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="mgrFuelModalTableBody">
-                    <?php if (empty($fuel_tanks)): ?>
-                        <tr><td colspan="5" class="text-center" style="color:#64748B; padding:24px;">No active fuel tanks found for this station.</td></tr>
-                    <?php else: ?>
-                        <?php foreach ($fuel_tanks as $ft): 
-                            $lvl_num = (float)$ft['current_level'];
-                            $cap_num = (float)$ft['capacity'];
-                            $pct_num = $cap_num > 0 ? min(100, round(($lvl_num / $cap_num) * 100, 1)) : 0;
-                        ?>
-                            <tr class="mgrfuel-modal-row" data-type="<?= $ft['alert_type'] ?>" data-name="<?= strtolower(htmlspecialchars($ft['fuel_type'])) ?>">
-                                <td class="text-left"><strong><?= mgr_h($ft['fuel_type']) ?></strong></td>
-                                <td class="text-right" style="font-weight:800; font-size:13px; color:var(--petron-blue);"><?= number_format($lvl_num, 2) ?> L</td>
-                                <td class="text-right" style="color:#64748B; font-size:13px;"><?= number_format($cap_num) ?> L</td>
-                                <td class="text-center" style="vertical-align:middle;">
-                                    <div style="display:flex; align-items:center; gap:6px;">
-                                        <div style="flex:1; height:8px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
-                                            <div style="height:100%; width:<?= $pct_num ?>%; background:<?= $ft['bar_color'] ?? '#002F6C' ?>; border-radius:999px;"></div>
-                                        </div>
-                                        <span style="font-size:12px; font-weight:700; min-width:34px;"><?= $pct_num ?>%</span>
-                                    </div>
-                                </td>
-                                <td class="text-center">
-                                    <span style="display:inline-block; padding:4px 10px; font-size:11px; font-weight:800; border-radius:999px; background:<?= $ft['badge_bg'] ?? '#64748B' ?>; color:<?= $ft['badge_color'] ?? '#FFF' ?>; letter-spacing:0.5px; text-transform:uppercase;"><?= mgr_h($ft['alert_status'] ?? 'NORMAL') ?></span>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Footer -->
-        <div style="padding:12px 20px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:12.5px; color:#64748B;">Total Fuel Tanks: <strong><?= count($fuel_tanks) ?></strong></span>
-            <div style="display:flex; gap:8px;">
-                <button type="button" onclick="closeMgrFuelInvModal()" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:1px solid #CBD5E1; background:#FFFFFF; color:#475569; cursor:pointer;">Close</button>
-                <a href="manager_inventory_fuel.php" style="padding:7px 16px; font-size:13px; font-weight:700; border-radius:6px; border:none; background:#002F6C; color:#FFFFFF; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                    <i class="fas fa-gas-pump"></i> Open Fuel Module
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
 
 <script>
 function switchMgrInvWidgetTab(type) {
@@ -2624,96 +2419,9 @@ function switchMgrInvWidgetTab(type) {
     }
 }
 
-function openMgrMerchInvModal(filterType = 'all') {
-    const modal = document.getElementById('mgrMerchInvModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        filterMgrMerchModal(filterType);
-    }
-}
-function closeMgrMerchInvModal() {
-    const modal = document.getElementById('mgrMerchInvModal');
-    if (modal) modal.style.display = 'none';
-}
-function filterMgrMerchModal(type) {
-    document.querySelectorAll('.mgrmerch-flt-btn').forEach(b => {
-        b.style.background = '#FFFFFF';
-        b.style.color = '#475569';
-    });
-    const activeBtn = document.getElementById('mgrmflt_' + type);
-    if (activeBtn) {
-        activeBtn.style.background = '#002F6C';
-        activeBtn.style.color = '#FFFFFF';
-    }
-    const rows = document.querySelectorAll('.mgrmerch-modal-row');
-    rows.forEach(r => {
-        const rowType = r.getAttribute('data-type');
-        const hasVar  = r.getAttribute('data-has-variance');
-        if (type === 'all') {
-            r.style.display = '';
-        } else if (type === 'variance') {
-            r.style.display = (hasVar === 'true') ? '' : 'none';
-        } else if (rowType === type) {
-            r.style.display = '';
-        } else {
-            r.style.display = 'none';
-        }
-    });
-}
-function searchMgrMerchModal() {
-    const q = (document.getElementById('mgrMerchModalSearch')?.value || '').toLowerCase().trim();
-    document.querySelectorAll('.mgrmerch-modal-row').forEach(r => {
-        const name = r.getAttribute('data-name') || '';
-        if (!q || name.includes(q)) {
-            r.style.display = '';
-        } else {
-            r.style.display = 'none';
-        }
-    });
-}
 
-function openMgrFuelInvModal(filterType = 'all') {
-    const modal = document.getElementById('mgrFuelInvModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        filterMgrFuelModal(filterType);
-    }
-}
-function closeMgrFuelInvModal() {
-    const modal = document.getElementById('mgrFuelInvModal');
-    if (modal) modal.style.display = 'none';
-}
-function filterMgrFuelModal(type) {
-    document.querySelectorAll('.mgrfuel-flt-btn').forEach(b => {
-        b.style.background = '#FFFFFF';
-        b.style.color = '#475569';
-    });
-    const activeBtn = document.getElementById('mgrfflt_' + type);
-    if (activeBtn) {
-        activeBtn.style.background = '#002F6C';
-        activeBtn.style.color = '#FFFFFF';
-    }
-    const rows = document.querySelectorAll('.mgrfuel-modal-row');
-    rows.forEach(r => {
-        const rowType = r.getAttribute('data-type');
-        if (type === 'all' || rowType === type) {
-            r.style.display = '';
-        } else {
-            r.style.display = 'none';
-        }
-    });
-}
-function searchMgrFuelModal() {
-    const q = (document.getElementById('mgrFuelModalSearch')?.value || '').toLowerCase().trim();
-    document.querySelectorAll('.mgrfuel-modal-row').forEach(r => {
-        const name = r.getAttribute('data-name') || '';
-        if (!q || name.includes(q)) {
-            r.style.display = '';
-        } else {
-            r.style.display = 'none';
-        }
-    });
-}
+
+
 </script>
 
 <!-- CHART.JS & REAL-TIME AUTO REFRESH SCRIPT -->

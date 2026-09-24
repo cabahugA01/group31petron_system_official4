@@ -694,7 +694,7 @@ html, body {
 .inv-filter-bar input[type=text] { cursor:text; }
 .fuel-filter-actions { display:flex; align-items:center; gap:8px; }
 
-/* ── Guaranteed Downward Filter Dropdowns (Mo-abli paubos pirme - Exact Fuel Inventory Style) ── */
+/* ── Guaranteed Downward Filter Dropdowns (Opens downward - Exact Fuel Inventory Style) ── */
 .petron-dropdown-source {
     display: none !important;
 }

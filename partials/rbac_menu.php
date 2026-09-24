@@ -62,10 +62,10 @@ $master_menu = [
     // 4. Database Management (Tabbed Interface)
     ['id'=>'database_management','label'=>'Database Management','ico'=>'fas fa-database','href'=>'database_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
-    // 6. Audit Trail  ← ONLY place for audit trail
+    // 5. Station Management
+    ['id'=>'station_management','label'=>'Station Management','ico'=>'fas fa-gas-pump','href'=>'superadmin_station_management.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
-
-    // 7. System Settings
+    // 6. System Settings
     ['id'=>'system_settings','label'=>'System Settings','ico'=>'fas fa-cog','href'=>'superadmin_system_settings.php','permissions'=>['manage_stations'],'station_specific'=>false],
 
     // 8. System Reports (Developer & Super Admin View)

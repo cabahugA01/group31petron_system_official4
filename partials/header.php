@@ -832,11 +832,25 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
         background: var(--sidebar-bg) !important;
         background-color: var(--sidebar-bg) !important;
     }
-    .nav-item.active {
+    .nav-item.active:not(.has-submenu),
+    .nav-item:active:not(.has-submenu),
+    .sidebar-sub-item.active,
+    .sidebar-sub-item:active,
+    .nav-item.is-nav-clicking:not(.has-submenu),
+    .sidebar-sub-item.is-nav-clicking {
         background-color: var(--nav-active-color) !important;
+        color: #ffffff !important;
     }
-    .sidebar-sub-item.active {
-        border-left-color: var(--nav-active-color) !important;
+    .has-submenu,
+    .has-submenu:active,
+    .has-submenu.active,
+    .has-submenu.is-nav-clicking {
+        background-color: transparent !important;
+    }
+    .sidebar-sub-item.active,
+    .sidebar-sub-item:active,
+    .sidebar-sub-item.is-nav-clicking {
+        border-left: none !important;
     }
     button, .btn, .ss-btn-primary {
         background-color: <?php echo htmlspecialchars($theme_button_color); ?> !important;
@@ -1117,9 +1131,25 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
         background: rgba(255,255,255,0.06) !important;
         color: #ffffff !important;
     }
-    body.dark-theme .nav-item.active {
-        background: rgba(204,0,0,0.25) !important;
+    body.dark-theme .nav-item.active:not(.has-submenu),
+    body.dark-theme .nav-item:active:not(.has-submenu),
+    body.dark-theme .sidebar-sub-item.active,
+    body.dark-theme .sidebar-sub-item:active,
+    body.dark-theme .nav-item.is-nav-clicking:not(.has-submenu),
+    body.dark-theme .sidebar-sub-item.is-nav-clicking {
+        background: var(--nav-active-color, #E30613) !important;
         color: #ffffff !important;
+    }
+    body.dark-theme .has-submenu,
+    body.dark-theme .has-submenu:active,
+    body.dark-theme .has-submenu.active,
+    body.dark-theme .has-submenu.is-nav-clicking {
+        background-color: transparent !important;
+    }
+    body.dark-theme .sidebar-sub-item.active,
+    body.dark-theme .sidebar-sub-item:active,
+    body.dark-theme .sidebar-sub-item.is-nav-clicking {
+        border-left: none !important;
     }
     body.dark-theme .sidebar-identity-footer {
         background: rgba(0,0,0,0.4) !important;
@@ -1957,16 +1987,31 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
 
     .nav-item { color: #eeeeee !important; transition: all 0.2s; display: flex; align-items: center; justify-content: flex-start; padding: 10px 14px !important; text-decoration: none; min-height: 44px; height: auto !important; font-size: 15px !important; font-weight: 600 !important; pointer-events: auto !important; cursor: pointer !important; position: relative !important; z-index: 10 !important; }
     .nav-item:hover { background-color: rgba(255,255,255,0.12) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
-    .nav-item.active { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
+    .nav-item.active:not(.has-submenu),
+    .nav-item:active:not(.has-submenu),
+    .nav-item.is-nav-clicking:not(.has-submenu) { background-color: var(--petron-red) !important; color: #ffffff !important; font-size: 15px !important; font-weight: 600 !important; }
     .nav-item span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
-    .nav-item.active span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; }
-    .sidebar-sub-item { font-size: 15px !important; font-weight: 600 !important; color: #e2e8f0 !important; text-decoration: none !important; padding: 7px 14px 7px 40px !important; height: auto !important; min-height: 36px !important; }
+    .nav-item.active:not(.has-submenu) span,
+    .nav-item:active:not(.has-submenu) span,
+    .nav-item.is-nav-clicking:not(.has-submenu) span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; color: #ffffff !important; }
+    .has-submenu,
+    .has-submenu:active,
+    .has-submenu.active,
+    .has-submenu.is-nav-clicking { background-color: transparent !important; }
+    .sidebar-sub-item { font-size: 15px !important; font-weight: 600 !important; color: #e2e8f0 !important; text-decoration: none !important; padding: 7px 14px 7px 40px !important; height: auto !important; min-height: 36px !important; transition: all 0.2s; }
     .sidebar-sub-item span { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; text-overflow: clip !important; }
     .sidebar-sub-item span:not(.ico) { font-size: 15px !important; font-weight: 600 !important; white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; overflow: visible !important; text-overflow: clip !important; color: #e2e8f0 !important; text-decoration: none !important; line-height: 1.35 !important; }
     .sidebar-sub-item:hover { background-color: rgba(255,255,255,0.12) !important; color: #ffffff !important; text-decoration: none !important; }
     .sidebar-sub-item:hover span:not(.ico) { color: #ffffff !important; }
-    .sidebar-sub-item.active { background-color: transparent !important; color: #ffffff !important; border-left: 3px solid var(--petron-red) !important; text-decoration: none !important; }
-    .sidebar-sub-item.active span:not(.ico) { color: #ffffff !important; font-weight: 700 !important; }
+    .sidebar-sub-item.active,
+    .sidebar-sub-item:active,
+    .sidebar-sub-item.is-nav-clicking { background-color: var(--petron-red) !important; color: #ffffff !important; border-left: none !important; text-decoration: none !important; }
+    .sidebar-sub-item.active span,
+    .sidebar-sub-item:active span,
+    .sidebar-sub-item.is-nav-clicking span,
+    .sidebar-sub-item.active span:not(.ico),
+    .sidebar-sub-item:active span:not(.ico),
+    .sidebar-sub-item.is-nav-clicking span:not(.ico) { color: #ffffff !important; font-weight: 700 !important; }
 
 
     
@@ -3945,6 +3990,122 @@ require_once __DIR__ . '/rbac_menu.php';
 
   map_hrefs($items, $base_path);
 
+  if (!function_exists('petron_is_nav_item_active')) {
+      function petron_is_nav_item_active($item, $page_id) {
+          $rawHref = $item['href'] ?? '';
+          if ($rawHref === '' || $rawHref === '#') {
+              return false;
+          }
+
+          // If item href has query parameters, verify they match $_GET
+          $hrefQuery = parse_url($rawHref, PHP_URL_QUERY);
+          if (!empty($hrefQuery)) {
+              parse_str($hrefQuery, $hrefParams);
+              foreach ($hrefParams as $pk => $pv) {
+                  $actualVal = $_GET[$pk] ?? null;
+                  if ($actualVal === null) {
+                      $c_file = basename($_SERVER['PHP_SELF'] ?? '');
+                      if ($c_file === 'staff_transactions_hub.php' && $pk === 'section') {
+                          $actualVal = 'merchandise';
+                      } elseif (($c_file === 'admin_reports.php' || $c_file === 'manager_reports.php') && $pk === 'cat') {
+                          $actualVal = 'sales';
+                      }
+                  }
+                  if ($actualVal === null || (string)$actualVal !== (string)$pv) {
+                      return false;
+                  }
+              }
+              return true;
+          }
+
+          $itemId = $item['id'] ?? '';
+          if ($page_id !== '' && $itemId === $page_id) {
+              return true;
+          }
+
+          $hrefPath = parse_url($rawHref, PHP_URL_PATH);
+          if (!$hrefPath) return false;
+
+          $hrefFile = basename($hrefPath);
+          $hrefBase = basename($hrefPath, '.php');
+
+          $currentScript = $_SERVER['PHP_SELF'] ?? '';
+          $currentFile   = basename($currentScript);
+          $currentBase   = basename($currentScript, '.php');
+
+          $fileMatches = ($hrefFile === $currentFile) ||
+                         ($hrefBase === $currentBase) ||
+                         ($page_id !== '' && $hrefBase === $page_id);
+
+          if (!$fileMatches) {
+              return false;
+          }
+
+          return true;
+      }
+  }
+
+  // Page-ID alias map: maps PHP file page_id → sidebar item id
+  // Allows files like admin_set_prices.php ($page_id='admin_set_prices') to correctly
+  // light up their sidebar item ('admin_product_pricing'), without requiring every page
+  // to manually set $page_id to the exact sidebar item ID.
+  $page_id_alias_map = [
+      // Product & Pricing Management
+      'admin_set_prices'              => 'admin_product_pricing',
+      'manager_set_prices'            => 'mgr_product_pricing',
+      // Dashboards
+      'admin_dashboard'               => 'admin_dashboard',
+      'manager_dashboard'             => 'manager_dashboard',
+      'dashboard'                     => 'dashboard',
+      // Transactions hub / sub-pages
+      'transactions'                  => 'admin_transactions',
+      'staff_new_transaction'         => 'staff_new_transaction',
+      'staff_transaction_history'     => 'staff_transaction_history',
+      'validated_transactions_manager'=> 'validated_transactions_manager',
+      'admin_receipt_management'      => 'admin_receipt_management',
+      'manager_request_data_management' => 'manager_request_data_management',
+      'manager_mechanics_management'  => 'manager_mechanics_management',
+      // Fuel management
+      'fuel_sales'                    => 'fuel_sales',
+      'fuel_transactions_validation'  => 'fuel_transactions_validation',
+      'fuel_adjustments'              => 'fuel_adjustments',
+      'fuel_pump_master'              => 'fuel_pump_master',
+      'admin_fuel_transactions_oversight' => 'fuel_transactions_validation',
+      // Inventory
+      'admin_inventory_merch'         => 'admin_inventory_merchandise',
+      'admin_inventory_merchandise'   => 'admin_inventory_merchandise',
+      'admin_inventory_fuel'          => 'admin_inventory_fuel',
+      'manager_inventory_merchandise' => 'mgr_inv_merch',
+      'manager_inventory_fuel'        => 'mgr_inv_fuel',
+      'manager_stock_request_review'  => 'mgr_stock_review',
+      'manager_stock_in'              => 'mgr_stock_in',
+      // Customers
+      'manager_customers'             => 'mgr_customers',
+      'mgr_customers'                 => 'mgr_customers',
+      // Calendar
+      'calendar'                      => 'admin_calendar',
+      'admin_calendar'                => 'admin_calendar',
+      'manager_calendar'              => 'calendar',
+      // Reports
+      'admin_reports'                 => 'admin_reports',
+      'manager_reports'               => 'reports',
+      // User management
+      'users'                         => 'users',
+      // Superadmin / Developer Modules
+      'super_admin_dashboard'         => 'super_admin_dashboard',
+      'admin_management'              => 'admin_management',
+      'module_config'                 => 'module_config',
+      'database_management'           => 'database_management',
+      'station_management'            => 'station_management',
+      'system_settings'               => 'system_settings',
+      'superadmin_reports'            => 'superadmin_reports',
+      'audit_trail'                   => 'audit_trail',
+  ];
+
+  // Normalize page_id using alias map so sidebar items highlight correctly
+  $effective_page_id = $page_id_alias_map[$page_id] ?? $page_id;
+
+
   // Determine active sub-item from URL hash or page_id
   $current_url  = basename($_SERVER['PHP_SELF']);
   $current_hash = '';
@@ -4221,7 +4382,7 @@ require_once __DIR__ . '/rbac_menu.php';
         $dash_href = '/group31petron_system_official4/public/';
         if (in_array($role, ['staff','cashier','pump_attendant'])) $dash_href .= 'staff_dashboard.php';
         else $dash_href .= 'dashboard.php';
-        $dash_active = in_array($page_id, ['dashboard','staff_dashboard','manager_dashboard']) ? 'active' : '';
+        $dash_active = in_array($effective_page_id, ['dashboard','staff_dashboard','manager_dashboard','admin_dashboard']) ? 'active' : '';
         echo '<div class="nav-item-wrapper">';
         echo '<a class="nav-item '.$dash_active.'" href="'.htmlspecialchars($dash_href).'" data-tooltip="Dashboard">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="fas fa-gauge"></i></span>';
@@ -4234,24 +4395,28 @@ require_once __DIR__ . '/rbac_menu.php';
     $has_sub = !empty($it['sub_items']);
     $active = '';
     $parent_active = false;
-
-    if (!$has_sub && $page_id === ($it['id'] ?? '')) {
-        $active = 'active';
-    }
+    $matched_sub_idx = -1;
 
     if ($has_sub) {
-        foreach ($it['sub_items'] as $sub) {
-            if ($page_id === ($sub['id'] ?? '')) {
-                $parent_active = true; break;
+        foreach ($it['sub_items'] as $sidx => $sub) {
+            if (petron_is_nav_item_active($sub, $effective_page_id)) {
+                $parent_active = true;
+                $matched_sub_idx = $sidx;
+                break;
             }
+        }
+    } else {
+        if (petron_is_nav_item_active($it, $effective_page_id)) {
+            $active = 'active';
         }
     }
 
     echo '<div class="nav-item-wrapper">';
 
     if ($has_sub) {
-        $parent_cls = $parent_active ? 'nav-item active' : 'nav-item';
-        echo '<a class="'.$parent_cls.' has-submenu" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
+        // Parent folder only indicates open/closed state; it does NOT get the red 'active' background
+        $parent_cls = $parent_active ? 'nav-item has-submenu sub-open' : 'nav-item has-submenu';
+        echo '<a class="'.$parent_cls.'" href="'.htmlspecialchars($it['href']).'" data-tooltip="'.htmlspecialchars($it['label']).'" onclick="toggleSidebarSub(event,\'sub-'.htmlspecialchars($it['id']).'\')">';
         echo '<span class="ico" style="margin-right:10px;width:24px;text-align:center;flex-shrink:0;"><i class="'.htmlspecialchars($it['ico']).'"></i></span>';
         echo '<span class="nav-label" style="flex-grow:1;font-size:15px;font-weight:600;">'.htmlspecialchars($it['label']).'</span>';
         echo '<i class="fas fa-chevron-down" style="font-size:11px;transition:transform .3s;'.($parent_active?'transform:rotate(180deg)':'').'"></i>';
@@ -4259,8 +4424,10 @@ require_once __DIR__ . '/rbac_menu.php';
 
         $display = $parent_active ? 'block' : 'none';
         echo '<div id="sub-'.htmlspecialchars($it['id']).'" style="display:'.$display.';background:transparent;border-left:3px solid rgba(255,255,255,.2);margin-left:0;padding-left:0;">';
-        foreach ($it['sub_items'] as $sub) {
-            $sub_active = ($page_id === ($sub['id'] ?? '')) ? 'active' : '';
+        foreach ($it['sub_items'] as $sidx => $sub) {
+            // Strictly the matched sub-item is active (highlighted red)
+            $is_sub_act = ($matched_sub_idx === $sidx);
+            $sub_active = $is_sub_act ? 'active' : '';
             echo '<a class="nav-item sidebar-sub-item '.$sub_active.'" href="'.htmlspecialchars($sub['href']).'" style="padding:7px 15px 7px 42px;min-height:auto;" data-tooltip="'.htmlspecialchars($sub['label'] ?? '').'">';
             echo '<span class="ico" style="margin-right:8px;width:14px;text-align:center;flex-shrink:0;"><i class="fas fa-circle" style="font-size:5px;opacity:.65;"></i></span>';
             echo '<span style="flex-grow:1;line-height:1.35;">';
@@ -5709,7 +5876,27 @@ require_once __DIR__ . '/rbac_menu.php';
                 if (parent) parent.style.display = 'block';
             });
         }
-        
+
+        // Instant visual feedback: add is-nav-clicking on click for red highlight before page load
+        document.addEventListener('click', function(e) {
+            var link = e.target.closest('a.nav-item, a.sidebar-sub-item');
+            if (!link) return;
+            // Skip sub-menu toggles (has-submenu items don't navigate the page)
+            if (link.classList.contains('has-submenu')) return;
+            var href = link.getAttribute('href');
+            if (!href || href === '#' || href === '') return;
+
+            // Remove active and is-nav-clicking from ALL sidebar items so ONLY the clicked item is highlighted red
+            document.querySelectorAll('.sidebar .nav-item, .sidebar .sidebar-sub-item').forEach(function(el) {
+                el.classList.remove('is-nav-clicking');
+                el.classList.remove('active');
+            });
+
+            // Add to clicked item ONLY
+            link.classList.add('active');
+            link.classList.add('is-nav-clicking');
+        }, false);
+
         console.log('Header navigation fully initialized and ready');
     });
         

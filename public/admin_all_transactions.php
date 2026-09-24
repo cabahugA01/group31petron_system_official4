@@ -266,7 +266,7 @@ foreach ($rows as $r) {
         $kpi_adjusted_count++;
     }
 
-    // Type counts (Job order transactions apil ang JO only ug JO + Merchandise)
+    // Type counts (Job order transactions include JO only and JO + Merchandise)
     if ($t === 'merchandise' && !$has_service) {
         $kpi_merch_count++;
     } else {

@@ -759,7 +759,7 @@ include __DIR__ . '/../partials/header.php'; ?>
     padding: 8px 5px !important;
     font-size: 13px !important;
 }
-/* Allow full text in Status (col 8) and Last Updated (col 9) in #mgrFuelTable — no ellipsis (walay ..) */
+/* Allow full text in Status (col 8) and Last Updated (col 9) in #mgrFuelTable — no ellipsis */
 #mgrFuelTable td:nth-child(8),
 #mgrFuelTable td:nth-child(9),
 #mgrFuelTable th:nth-child(8),
@@ -797,7 +797,7 @@ include __DIR__ . '/../partials/header.php'; ?>
     vertical-align: top !important;
 }
 
-/* ── Guaranteed Downward Filter Dropdowns (Mo-abli paubos pirme - Exact Fuel Inventory Style) ── */
+/* ── Guaranteed Downward Filter Dropdowns (Opens downward - Exact Fuel Inventory Style) ── */
 .petron-dropdown-source {
     display: none !important;
 }

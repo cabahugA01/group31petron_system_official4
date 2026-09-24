@@ -556,17 +556,17 @@ try {
                 <div class="res-opt" onclick="selectRes('return_supplier')" id="ro-return_supplier">
                     <span class="ro-icon">ðŸ”„</span>
                     <div class="ro-title">Return to Supplier</div>
-                    <div class="ro-desc">Ibalik ang kulang/guba nga items. No inventory update.</div>
+                    <div class="ro-desc">Return shortage or damaged items. No inventory update.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('replacement')" id="ro-replacement">
                     <span class="ro-icon">ðŸ“¦</span>
                     <div class="ro-title">Request Replacement</div>
-                    <div class="ro-desc">Supplier mo-deliver ug kapuli. Awaiting replacement.</div>
+                    <div class="ro-desc">Supplier will deliver replacement. Awaiting replacement.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('adjustment')" id="ro-adjustment">
                     <span class="ro-icon">âœï¸</span>
                     <div class="ro-title">Adjust Quantity</div>
-                    <div class="ro-desc">I-update ang qty sa actual received. Inventory updated.</div>
+                    <div class="ro-desc">Update quantity to actual received. Inventory updated.</div>
                 </div>
                 <div class="res-opt" onclick="selectRes('approve_as_is')" id="ro-approve_as_is">
                     <span class="ro-icon">âœ…</span>
@@ -598,10 +598,10 @@ try {
             <div class="modal-title"><i class="fas fa-comment-alt" style="color:#6c757d;"></i> Add Staff Remarks</div>
             <button class="modal-close" onclick="closeM('remarksModal')">&times;</button>
         </div>
-        <div class="obox"><i class="fas fa-info-circle"></i> Add remarks about the discrepancy (e.g. "5 pcs kulang", "2 pcs guba"). Manager will use this to decide resolution.</div>
+        <div class="obox"><i class="fas fa-info-circle"></i> Add remarks about the discrepancy (e.g. "5 pcs shortage", "2 pcs damaged"). Manager will use this to decide resolution.</div>
         <div class="fld"><label>Delivery ID</label><input type="text" id="rmk-ref" readonly></div>
         <div class="fld"><label>Discrepancy Note from Manager</label><input type="text" id="rmk-mgrnote" readonly></div>
-        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs kulang — supplier confirmed shortage. OR 2 pcs guba upon inspection."></textarea></div>
+        <div class="fld"><label>Your Remarks <span style="color:#dc3545;">*</span></label><textarea id="rmk-text" rows="4" placeholder="e.g. 5 pcs shortage — supplier confirmed shortage. OR 2 pcs damaged upon inspection."></textarea></div>
         <div class="modal-footer">
             <button type="button" onclick="closeM('remarksModal')" class="btn ghost">Cancel</button>
             <button type="button" onclick="doAddRemarks()" class="btn" style="background:#6c757d;color:#fff;font-weight:700;"><i class="fas fa-save"></i> Save Remarks</button>
@@ -639,8 +639,8 @@ try {
             <div class="fld">
                 <label>Discrepancy Type <span style="color:#dc3545;">*</span></label>
                 <select id="flag-batch-type">
-                    <option value="shortage">Shortage (kulang)</option>
-                    <option value="damaged">Damaged items (guba)</option>
+                    <option value="shortage">Shortage</option>
+                    <option value="damaged">Damaged items</option>
                     <option value="both">Both shortage &amp; damaged</option>
                     <option value="wrong_item">Wrong item delivered</option>
                 </select>

@@ -1479,14 +1479,15 @@ body, html { overflow-x: hidden; max-width: 100%; }
         <div class="table-wrap" style="overflow-x: hidden; width:100%;">
             <table class="pricing-table" id="servicePricingTable" style="table-layout:fixed; width:100%;">
                 <colgroup>
-                    <col style="width: 9%;">   <!-- Code -->
-                    <col style="width: 26%;">  <!-- Service Name -->
-                    <col style="width: 13%;">  <!-- Category -->
-                    <col style="width: 11%;">  <!-- Service Fee -->
-                    <col style="width: 11%;">  <!-- Labor Fee -->
+                    <col style="width: 8%;">   <!-- Code -->
+                    <col style="width: 22%;">  <!-- Service Name -->
+                    <col style="width: 12%;">  <!-- Category -->
+                    <col style="width: 10%;">  <!-- Service Fee -->
+                    <col style="width: 10%;">  <!-- Labor Fee -->
+                    <col style="width: 12%;">  <!-- Price Req. -->
                     <col style="width: 8%;">   <!-- Status -->
-                    <col style="width: 9%;">   <!-- Last Updated -->
-                    <col style="width: 13%;">  <!-- Action -->
+                    <col style="width: 8%;">   <!-- Last Updated -->
+                    <col style="width: 10%;">  <!-- Action -->
                 </colgroup>
                 <thead>
                     <tr>
@@ -1495,6 +1496,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                         <th style="text-align:left;">Category</th>
                         <th style="text-align:right;">Service Fee</th>
                         <th style="text-align:right;">Labor Fee</th>
+                        <th style="text-align:center;">Price Req.</th>
                         <th style="text-align:center;">Status</th>
                         <th style="text-align:center;">Last Updated</th>
                         <th style="text-align:center;">Action</th>
@@ -1585,17 +1587,25 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             <?php endif; ?>
                         </td>
 
+                        <!-- Price Request Status -->
+                        <td style="padding:6px 4px;box-sizing:border-box;vertical-align:middle;text-align:center;">
+                            <?php if ($hasPending): ?>
+                            <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;" title="Requested: Svc Fee ₱<?php echo number_format($pendSvcFee, 2); ?><?php echo $pendLabFee > 0 ? ' | Labor ₱'.number_format($pendLabFee, 2) : ''; ?>">
+                                <i class="fas fa-clock" style="font-size:8.5px;"></i> Pending (₱<?php echo number_format($pendSvcFee, 2); ?>)
+                            </span>
+                            <?php else: ?>
+                            <span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;">
+                                <i class="fas fa-check-circle" style="font-size:8.5px;"></i> Current
+                            </span>
+                            <?php endif; ?>
+                        </td>
+
                         <!-- Status -->
                         <td style="padding:6px 4px;box-sizing:border-box;vertical-align:middle;text-align:center;">
                             <?php if ($isActive): ?>
                             <span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Active</span>
                             <?php else: ?>
                             <span style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;display:inline-block;white-space:nowrap;text-transform:uppercase;">Inactive</span>
-                            <?php endif; ?>
-                            <?php if ($hasPending): ?>
-                            <div style="margin-top:2px;">
-                                <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:1px 5px;border-radius:999px;font-size:9px;font-weight:700;white-space:nowrap;text-transform:uppercase;"><i class="fas fa-hourglass-half" style="font-size:8px;"></i> Pending</span>
-                            </div>
                             <?php endif; ?>
                         </td>
 
