@@ -625,6 +625,14 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/vendor/fontawesome/css/all.min.css">
   <script src="<?php echo $app_base_path; ?>/assets/js/security_frontend.js?v=<?php echo time(); ?>"></script>
+  <!-- ── Petron Real-Time Auto-Refresh Engine ── -->
+  <script>
+    window.PETRON_BASE_PATH = <?php echo json_encode(rtrim($app_base_path, '/')); ?>;
+    window.PETRON_STATION_ID = <?php echo (int)$myStationId; ?>;
+    window.PETRON_USER_ROLE  = <?php echo json_encode($role); ?>;
+    window.PETRON_USER_ID    = <?php echo (int)($user['id'] ?? 0); ?>;
+  </script>
+  <script src="<?php echo $app_base_path; ?>/assets/js/petron_realtime.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/petron_realtime.js'); ?>"></script>
     <!-- GLOBAL RIGHT-CLICK & TEXT SELECTION ALLOWED -->
     <style>
         /* Allow normal selection, right-click, cut, copy & paste everywhere */
@@ -7208,3 +7216,91 @@ if (isset($_SESSION['nodejs_active']) && (time() - ($_SESSION['nodejs_last_check
 <?php if ($node_online): ?>
 <script src="<?= htmlspecialchars($public_base_url) ?>/js/nodejs_realtime.js"></script>
 <?php endif; ?>
+<!-- ── PetronRealtime Bridge: wires the global engine to existing page functions ── -->
+<script>
+(function() {
+    'use strict';
+    if (typeof PetronRealtime === 'undefined') return;
+
+    // Wire notifications handler to existing system functions.
+    // The existing notification system inside the IIFE (fetchUnreadCount,
+    // loadNotifications) already runs on its own schedule. PetronRealtime
+    // provides the cross-module trigger() so any save handler can
+    // immediately push an update without waiting for the next interval.
+    PetronRealtime.on('notifications', function(data) {
+        var badge = document.getElementById('notificationBadge');
+        if (badge) {
+            var count = parseInt(data.unread) || 0;
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+        var nd = document.getElementById('notificationDropdown');
+        if (nd && (nd.classList.contains('show') || nd.style.display === 'block')) {
+            if (typeof window.loadStaffNotifications === 'function') window.loadStaffNotifications();
+            else if (typeof window.petronLoadNotifications === 'function') window.petronLoadNotifications();
+        }
+    });
+
+    // Sidebar badge counts.
+    PetronRealtime.on('badges', function(data) {
+        var b = data.badges || {};
+        Object.keys(b).forEach(function(key) {
+            var count = parseInt(b[key]) || 0;
+            ['[data-badge-key="' + key + '"]', '#badge-' + key].forEach(function(sel) {
+                document.querySelectorAll(sel).forEach(function(el) {
+                    el.textContent = count > 0 ? (count > 99 ? '99+' : count) : '';
+                    el.style.display = count > 0 ? 'inline-flex' : 'none';
+                });
+            });
+        });
+    });
+
+    // Dashboard KPI cards: update elements with data-kpi="<key>" attribute.
+    PetronRealtime.on('dashboard', function(data) {
+        if (!data || !data.kpi) return;
+        Object.keys(data.kpi).forEach(function(key) {
+            document.querySelectorAll('[data-kpi="' + key + '"]').forEach(function(el) {
+                var val = data.kpi[key];
+                if (key.indexOf('total') !== -1 || key.indexOf('amount') !== -1 || key.indexOf('ar') !== -1) {
+                    el.textContent = '\u20b1' + parseFloat(val || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+                } else {
+                    el.textContent = val;
+                }
+            });
+        });
+        document.dispatchEvent(new CustomEvent('petron:dashboard', { detail: data }));
+    });
+
+    // Dispatch DOM custom events for each module so individual pages can listen.
+    ['transactions','job_orders','inventory','fuel','purchase_orders',
+     'customers','calendar','approvals','stock_requests'].forEach(function(mod) {
+        PetronRealtime.on(mod, function(data) {
+            document.dispatchEvent(new CustomEvent('petron:' + mod, { detail: data }));
+        });
+    });
+
+    // ── PetronSave — global helper for all module save handlers ──────────────
+    // Wraps any fetch/AJAX save and auto-triggers refresh on success.
+    //
+    // Example usage in any module after a successful AJAX save:
+    //   PetronRealtime.trigger(['notifications','badges','transactions']);
+    //
+    // Or use PetronSave for promise chaining:
+    //   PetronSave(fetch(url, opts), ['transactions','dashboard'])
+    //     .then(data => { ... });
+    //
+    window.PetronSave = function(fetchPromise, modules) {
+        return Promise.resolve(fetchPromise).then(function(data) {
+            if (data && (data.ok || data.success)) {
+                PetronRealtime.trigger(['notifications','badges'].concat(modules || []));
+            }
+            return data;
+        });
+    };
+
+})();
+</script>
