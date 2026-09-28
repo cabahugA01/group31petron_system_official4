@@ -767,11 +767,26 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .mcr-card.yellow .mcr-card-lbl i,    .mcr-card.amber .mcr-card-lbl i   { color: #d97706 !important; }
 
 /* Filter Bar */
-.mcr-filter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; }
-.mcr-fg { display: flex; flex-direction: column; gap: 5px; }
-.mcr-fg label { font-size: 13px; font-weight: 800; color: #002F70; text-transform: uppercase; letter-spacing: .4px; }
-.mcr-fg input, .mcr-fg select { height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 14px; font-weight: 600; color: #1e293b; background: #fff; outline: none; }
+.mcr-filter { 
+    display: flex; 
+    align-items: flex-end; 
+    gap: 8px; 
+    flex-wrap: nowrap; 
+    background: #fff; 
+    border: 1px solid #e2e8f0; 
+    border-radius: 10px; 
+    padding: 14px 18px; 
+    margin-bottom: 20px; 
+    box-sizing: border-box; 
+    width: 100%;
+    overflow-x: auto;
+}
+.mcr-fg { display: flex; flex-direction: column; gap: 4px; flex-shrink: 1; }
+.mcr-fg label { font-size: 12px !important; font-weight: 800 !important; color: #002F70 !important; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.mcr-fg input, .mcr-fg select { height: 38px !important; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px !important; font-weight: 600 !important; color: #1e293b; background: #fff; outline: none; box-sizing: border-box; width: 100%; }
 .mcr-fg input:focus, .mcr-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
+.mcr-filter-btns { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-end; }
+.mcr-filter-btns .ato-btn { height: 38px !important; padding: 0 14px !important; font-size: 13px !important; border-radius: 6px !important; }
 
 /* Table design */
 .mcr-table-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden !important; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
@@ -963,11 +978,11 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 
     <!-- Filters Form -->
     <form method="get" class="mcr-filter">
-        <div class="mcr-fg" style="flex: 1; min-width: 180px;">
+        <div class="mcr-fg" style="flex: 1 1 140px; min-width: 120px;">
             <label>Search</label>
             <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="TXN, pump, staff...">
         </div>
-        <div class="mcr-fg">
+        <div class="mcr-fg" style="width: 155px; flex-shrink: 0;">
             <label>Status</label>
             <select name="status">
                 <option value="pending" <?= $status_filter === 'pending' ? 'selected' : '' ?>>Pending Review (Active)</option>
@@ -977,11 +992,11 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All Statuses</option>
             </select>
         </div>
-        <div class="mcr-fg">
+        <div class="mcr-fg" style="width: 130px; flex-shrink: 0;">
             <label>Review Date</label>
             <input type="date" name="date" value="<?= htmlspecialchars($date_filter) ?>">
         </div>
-        <div class="mcr-fg">
+        <div class="mcr-fg" style="width: 105px; flex-shrink: 0;">
             <label>Shift</label>
             <select name="shift">
                 <option value="all">All Shifts</option>
@@ -989,7 +1004,7 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <option value="second" <?= $shift_filter === 'second' ? 'selected' : '' ?>>Shift 2</option>
             </select>
         </div>
-        <div class="mcr-fg">
+        <div class="mcr-fg" style="width: 130px; flex-shrink: 0;">
             <label>Fuel Type</label>
             <select name="fuel_type">
                 <option value="all">All Fuel Types</option>
@@ -998,11 +1013,11 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="mcr-fg">
+        <div class="mcr-fg" style="width: 130px; flex-shrink: 0;">
             <label>Staff Encoder</label>
             <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name...">
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div class="mcr-filter-btns">
             <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-search"></i> Filter</button>
             <a href="manager_fuel_pump_master.php" class="ato-btn ato-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
         </div>

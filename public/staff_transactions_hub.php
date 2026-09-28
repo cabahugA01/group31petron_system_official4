@@ -132,7 +132,12 @@ try {
     $excluded_fuel_types = array_filter(array_map('trim', explode(',', $excl_setting)));
 
     $ft_sql = "
-        SELECT fi.fuel_type,
+        SELECT fi.id AS fuel_inventory_id,
+               fi.id,
+               fi.station_id,
+               fi.fuel_type_id,
+               fi.ugt_no,
+               fi.fuel_type,
                COALESCE(fi.status, 'active') AS status,
                COALESCE(fi.current_level, fi.current_stock, 0) AS current_level,
 
@@ -4438,73 +4443,92 @@ setTimeout(function() {
                         Putting <form> inside <td>/<tr> is invalid HTML; browsers eject it
                         from the table, breaking FormData collection. */ ?>
             <?php 
-            // Tanker configuration per fuel type - SAME AS TABLE CONFIG
-            // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
-            // 5 fuel types, 17 total pumps/tankers
-            $tanker_config_forms = [
-                'xcs plus' => [
-                    ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
-                ],
-                'turbo diesel' => [
-                    ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
-                ],
-                'xtra unl' => [
-                    ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
-                    ['name' => 'XTRA UNL 2', 'tankers' => [3, 4], 'price_key' => 'xtra unl']
-                ],
-                'diesel' => [
-                    ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
-                    ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
-                ],
-                'kerosene' => [
-                    ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
-                ]
-            ];
-            
-            $rendered_config_keys_forms = []; // Track already-rendered config keys to avoid duplicates
-            foreach ($fuel_types as $idx => $ft):
-                $ft_name_form = htmlspecialchars($ft['fuel_type']);
-                $ft_lower = strtolower(trim($ft['fuel_type']));
-                
-                // Get tanker configuration for this fuel type
-                $config_groups_forms = null;
-                $matched_key_forms = null;
-                foreach ($tanker_config_forms as $key => $groups) {
-                    if (str_contains($ft_lower, $key)) {
-                        $config_groups_forms = $groups;
-                        $matched_key_forms = $key;
-                        break;
+            // ── Dynamic Pump & Nozzle List — Synchronized strictly with Product & Pricing Management ──
+            $meter_reading_pumps = [];
+            $seen_pump_keys = [];
+
+            foreach ($fuel_types as $idx => $ft) {
+                $ft_name = trim($ft['fuel_type'] ?? '');
+                if ($ft_name === '') continue;
+
+                $raw_pumps = function_exists('fetch_pumps_for_fuel_product')
+                    ? fetch_pumps_for_fuel_product($pdo, (int)$station_id, $ft)
+                    : [];
+
+                $is_product_deactivated = in_array(strtolower(trim($ft['status'] ?? 'active')), ['inactive', 'deactivated', 'disabled']);
+
+                // Filter to active pumps if configured
+                $active_pumps = array_values(array_filter($raw_pumps, function($p) {
+                    return strtolower(trim($p['status'] ?? 'active')) === 'active';
+                }));
+
+                if (empty($active_pumps)) {
+                    if (!empty($raw_pumps)) {
+                        $pumps_to_use = $raw_pumps;
+                    } else {
+                        // Fallback: single default pump if none assigned yet in fuel_pumps
+                        $pumps_to_use = [[
+                            'id'            => 0,
+                            'pump_number'   => $ft_name . ' - 1',
+                            'pump_name'     => $ft_name,
+                            'nozzle_number' => '1',
+                            'status'        => $ft['status'] ?? 'Active'
+                        ]];
                     }
+                } else {
+                    $pumps_to_use = $active_pumps;
                 }
-                
-                // Skip if this config key was already rendered (prevents duplicates when
-                // fuel_inventory has both generic e.g. "Diesel" AND specific e.g. "Diesel 1","Diesel 2")
-                if ($matched_key_forms !== null) {
-                    if (in_array($matched_key_forms, $rendered_config_keys_forms)) {
-                        continue; // already rendered this group, skip
+
+                foreach ($pumps_to_use as $p_idx => $pump) {
+                    $p_id = (int)($pump['id'] ?? 0);
+                    $raw_pnum = trim($pump['pump_number'] ?? '');
+                    $raw_pname = trim($pump['pump_name'] ?? '');
+                    $disp_name = $raw_pnum !== '' ? $raw_pnum : ($raw_pname !== '' ? $raw_pname : ($ft_name . ' - ' . ($p_idx + 1)));
+
+                    // De-duplicate in case multiple records match the same pump_id
+                    $dedup_key = ($p_id > 0) ? ('p_' . $p_id) : ('ft_' . ($ft['id'] ?? $idx) . '_p_' . $p_idx);
+                    if (isset($seen_pump_keys[$dedup_key])) continue;
+                    $seen_pump_keys[$dedup_key] = true;
+
+                    // Tanker number must be a positive integer
+                    $tanker_num = 0;
+                    if (!empty($pump['nozzle_number'])) {
+                        $tanker_num = (int)preg_replace('/[^0-9]/', '', $pump['nozzle_number']);
                     }
-                    $rendered_config_keys_forms[] = $matched_key_forms;
-                }
-                
-                // If no config found, create default single tanker
-                if (!$config_groups_forms) {
-                    $config_groups_forms = [
-                        ['name' => $ft['fuel_type'], 'tankers' => [1], 'price_key' => $ft_lower]
+                    if ($tanker_num <= 0 && preg_match('/(?:-\s*|\s+)(\d+)$/', $disp_name, $m)) {
+                        $tanker_num = (int)$m[1];
+                    }
+                    if ($tanker_num <= 0) {
+                        $tanker_num = ($p_id > 0) ? $p_id : ($p_idx + 1);
+                    }
+
+                    $p_status = strtolower(trim($pump['status'] ?? 'active'));
+                    $is_row_deactivated = $is_product_deactivated || in_array($p_status, ['inactive', 'deactivated', 'disabled']);
+
+                    $clean_tag = preg_replace('/[^a-z0-9]/i', '_', strtolower($disp_name));
+                    $ft_id = 'fuel_' . ($p_id > 0 ? ('p' . $p_id . '_') : ('ft' . (int)($ft['id'] ?? $idx) . '_t' . $tanker_num . '_')) . $clean_tag;
+
+                    $meter_reading_pumps[] = [
+                        'ft_id'               => $ft_id,
+                        'pump_id'             => $p_id,
+                        'fuel_inventory_id'   => (int)($ft['fuel_inventory_id'] ?? $ft['id'] ?? 0),
+                        'fuel_type_id'        => (int)($ft['fuel_type_id'] ?? 0),
+                        'fuel_type'           => $ft_name,
+                        'display_name'        => strtoupper($disp_name),
+                        'tanker_num'          => $tanker_num,
+                        'price_per_liter'     => (float)($ft['price_per_liter'] ?? 0),
+                        'is_deactivated'      => $is_row_deactivated,
+                        'calibration_default' => (float)($ft['calibration'] ?? 0),
+                        'previous_reading'    => (float)($ft['previous_reading'] ?? 0),
                     ];
                 }
-                
-                // Loop through each group and create forms for each tanker
-                foreach ($config_groups_forms as $group):
-                    $group_name = $group['name'];
-                    $tankers = $group['tankers'];
-                    
-                    foreach ($tankers as $tanker_num):
-                        $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
+            }
             ?>
-            <form id="fuelForm_<?= $ft_id ?>"
+            <?php foreach ($meter_reading_pumps as $p_row): ?>
+            <form id="fuelForm_<?= $p_row['ft_id'] ?>"
                   method="POST"
                   action="api_fuel_readings.php"
-                  onsubmit="return submitFuelCard(event, '<?= $ft_id ?>')"
+                  onsubmit="return submitFuelCard(event, '<?= $p_row['ft_id'] ?>')"
                   style="display:none;">
                 <input type="hidden" name="action"           value="encode_reading">
                 <input type="hidden" name="api_token"        value="<?= htmlspecialchars($_api_token) ?>">
@@ -4512,18 +4536,14 @@ setTimeout(function() {
                 <input type="hidden" name="shift_id"         value="<?= (int)($current_shift['id'] ?? 0) ?>">
                 <input type="hidden" name="staff_id"         value="<?= (int)$me['id'] ?>">
                 <input type="hidden" name="station_id"       value="<?= (int)$station_id ?>">
-                <input type="hidden" name="fuel_type"        value="<?= $ft_name_form ?>">
-                <input type="hidden" name="tanker_number"    value="<?= $tanker_num ?>">
-                <input type="hidden" name="pump_label"       value="<?= htmlspecialchars(strtoupper($group_name) . ' - ' . $tanker_num) ?>">
+                <input type="hidden" name="fuel_type"        value="<?= htmlspecialchars($p_row['fuel_type']) ?>">
+                <input type="hidden" name="tanker_number"    value="<?= (int)$p_row['tanker_num'] ?>">
+                <input type="hidden" name="pump_label"       value="<?= htmlspecialchars($p_row['display_name']) ?>">
                 <input type="hidden" name="shift_period"     value="<?= htmlspecialchars($fuel_shift_key) ?>">
                 <input type="hidden" name="shift_name"       value="<?= htmlspecialchars($fuel_shift_name) ?>">
                 <input type="hidden" name="reading_date"     value="<?= date('Y-m-d') ?>">
             </form>
-            <?php 
-                    endforeach; // End tanker loop
-                endforeach; // End group loop
-            endforeach; // End fuel type loop
-            ?>
+            <?php endforeach; ?>
 
             <div class="fet-wrap" style="overflow-x:auto; width:100%; -webkit-overflow-scrolling:touch;">
                 <table class="fet report-table no-min-width print-table" style="width:100%; min-width:900px; table-layout:fixed; border-collapse:collapse;">
@@ -4552,100 +4572,47 @@ setTimeout(function() {
                     </thead>
                     <tbody>
                     <?php 
-                    // Tanker configuration per fuel type - THIS CONTROLS THE DISPLAY
-                    // ORDER MATTERS: Check longer/more specific names first to avoid partial matches
-                    // 5 fuel types, 17 total pumps/tankers
-                    $tanker_config = [
-                        'xcs plus' => [
-                            ['name' => 'XCS Plus', 'tankers' => [1, 2, 3, 4], 'price_key' => 'xcs plus']
-                        ],
-                        'turbo diesel' => [
-                            ['name' => 'Turbo Diesel', 'tankers' => [1, 2], 'price_key' => 'turbo diesel']
-                        ],
-                        'xtra unl' => [
-                            ['name' => 'XTRA UNL 1', 'tankers' => [1, 2], 'price_key' => 'xtra unl'],
-                            ['name' => 'XTRA UNL 2', 'tankers' => [3, 4], 'price_key' => 'xtra unl']
-                        ],
-                        'diesel' => [
-                            ['name' => 'Diesel 1', 'tankers' => [1, 2, 3, 4], 'price_key' => 'diesel'],
-                            ['name' => 'Diesel 2', 'tankers' => [5, 6], 'price_key' => 'diesel']
-                        ],
-                        'kerosene' => [
-                            ['name' => 'Kerosene', 'tankers' => [1], 'price_key' => 'kerosene']
-                        ]
-                    ];
-                    
-                    $rendered_config_keys_table = []; // Track already-rendered config keys to avoid duplicates
-                    foreach ($fuel_types as $idx => $ft):
-                        $ft_lower = strtolower(trim($ft['fuel_type']));
-                        $price_per_liter = (float)$ft['price_per_liter'];
-                        $is_deactivated = in_array(strtolower(trim($ft['status'] ?? 'active')), ['inactive', 'deactivated', 'disabled']);
-                        
-                        // Get tanker configuration for this fuel type
-                        $config_groups = null;
-                        $matched_key_table = null;
-                        foreach ($tanker_config as $key => $groups) {
-                            if (str_contains($ft_lower, $key)) {
-                                $config_groups = $groups;
-                                $matched_key_table = $key;
-                                break;
+                    if (empty($meter_reading_pumps)):
+                    ?>
+                    <tr>
+                        <td colspan="7" style="text-align:center;padding:24px;color:#64748b;font-style:italic;">
+                            <i class="fas fa-info-circle"></i> No active pumps or nozzles configured for meter readings. Please configure pumps in Product & Pricing Management.
+                        </td>
+                    </tr>
+                    <?php 
+                    else:
+                        foreach ($meter_reading_pumps as $p_row):
+                            $ft_id = $p_row['ft_id'];
+                            $display_name = $p_row['display_name'];
+                            $price_per_liter = (float)$p_row['price_per_liter'];
+                            $is_deactivated = !empty($p_row['is_deactivated']);
+                            $p_id = (int)$p_row['pump_id'];
+                            $ft_name = $p_row['fuel_type'];
+
+                            // ── Validated shift carry-over lookup ──
+                            $lbl_key   = strtoupper(trim($display_name));
+                            $saved_row = $today_saved_readings[$lbl_key] 
+                                ?? ($p_id > 0 && isset($today_saved_readings['PUMP_' . $p_id]) ? $today_saved_readings['PUMP_' . $p_id] : null)
+                                ?? ($today_saved_readings[strtoupper(trim($ft_name))] ?? null);
+
+                            // Determine Beginning reading:
+                            if ($saved_row && (float)($saved_row['present_reading'] ?? 0) > 0) {
+                                $pump_prev_reading = (float)$saved_row['present_reading'];
+                            } elseif (isset($last_readings_by_pump[$lbl_key]) && (float)$last_readings_by_pump[$lbl_key] > 0) {
+                                $pump_prev_reading = (float)$last_readings_by_pump[$lbl_key];
+                            } elseif ($p_id > 0 && isset($last_readings_by_pump['PUMP_' . $p_id]) && (float)$last_readings_by_pump['PUMP_' . $p_id] > 0) {
+                                $pump_prev_reading = (float)$last_readings_by_pump['PUMP_' . $p_id];
+                            } elseif (isset($last_readings_by_pump[strtoupper(trim($ft_name))]) && (float)$last_readings_by_pump[strtoupper(trim($ft_name))] > 0) {
+                                $pump_prev_reading = (float)$last_readings_by_pump[strtoupper(trim($ft_name))];
+                            } elseif ((float)($p_row['previous_reading'] ?? 0) > 0) {
+                                $pump_prev_reading = (float)$p_row['previous_reading'];
+                            } else {
+                                $pump_prev_reading = 0.00;
                             }
-                        }
-                        
-                        // Skip if this config key was already rendered (prevents duplicates from
-                        // having both generic e.g. "Diesel" and specific e.g. "Diesel 1", "Diesel 2" in fuel_inventory)
-                        if ($matched_key_table !== null) {
-                            if (in_array($matched_key_table, $rendered_config_keys_table)) {
-                                continue; // already rendered this group, skip
-                            }
-                            $rendered_config_keys_table[] = $matched_key_table;
-                        }
-                        
-                        // If no config found, create default single tanker
-                        if (!$config_groups) {
-                            $config_groups = [
-                                ['name' => $ft['fuel_type'], 'tankers' => [1], 'price_key' => $ft_lower]
-                            ];
-                        }
-                        
-                        // Loop through each group (e.g., Diesel 1 group, Diesel 2 group)
-                        foreach ($config_groups as $group):
-                            $group_name = $group['name'];
-                            $tankers = $group['tankers'];
-                            
-                            // Color selection
-                            $ft_color = '#334155';
-                            $ft_icon = 'fa-gas-pump';
-                            if (str_contains($ft_lower, 'diesel')) { $ft_color = '#003d7a'; }
-                            elseif (str_contains($ft_lower, 'kerosene')) { $ft_color = '#b45309'; $ft_icon = 'fa-fire'; }
-                            elseif (str_contains($ft_lower, 'xcs')) { $ft_color = '#0369a1'; }
-                            elseif (str_contains($ft_lower, 'xtra')) { $ft_color = '#15803d'; }
-                            elseif (str_contains($ft_lower, 'turbo')) { $ft_color = '#7c3aed'; }
-                            
-                            // Create a row for EACH tanker in this group
-                            foreach ($tankers as $tanker_num):
-                                $ft_id = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $group_name) . '_' . $idx . '_t' . $tanker_num;
-                                $display_name = strtoupper($group_name) . ' - ' . $tanker_num;
 
-                                // ── Validated shift carry-over lookup ──
-                                $lbl_key   = strtoupper(trim($display_name));
-                                $saved_row = $today_saved_readings[$lbl_key] ?? null;
-
-                                // Determine Beginning reading:
-                                // If a reading was already submitted for this pump, its Ending reading (present_reading) becomes the new Beginning reading!
-                                // Otherwise, fetch the latest recorded present_reading from previous shifts/transactions.
-                                if ($saved_row && (float)($saved_row['present_reading'] ?? 0) > 0) {
-                                    $pump_prev_reading = (float)$saved_row['present_reading'];
-                                } elseif (isset($last_readings_by_pump[$lbl_key]) && (float)$last_readings_by_pump[$lbl_key] > 0) {
-                                    $pump_prev_reading = (float)$last_readings_by_pump[$lbl_key];
-                                } else {
-                                    $pump_prev_reading = 0.00;
-                                }
-
-                                // Input fields are ALWAYS empty and ready for encoding after submission or closing:
-                                $saved_ending_val = '';
-                                $saved_calib_val  = '0.00';
-                                $has_prev_reading = true;
+                            // Input fields are ALWAYS empty and ready for encoding after submission or closing:
+                            $saved_ending_val = '';
+                            $saved_calib_val  = '0.00';
                     ?>
                     <tr id="fuelRow_<?= $ft_id ?>" style="border-bottom:1px solid #e2e8f0;<?= $is_deactivated ? 'background:#fcfcfd;opacity:0.75;' : '' ?>">
                         <!-- NAME Column (plain text, no icon) -->
@@ -4656,6 +4623,7 @@ setTimeout(function() {
                                 <span class="badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;"><i class="fas fa-ban"></i> DEACTIVATED</span>
                                 <?php endif; ?>
                             </div>
+                            <div id="cardMsg_<?= $ft_id ?>" class="fet-row-msg"></div>
                         </td>
 
                         <!-- BEGINNING Column — Auto-carried over from previous Ending Reading (Strictly Read-Only) -->
@@ -4756,9 +4724,8 @@ setTimeout(function() {
                         </td>
                     </tr>
                     <?php 
-                        endforeach; // End tanker loop
-                        endforeach; // End group loop
-                    endforeach; // End fuel type loop
+                        endforeach;
+                    endif;
                     ?>
                     </tbody>
                 </table>
@@ -4766,25 +4733,7 @@ setTimeout(function() {
 
             <?php
             // ── Emit JS array of all ft_ids for page-load init ──
-            $all_ft_ids_js = [];
-            $rendered_for_js = [];
-            foreach ($fuel_types as $idx_js => $ft_js) {
-                $ft_lower_js = strtolower(trim($ft_js['fuel_type']));
-                $cfg_js = null; $key_js = null;
-                foreach ($tanker_config as $k => $g) {
-                    if (str_contains($ft_lower_js, $k)) { $cfg_js = $g; $key_js = $k; break; }
-                }
-                if ($key_js !== null) {
-                    if (in_array($key_js, $rendered_for_js)) continue;
-                    $rendered_for_js[] = $key_js;
-                }
-                if (!$cfg_js) $cfg_js = [['name' => $ft_js['fuel_type'], 'tankers' => [1]]];
-                foreach ($cfg_js as $grp_js) {
-                    foreach ($grp_js['tankers'] as $tn_js) {
-                        $all_ft_ids_js[] = 'fuel_' . preg_replace('/[^a-z0-9]/i', '_', $grp_js['name']) . '_' . $idx_js . '_t' . $tn_js;
-                    }
-                }
-            }
+            $all_ft_ids_js = array_column($meter_reading_pumps, 'ft_id');
             ?>
             <!-- ═══ STANDALONE FUEL CALC SCRIPT — no external dependencies ═══ -->
             <script>

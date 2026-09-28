@@ -373,15 +373,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // 3. Update configured pumps for this fuel product
+            // 3. Update configured pumps for this fuel product (status and name)
             if (!empty($_POST['edit_pump_status']) && is_array($_POST['edit_pump_status'])) {
                 foreach ($_POST['edit_pump_status'] as $p_id => $p_st) {
                     $p_id = (int)$p_id;
                     $p_st = in_array(strtolower($p_st), ['active', 'inactive', 'maintenance']) ? ucfirst(strtolower($p_st)) : 'Active';
+                    $p_name = isset($_POST['edit_pump_name'][$p_id]) ? trim($_POST['edit_pump_name'][$p_id]) : '';
                     if ($p_id > 0) {
                         try {
-                            $pdo->prepare("UPDATE fuel_pumps SET status = ? WHERE id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
-                            $pdo->prepare("UPDATE nozzles SET status = ? WHERE pump_id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
+                            if ($p_name !== '') {
+                                $pdo->prepare("UPDATE fuel_pumps SET status = ?, pump_number = ?, pump_name = ? WHERE id = ? AND station_id = ?")
+                                    ->execute([$p_st, $p_name, $p_name, $p_id, $fuel_station_id]);
+                                $pdo->prepare("UPDATE nozzles SET status = ?, pump_name = ? WHERE pump_id = ? AND station_id = ?")
+                                    ->execute([$p_st, $p_name, $p_id, $fuel_station_id]);
+                            } else {
+                                $pdo->prepare("UPDATE fuel_pumps SET status = ? WHERE id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
+                                $pdo->prepare("UPDATE nozzles SET status = ? WHERE pump_id = ? AND station_id = ?")->execute([$p_st, $p_id, $fuel_station_id]);
+                            }
+                        } catch (Exception $e) {}
+                    }
+                }
+            }
+            if (!empty($_POST['edit_pump_name']) && is_array($_POST['edit_pump_name'])) {
+                foreach ($_POST['edit_pump_name'] as $p_id => $p_name) {
+                    $p_id = (int)$p_id;
+                    $p_name = trim($p_name);
+                    if ($p_id > 0 && $p_name !== '') {
+                        try {
+                            $pdo->prepare("UPDATE fuel_pumps SET pump_number = ?, pump_name = ? WHERE id = ? AND station_id = ?")
+                                ->execute([$p_name, $p_name, $p_id, $fuel_station_id]);
+                            $pdo->prepare("UPDATE nozzles SET pump_name = ? WHERE pump_id = ? AND station_id = ?")
+                                ->execute([$p_name, $p_id, $fuel_station_id]);
                         } catch (Exception $e) {}
                     }
                 }
@@ -1384,6 +1406,49 @@ table.pricing-table tbody tr:hover {
     border-color: #94a3b8 !important;
 }
 
+/* ── Pump card edit & save buttons (Remove dark blue button background, high visibility) ── */
+#aef_pumps_container button,
+#aef_pumps_container .btn-edit-pump-name,
+#aef_pumps_container button[id^="btn_edit_pump_"],
+.btn-edit-pump-name {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    max-width: 26px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border: 1.5px solid #94a3b8 !important;
+    border-radius: 5px !important;
+    color: #002F6C !important;
+    -webkit-text-fill-color: #002F6C !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important;
+    transition: all 0.15s ease !important;
+}
+#aef_pumps_container .btn-edit-pump-name:hover,
+#aef_pumps_container button[id^="btn_edit_pump_"]:hover,
+.btn-edit-pump-name:hover {
+    background: #e0f2fe !important;
+    background-color: #e0f2fe !important;
+    border-color: #002F6C !important;
+    color: #002F6C !important;
+    -webkit-text-fill-color: #002F6C !important;
+}
+#aef_pumps_container .btn-edit-pump-name i,
+#aef_pumps_container button[id^="btn_edit_pump_"] i,
+.btn-edit-pump-name i {
+    font-size: 11.5px !important;
+    color: #002F6C !important;
+    -webkit-text-fill-color: #002F6C !important;
+    display: inline-block !important;
+    line-height: 1 !important;
+}
+
 /* ── Modal Layout Centering Fix (Excluding Sidebar Navigation from Centering) ── */
 .admin-layout-modal {
     position: fixed !important;
@@ -1631,6 +1696,8 @@ table.pricing-table tbody tr:hover {
     $pending_req_count  = 0;
     $active_fuel_count  = 0;
     $inactive_fuel_count = 0;
+    $station_fuel_types = [];
+    $station_ugts       = [];
 
     foreach ($fuel_products as $fp) {
         if (!empty($fp['approval_status']) && $fp['approval_status'] === 'pending') {
@@ -1641,7 +1708,21 @@ table.pricing-table tbody tr:hover {
         } else {
             $inactive_fuel_count++;
         }
+
+        $raw_name = !empty($fp['fuel_type']) ? $fp['fuel_type'] : ($fp['raw_fuel_type'] ?? '');
+        $clean_name = trim(preg_replace('/\s*\(UGT\s*#?\d+\)/i', '', $raw_name));
+        $full_name = $clean_name !== '' ? $clean_name : $raw_name;
+        if ($full_name !== '') {
+            $station_fuel_types[$full_name] = $full_name;
+        }
+
+        $ugt_str = !empty($fp['ugt_no']) ? $fp['ugt_no'] : (!empty($fp['pump_id']) ? ('UGT #' . $fp['pump_id']) : '');
+        if ($ugt_str !== '') {
+            $station_ugts[$ugt_str] = $ugt_str;
+        }
     }
+    ksort($station_fuel_types);
+    natsort($station_ugts);
     ?>
 
     <!-- ── 1. Admin Fuel Summary Metric Cards ────────────────────────────── -->
@@ -1670,22 +1751,16 @@ table.pricing-table tbody tr:hover {
         
         <select id="adminFuelTypeFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;background:#fff;">
             <option value="">All Fuel Types</option>
-            <option value="Diesel">Diesel</option>
-            <option value="Turbo Diesel">Turbo Diesel</option>
-            <option value="XCS Plus">XCS Plus</option>
-            <option value="XTR ADVANCE">XTR ADVANCE</option>
-            <option value="Kerosene">Kerosene</option>
+            <?php foreach ($station_fuel_types as $ft): ?>
+                <option value="<?php echo htmlspecialchars($ft); ?>"><?php echo htmlspecialchars($ft); ?></option>
+            <?php endforeach; ?>
         </select>
 
         <select id="adminFuelUgtFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;background:#fff;">
             <option value="">All UGTs</option>
-            <option value="UGT #1">UGT #1</option>
-            <option value="UGT #2">UGT #2</option>
-            <option value="UGT #3">UGT #3</option>
-            <option value="UGT #4">UGT #4</option>
-            <option value="UGT #5">UGT #5</option>
-            <option value="UGT #6">UGT #6</option>
-            <option value="UGT #7">UGT #7</option>
+            <?php foreach ($station_ugts as $ugt): ?>
+                <option value="<?php echo htmlspecialchars($ugt); ?>"><?php echo htmlspecialchars($ugt); ?></option>
+            <?php endforeach; ?>
         </select>
 
         <select id="adminFuelPriceReqFilter" onchange="filterAdminFuelTable()" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;background:#fff;">
@@ -2896,7 +2971,7 @@ function showCustomAlert(message, type, callback) {
     container.appendChild(toast);
     setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
 
-    var delay = (typeof callback === 'function') ? 500 : (isError || isWarning ? 4000 : 3000);
+    var delay = (typeof callback === 'function') ? 1400 : (isError || isWarning ? 4000 : 3000);
     setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
@@ -3618,8 +3693,8 @@ function filterAdminFuelTable() {
         var activestatus = row.getAttribute('data-activestatus') || 'active';
 
         var matchesSearch = !searchVal || ugt.toLowerCase().indexOf(searchVal) !== -1 || fullname.toLowerCase().indexOf(searchVal) !== -1;
-        var matchesFuelType = !fuelTypeVal || fueltype === fuelTypeVal || fullname.indexOf(fuelTypeVal) !== -1;
-        var matchesUgt = !ugtVal || ugt === ugtVal;
+        var matchesFuelType = !fuelTypeVal || fueltype.toLowerCase() === fuelTypeVal.toLowerCase() || fullname.toLowerCase().indexOf(fuelTypeVal.toLowerCase()) !== -1;
+        var matchesUgt = !ugtVal || ugt.toLowerCase() === ugtVal.toLowerCase();
         var matchesReqStatus = !reqStatusVal || (reqStatusVal === 'pending' && reqstatus === 'pending') || (reqStatusVal === 'rejected' && reqstatus === 'rejected') || (reqStatusVal === 'none' && (reqstatus === 'none' || reqstatus === 'approved' || !reqstatus));
         var matchesStatus = !statusVal || activestatus === statusVal;
 
@@ -3964,20 +4039,27 @@ function openEditPriceModalAdmin(id, fuelName, currentPrice, capacity, critical,
                                 if (up === 'XCS' || up === 'UGT' || up === 'UNL') return up;
                                 return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
                             });
+                            var safeMeterLabel = meterLabel.replace(/"/g, '&quot;');
                             
-                            pHtml += '<div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:8px;">' +
+                            pHtml += '<div id="pump_card_' + pm.id + '" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:8px;">' +
                                 '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;">' +
                                     '<div style="width:26px;height:26px;border-radius:5px;background:#e0f2fe;color:#002F6C;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">' +
                                         '<i class="fas fa-gas-pump"></i>' +
                                     '</div>' +
-                                    '<div style="font-weight:800;color:#0f172a;font-size:13px;line-height:1.2;white-space:nowrap;letter-spacing:0.2px;">' +
+                                    '<div id="pump_name_display_' + pm.id + '" style="font-weight:800;color:#0f172a;font-size:13px;line-height:1.2;white-space:nowrap;letter-spacing:0.2px;overflow:hidden;text-overflow:ellipsis;" title="' + safeMeterLabel + '">' +
                                         meterLabel +
                                     '</div>' +
+                                    '<input type="text" id="pump_name_input_' + pm.id + '" name="edit_pump_name[' + pm.id + ']" value="' + safeMeterLabel + '" style="display:none;font-weight:700;color:#002F6C;font-size:12px;padding:2px 6px;border:1.5px solid #002F6C;border-radius:4px;width:125px;height:24px;box-sizing:border-box;outline:none;" placeholder="Pump/Tanker Name..." onblur="finishInlinePumpNameEdit(' + pm.id + ')" onkeydown="if(event.key===\'Enter\'){event.preventDefault();finishInlinePumpNameEdit(' + pm.id + ');}else if(event.key===\'Escape\'){event.preventDefault();cancelInlinePumpNameEdit(' + pm.id + ');}">' +
                                 '</div>' +
-                                '<select name="edit_pump_status[' + pm.id + ']" style="font-size:11.5px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:4px !important;border:1px solid ' + brdCol + ' !important;background:' + bgCol + ' !important;background-color:' + bgCol + ' !important;color:' + txtCol + ' !important;cursor:pointer;flex-shrink:0;height:24px !important;line-height:1.2 !important;" onchange="this.style.setProperty(\'background\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'background-color\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'color\', this.value === \'Active\' ? \'#166534\' : \'#991b1b\', \'important\'); this.style.setProperty(\'border-color\', this.value === \'Active\' ? \'#86efac\' : \'#fca5a5\', \'important\');">' +
-                                    '<option value="Active"' + (isAct ? ' selected' : '') + '>Active</option>' +
-                                    '<option value="Inactive"' + (!isAct ? ' selected' : '') + '>Inactive</option>' +
-                                '</select>' +
+                                '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">' +
+                                    '<button type="button" class="btn-edit-pump-name" id="btn_edit_pump_' + pm.id + '" onclick="startInlinePumpNameEdit(' + pm.id + ')" title="Edit Tanker / Pump Name" style="width:26px !important;height:26px !important;min-width:26px !important;border:1.5px solid #94a3b8 !important;background:#ffffff !important;background-color:#ffffff !important;background-image:none !important;color:#002F6C !important;-webkit-text-fill-color:#002F6C !important;border-radius:5px !important;cursor:pointer !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;padding:0 !important;box-shadow:0 1px 2px rgba(0,0,0,0.06) !important;transition:all 0.15s ease !important;" onmouseover="this.style.setProperty(\'background\',\'#e0f2fe\',\'important\');this.style.setProperty(\'background-color\',\'#e0f2fe\',\'important\');this.style.setProperty(\'border-color\',\'#002F6C\',\'important\');" onmouseout="this.style.setProperty(\'background\',\'#ffffff\',\'important\');this.style.setProperty(\'background-color\',\'#ffffff\',\'important\');this.style.setProperty(\'border-color\',\'#94a3b8\',\'important\');">' +
+                                        '<i class="fas fa-edit" style="font-size:12px !important;color:#002F6C !important;-webkit-text-fill-color:#002F6C !important;pointer-events:none;"></i>' +
+                                    '</button>' +
+                                    '<select name="edit_pump_status[' + pm.id + ']" style="font-size:11.5px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:4px !important;border:1px solid ' + brdCol + ' !important;background:' + bgCol + ' !important;background-color:' + bgCol + ' !important;color:' + txtCol + ' !important;cursor:pointer;flex-shrink:0;height:24px !important;line-height:1.2 !important;" onchange="this.style.setProperty(\'background\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'background-color\', this.value === \'Active\' ? \'#dcfce7\' : \'#fee2e2\', \'important\'); this.style.setProperty(\'color\', this.value === \'Active\' ? \'#166534\' : \'#991b1b\', \'important\'); this.style.setProperty(\'border-color\', this.value === \'Active\' ? \'#86efac\' : \'#fca5a5\', \'important\');">' +
+                                        '<option value="Active"' + (isAct ? ' selected' : '') + '>Active</option>' +
+                                        '<option value="Inactive"' + (!isAct ? ' selected' : '') + '>Inactive</option>' +
+                                    '</select>' +
+                                '</div>' +
                             '</div>';
                         });
                         pumpCont.innerHTML = pHtml;
@@ -3995,7 +4077,81 @@ function closeEditPriceModalAdmin() {
     if (pumpCont) pumpCont.innerHTML = '';
 }
 
+window.startInlinePumpNameEdit = function(pumpId) {
+    var displayEl = document.getElementById('pump_name_display_' + pumpId);
+    var inputEl   = document.getElementById('pump_name_input_' + pumpId);
+    var editBtn   = document.getElementById('btn_edit_pump_' + pumpId);
+
+    if (!displayEl || !inputEl) return;
+
+    if (inputEl.style.display === 'none' || !inputEl.style.display) {
+        inputEl.dataset.originalVal = inputEl.value.trim();
+        displayEl.style.display = 'none';
+        inputEl.style.display = 'inline-block';
+        inputEl.focus();
+        inputEl.select();
+        if (editBtn) {
+            editBtn.style.setProperty('background', '#e0f2fe', 'important');
+            editBtn.style.setProperty('background-color', '#e0f2fe', 'important');
+            editBtn.style.setProperty('border-color', '#002F6C', 'important');
+        }
+    } else {
+        finishInlinePumpNameEdit(pumpId);
+    }
+};
+
+window.finishInlinePumpNameEdit = function(pumpId) {
+    var displayEl = document.getElementById('pump_name_display_' + pumpId);
+    var inputEl   = document.getElementById('pump_name_input_' + pumpId);
+    var editBtn   = document.getElementById('btn_edit_pump_' + pumpId);
+
+    if (!displayEl || !inputEl) return;
+
+    var origVal = inputEl.dataset.originalVal || displayEl.textContent.trim();
+    var newName = inputEl.value.trim();
+    if (!newName) {
+        newName = origVal || ('Pump #' + pumpId);
+        inputEl.value = newName;
+    }
+
+    displayEl.textContent = newName;
+    displayEl.title = newName;
+    displayEl.style.display = 'block';
+    inputEl.style.display = 'none';
+
+    if (editBtn) {
+        editBtn.style.setProperty('background', '#ffffff', 'important');
+        editBtn.style.setProperty('background-color', '#ffffff', 'important');
+        editBtn.style.setProperty('border-color', '#94a3b8', 'important');
+    }
+};
+
+window.cancelInlinePumpNameEdit = function(pumpId) {
+    var displayEl = document.getElementById('pump_name_display_' + pumpId);
+    var inputEl   = document.getElementById('pump_name_input_' + pumpId);
+    var editBtn   = document.getElementById('btn_edit_pump_' + pumpId);
+
+    if (displayEl && inputEl) {
+        var origVal = inputEl.dataset.originalVal || displayEl.textContent.trim();
+        inputEl.value = origVal;
+        displayEl.style.display = 'block';
+        inputEl.style.display = 'none';
+    }
+    if (editBtn) {
+        editBtn.style.setProperty('background', '#ffffff', 'important');
+        editBtn.style.setProperty('background-color', '#ffffff', 'important');
+        editBtn.style.setProperty('border-color', '#94a3b8', 'important');
+    }
+};
+
 function validateEditFuelForm() {
+    // Sync any open inline pump name inputs before form submission
+    document.querySelectorAll('[id^="pump_name_input_"]').forEach(function(inp) {
+        var pid = inp.id.replace('pump_name_input_', '');
+        if (inp.style.display !== 'none') {
+            finishInlinePumpNameEdit(pid);
+        }
+    });
     const nameEl = document.getElementById('aef_fuel_name');
     const pEl  = document.getElementById('aef_price');
     const cEl  = document.getElementById('aef_capacity');
@@ -4240,8 +4396,24 @@ function switchTab(tabName) {
 // SAFE LISTENER HELPER
 // ══════════════════════════════════════════════════════════════════════════
 function safeAddListener(id, event, handler) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener(event, handler);
+    function tryAttach() {
+        var el = document.getElementById(id);
+        if (!el) return false;
+        var key = '_sal_' + event;
+        if (!el[key]) el[key] = [];
+        if (el[key].indexOf(handler) === -1) {
+            el.addEventListener(event, handler);
+            el[key].push(handler);
+        }
+        return true;
+    }
+    if (!tryAttach()) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', tryAttach);
+        } else {
+            setTimeout(tryAttach, 0);
+        }
+    }
 }
 
 // Background overlay click listeners
@@ -4429,14 +4601,18 @@ safeAddListener('addProductForm', 'submit', function(e) {
         .then(function(data) {
             if (data.success) {
                 closeAddProductModal();
+                try {
+                    sessionStorage.setItem('admin_flash_toast', JSON.stringify({ message: data.message || 'Fuel product added successfully!', type: 'success' }));
+                } catch(e) {}
                 showCustomAlert(data.message || 'Fuel product added successfully!', 'success', function() {
-                    location.reload();
+                    location.href = 'admin_set_prices.php?tab=fuel';
                 });
             } else {
                 showCustomAlert(data.message || 'Failed to add fuel product.', 'error');
             }
         })
-        .catch(function() {
+        .catch(function(err) {
+            console.error('Add fuel product error:', err);
             showCustomAlert('Network error. Please try again.', 'error');
         })
         .finally(function() {
@@ -4549,14 +4725,20 @@ safeAddListener('addMerchandiseForm', 'submit', function(e) {
     .then(function(data) {
         if (data.success) {
             closeAddMerchandiseModal();
-            showCustomAlert('Product added successfully!', 'success', function() {
-                location.reload();
+            try {
+                sessionStorage.setItem('admin_flash_toast', JSON.stringify({ message: data.message || 'Product added successfully!', type: 'success' }));
+            } catch(e) {}
+            showCustomAlert(data.message || 'Product added successfully!', 'success', function() {
+                location.href = 'admin_set_prices.php?tab=merch';
             });
         } else {
             showCustomAlert(data.message || 'Failed to add product', 'error');
         }
     })
-    .catch(function() { showCustomAlert('Error adding product. Please try again.', 'error'); })
+    .catch(function(err) {
+        console.error('Add merchandise error:', err);
+        showCustomAlert('Error adding product. Please try again.', 'error');
+    })
     .finally(function() {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Add Product'; }
     });
@@ -4945,14 +5127,18 @@ safeAddListener('addServiceForm', 'submit', function(e) {
     .then(function(data) {
         if (data.success) {
             closeAddServiceModal();
+            try {
+                sessionStorage.setItem('admin_flash_toast', JSON.stringify({ message: data.message || 'Service added successfully!', type: 'success' }));
+            } catch(e) {}
             showCustomAlert(data.message || 'Service added successfully!', 'success', function() {
-                location.reload();
+                location.href = 'admin_set_prices.php?tab=services';
             });
         } else {
             showCustomAlert(data.message || 'Failed to add service.', 'error');
         }
     })
-    .catch(function() {
+    .catch(function(err) {
+        console.error('Add service error:', err);
         showCustomAlert('Network error. Please try again.', 'error');
     })
     .finally(function() {
@@ -5411,7 +5597,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
             </h3>
         </div>
         <!-- Modal Form Body (Landscape 2-Column Grid with Scroll) -->
-        <form id="addProductForm" style="padding:16px 24px 18px;overflow-y:auto;flex:1 1 auto;display:flex;flex-direction:column;">
+        <form id="addProductForm" action="javascript:void(0);" method="POST" style="padding:16px 24px 18px;overflow-y:auto;flex:1 1 auto;display:flex;flex-direction:column;">
             <!-- Row 1: Fuel Name + UGT Number -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;">
                 <div>
@@ -5489,9 +5675,6 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                            style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="e.g. 4">
-                    <small style="font-size:11px;color:#64748b;display:block;margin-top:2px;">
-                        <i class="fas fa-info-circle"></i> Station-specific: total pumps/nozzles for this fuel type (0 = configure later).
-                    </small>
                 </div>
                 <div>
                     <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">
@@ -5542,7 +5725,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
         <i class="fas fa-plus-circle"></i> ADD NEW MERCHANDISE PRODUCT
       </h3>
     </div>
-    <form id="addMerchandiseForm" style="padding:22px;">
+    <form id="addMerchandiseForm" action="javascript:void(0);" method="POST" style="padding:22px;">
       <!-- Row 1: Product Name + SKU -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div>
@@ -5644,7 +5827,7 @@ safeAddListener('addServiceForm', 'submit', function(e) {
       </h3>
     </div>
     <!-- Form Body -->
-    <form id="addServiceForm" style="flex:1 1 auto;overflow-y:auto;padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
+    <form id="addServiceForm" action="javascript:void(0);" method="POST" style="flex:1 1 auto;overflow-y:auto;padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
       <div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div style="grid-column:1/-1;">
@@ -5819,6 +6002,20 @@ window.addEventListener('resize', syncAdminModalLayout);
 window.addEventListener('load', syncAdminModalLayout);
 document.addEventListener('DOMContentLoaded', function() {
     syncAdminModalLayout();
+
+    // Check for flash toast from previous action (e.g. Add Fuel/Merchandise/Service)
+    try {
+        var flashToastRaw = sessionStorage.getItem('admin_flash_toast');
+        if (flashToastRaw) {
+            sessionStorage.removeItem('admin_flash_toast');
+            var flashToast = JSON.parse(flashToastRaw);
+            if (flashToast && flashToast.message) {
+                setTimeout(function() {
+                    showCustomAlert(flashToast.message, flashToast.type || 'success');
+                }, 200);
+            }
+        }
+    } catch(e) {}
 
     // Auto-open Merchandise Details Modal & scroll into view when navigated from Global Search
     var urlParams = new URLSearchParams(window.location.search);

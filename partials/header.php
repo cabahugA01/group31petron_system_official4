@@ -825,6 +825,71 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
         color: inherit !important;
         -webkit-text-fill-color: inherit !important;
     }
+
+    /* 3. Global Modal Header Clearance & Box Visibility Rule */
+    /* 3. Global Modal Header & Footer Clearance & Box Visibility Rule */
+    /* Guarantees clean, visible breathing room between the fixed top-header, fixed footer, and all modal dialogs */
+    .modal-dialog {
+        margin-top: calc(70px + 24px) !important;
+        margin-bottom: calc(40px + 24px) !important;
+    }
+    .am-modal-overlay,
+    .map-modal-overlay,
+    .db-modal-overlay,
+    .sr-modal-overlay,
+    .txn-modal-overlay,
+    .va-modal-overlay,
+    .cust-modal-overlay,
+    div[class*="modal-overlay"] {
+        top: 70px !important;
+        bottom: 40px !important;
+        padding-top: 24px !important;
+        padding-bottom: 24px !important;
+        box-sizing: border-box !important;
+    }
+
+    @media (max-width: 991px) {
+        .modal-dialog {
+            margin-top: calc(60px + 16px) !important;
+            margin-bottom: calc(40px + 16px) !important;
+        }
+        .am-modal-overlay,
+        .map-modal-overlay,
+        .db-modal-overlay,
+        .sr-modal-overlay,
+        .txn-modal-overlay,
+        .va-modal-overlay,
+        .cust-modal-overlay,
+        div[class*="modal-overlay"] {
+            top: 60px !important;
+            bottom: 40px !important;
+            padding-top: 16px !important;
+            padding-bottom: 16px !important;
+        }
+    }
+
+    /* Modal box max-height and shadow refinement so box outline and rounded corners are 100% visible */
+    .am-modal,
+    .db-modal,
+    .map-modal,
+    .sr-modal,
+    .txn-modal,
+    .va-modal,
+    .modal-content {
+        max-height: calc(100vh - 70px - 40px - 48px) !important;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
+    }
+    @media (max-width: 991px) {
+        .am-modal,
+        .db-modal,
+        .map-modal,
+        .sr-modal,
+        .txn-modal,
+        .va-modal,
+        .modal-content {
+            max-height: calc(100vh - 60px - 40px - 32px) !important;
+        }
+    }
   </style>
   <style id="petronDynamicAppearanceStyles">
     :root {
@@ -899,7 +964,9 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
     #viewAdminBatchesModal button,
     #adminViewProdModal button,
     #adminViewMovModal button,
-    #adminViewSiModal button {
+    #adminViewSiModal button,
+    #aef_pumps_container button,
+    .btn-edit-pump-name {
         background-color: transparent !important;
         background: transparent !important;
     }

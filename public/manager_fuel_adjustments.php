@@ -244,7 +244,7 @@ try {
     $fuel_types = $ft_stmt->fetchAll(PDO::FETCH_COLUMN);
 } catch (Exception $e) {}
 if (empty($shifts)) {
-    $shifts = ['First Shift', 'Second Shift', 'Third Shift'];
+    $shifts = ['First Shift', 'Second Shift'];
 }
 
 // Petron station fuel deliveries use Petron Corporation as the sole supplier.
@@ -488,11 +488,26 @@ require_once __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../pa
 .txn-kpi-card.purple .txn-kpi-lbl i, .afto-card.purple .afto-card-lbl i { color: #7c3aed !important; }
 
 /* Filters */
-.afto-filter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; box-sizing: border-box; }
-.afto-fg { display: flex; flex-direction: column; gap: 5px; }
-.afto-fg label { font-size: 13px !important; font-weight: 800 !important; color: #002F70 !important; text-transform: uppercase; letter-spacing: .3px; }
-.afto-fg input, .afto-fg select { height: 42px !important; padding: 0 12px; border: 1.5px solid #cbd5e1; border-radius: 7px; font-size: 14px !important; font-weight: 600 !important; color: #0f172a; background: #fff; outline: none; box-sizing: border-box; }
+.afto-filter { 
+    display: flex; 
+    align-items: flex-end; 
+    gap: 8px; 
+    flex-wrap: nowrap; 
+    background: #fff; 
+    border: 1.5px solid #e2e8f0; 
+    border-radius: 10px; 
+    padding: 14px 18px; 
+    margin-bottom: 20px; 
+    box-sizing: border-box; 
+    width: 100%;
+    overflow-x: auto;
+}
+.afto-fg { display: flex; flex-direction: column; gap: 4px; flex-shrink: 1; }
+.afto-fg label { font-size: 12px !important; font-weight: 800 !important; color: #002F70 !important; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.afto-fg input, .afto-fg select { height: 38px !important; padding: 0 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 13px !important; font-weight: 600 !important; color: #0f172a; background: #fff; outline: none; box-sizing: border-box; width: 100%; }
 .afto-fg input:focus, .afto-fg select:focus { border-color: #002F70; box-shadow: 0 0 0 3px rgba(0,47,112,.1); }
+.afto-filter-btns { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-end; }
+.afto-filter-btns .ato-btn { height: 38px !important; padding: 0 14px !important; font-size: 13px !important; border-radius: 6px !important; }
 
 /* Table styles - Strict Zero Horizontal Scroll */
 .afto-table-card { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
@@ -721,15 +736,15 @@ table.afto-tbl.report-table.no-min-width.print-table {
     <form method="get" class="afto-filter">
         <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>">
         
-        <div class="afto-fg">
+        <div class="afto-fg" style="width: 130px; flex-shrink: 0;">
             <label>Date From</label>
             <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>">
         </div>
-        <div class="afto-fg">
+        <div class="afto-fg" style="width: 130px; flex-shrink: 0;">
             <label>Date To</label>
             <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>">
         </div>
-        <div class="afto-fg">
+        <div class="afto-fg" style="width: 125px; flex-shrink: 0;">
             <label>Fuel Type</label>
             <select name="fuel_type">
                 <option value="all">All Fuel Types</option>
@@ -740,7 +755,7 @@ table.afto-tbl.report-table.no-min-width.print-table {
         </div>
 
         <?php if ($active_tab === 'transactions'): ?>
-            <div class="afto-fg">
+            <div class="afto-fg" style="width: 105px; flex-shrink: 0;">
                 <label>Shift</label>
                 <select name="shift">
                     <option value="all">All Shifts</option>
@@ -749,12 +764,12 @@ table.afto-tbl.report-table.no-min-width.print-table {
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="afto-fg">
+            <div class="afto-fg" style="width: 120px; flex-shrink: 0;">
                 <label>Staff</label>
                 <input type="text" name="staff" value="<?= htmlspecialchars($staff_filter) ?>" placeholder="Staff name">
             </div>
         <?php else: ?>
-            <div class="afto-fg">
+            <div class="afto-fg" style="width: 140px; flex-shrink: 0;">
                 <label>Supplier</label>
                 <select name="supplier">
                     <option value="all">All Suppliers</option>
@@ -765,7 +780,7 @@ table.afto-tbl.report-table.no-min-width.print-table {
             </div>
         <?php endif; ?>
 
-        <div class="afto-fg">
+        <div class="afto-fg" style="width: 135px; flex-shrink: 0;">
             <label>Adjusted By</label>
             <select name="adjusted_by">
                 <option value="all">All Managers</option>
@@ -776,18 +791,18 @@ table.afto-tbl.report-table.no-min-width.print-table {
         </div>
 
         <?php if ($active_tab === 'transactions'): ?>
-            <div class="afto-fg">
+            <div class="afto-fg" style="flex: 1 1 130px; min-width: 110px;">
                 <label>Search Trans No.</label>
                 <input type="text" name="search_tx" value="<?= htmlspecialchars($search_tx) ?>" placeholder="e.g. FTX-0001">
             </div>
         <?php else: ?>
-            <div class="afto-fg">
+            <div class="afto-fg" style="flex: 1 1 130px; min-width: 110px;">
                 <label>Search Delivery No.</label>
                 <input type="text" name="search_del" value="<?= htmlspecialchars($search_del) ?>" placeholder="e.g. DEL-0001">
             </div>
         <?php endif; ?>
 
-        <div style="display: flex; gap: 8px;">
+        <div class="afto-filter-btns">
             <button type="submit" class="ato-btn ato-btn-filter"><i class="fas fa-search"></i> Filter</button>
             <a href="?tab=<?= $active_tab ?>" class="ato-btn ato-btn-reset"><i class="fas fa-rotate-left"></i> Reset</a>
         </div>

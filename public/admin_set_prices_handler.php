@@ -200,6 +200,11 @@ try {
 
             if ($status !== 'inactive') $status = 'active';
 
+            if ((int)$station_id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'No station assigned to your account. Please contact Super Admin.']);
+                exit;
+            }
+
             // Validation rules
             if (empty($fuel_type)) {
                 echo json_encode(['success' => false, 'message' => 'Fuel Name is required.']);
@@ -253,10 +258,19 @@ try {
             $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
             if ($ft_row) {
                 $fuel_type_id = (int)$ft_row['id'];
+                try {
+                    $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")->execute([$price, $fuel_type_id]);
+                } catch (Exception $e_ft_up) {}
             } else {
-                $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
-                $ins_ft->execute([$fuel_type]);
-                $fuel_type_id = (int)$pdo->lastInsertId();
+                try {
+                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)");
+                    $ins_ft->execute([$fuel_type, $price]);
+                    $fuel_type_id = (int)$pdo->lastInsertId();
+                } catch (Exception $e_ft_ins) {
+                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
+                    $ins_ft->execute([$fuel_type]);
+                    $fuel_type_id = (int)$pdo->lastInsertId();
+                }
             }
 
             // Direct Save to fuel_inventory
@@ -358,6 +372,30 @@ try {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             } catch (Exception $e) {}
 
+            // Sync to fuel_pricing so station has an active price row
+            if ($station_id > 0 && $fuel_type_id > 0) {
+                try {
+                    $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                    $fp_stmt->execute([$station_id, $fuel_type_id]);
+                    $fp_id = $fp_stmt->fetchColumn();
+                    if ($fp_id) {
+                        $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                            ->execute([$price, $fp_id]);
+                    } else {
+                        $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                            ->execute([$station_id, $fuel_type_id, $price, $me['id']]);
+                    }
+                } catch (Exception $e_fp) {}
+            }
+
+            // Sync to fuel_price_history
+            if ($station_id > 0 && !empty($new_fuel_id)) {
+                try {
+                    $pdo->prepare("INSERT INTO fuel_price_history (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at) VALUES (?, ?, ?, 0, ?, ?, 'Initial Product Creation', ?, ?, 'Approved', NOW())")
+                        ->execute([$station_id, $new_fuel_id, $fuel_type, $price, $price, $me['id'], $me['id']]);
+                } catch (Exception $e_fph) {}
+            }
+
             // Log Audit Trail
             log_activity($pdo, $me['id'], 'Add Fuel Product',
                 "Admin added new fuel product: {$fuel_type} ({$ugt_no}) at ₱{$price}/L. Status: {$status}. Remarks: {$remarks}");
@@ -380,6 +418,11 @@ try {
             $reorder_level = (int)($_POST['reorder_level'] ?? 24);
             $critical_level= (int)($_POST['critical_level'] ?? 10);
             $expiration_date = !empty($_POST['expiration_date']) ? trim($_POST['expiration_date']) : null;
+
+            if ((int)$station_id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'No station assigned to your account. Please contact Super Admin.']);
+                exit;
+            }
 
             $placeholders = ['n/a', 'none', 'null', '-', 'unknown', 'not available'];
             if (empty($product_name) || in_array(strtolower($product_name), $placeholders, true)) {
@@ -575,6 +618,11 @@ try {
             $mech_raw           = trim((string)($_POST['required_mechanics'] ?? ''));
             $required_mechanics = ($mech_raw !== '' && is_numeric($mech_raw) && (int)$mech_raw > 0) ? (int)$mech_raw : 1;
             $description        = sanitize_optional_field($_POST['description'] ?? '');
+
+            if ((int)$station_id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'No station assigned to your account. Please contact Super Admin.']);
+                exit;
+            }
 
             if (empty($service_name) || empty($category)) {
                 echo json_encode(['success' => false, 'message' => 'Service name and category are required']);
@@ -806,6 +854,41 @@ try {
                 'config_history'  => $config_history,
                 'status_history'  => $status_history
             ]);
+            exit;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // RENAME PUMP / NOZZLE (ADMIN EDIT PUMP NAME)
+        // ══════════════════════════════════════════════════════════════════════
+        case 'rename_pump_admin':
+            $pump_id  = (int)($_POST['pump_id'] ?? 0);
+            $new_name = trim($_POST['new_name'] ?? '');
+            if ($pump_id <= 0 || $new_name === '') {
+                echo json_encode(['success' => false, 'message' => 'Pump ID and Name are required.']);
+                exit;
+            }
+            try {
+                $target_station = (int)$station_id;
+                $chk_p = $pdo->prepare("SELECT station_id, pump_number FROM fuel_pumps WHERE id = ? LIMIT 1");
+                $chk_p->execute([$pump_id]);
+                $p_row = $chk_p->fetch(PDO::FETCH_ASSOC);
+                if ($p_row && (int)$p_row['station_id'] > 0) {
+                    $target_station = (int)$p_row['station_id'];
+                }
+
+                $up = $pdo->prepare("UPDATE fuel_pumps SET pump_number = ?, pump_name = ? WHERE id = ? AND station_id = ?");
+                $up->execute([$new_name, $new_name, $pump_id, $target_station]);
+
+                try {
+                    $pdo->prepare("UPDATE nozzles SET pump_name = ? WHERE pump_id = ? AND station_id = ?")
+                        ->execute([$new_name, $pump_id, $target_station]);
+                } catch (Exception $e) {}
+
+                $user_name = $me['username'] ?? ($me['first_name'] ?? 'Admin');
+                log_activity($pdo, $me['id'], 'Rename Pump / Nozzle', "Admin renamed pump #{$pump_id} from '" . ($p_row['pump_number'] ?? '') . "' to '{$new_name}'");
+                echo json_encode(['success' => true, 'message' => "Pump/Nozzle name updated to '{$new_name}'!", 'new_name' => $new_name]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+            }
             exit;
 
         // ══════════════════════════════════════════════════════════════════════
