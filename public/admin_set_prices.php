@@ -4334,18 +4334,60 @@ function exportPricing(format) {
     }
     const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&q=${q}&status=${st}&category=${cat}&brand=${brd}&_ts=${Date.now()}`;
 
-    if (format === 'print' || format === 'pdf') {
-        // Use hidden iframe — triggers print dialog directly without opening a new tab
-        let iframe = document.getElementById('pricingPrintIframe');
-        if (!iframe) {
-            iframe = document.createElement('iframe');
-            iframe.id = 'pricingPrintIframe';
-            iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-            document.body.appendChild(iframe);
-        }
-        iframe.src = url;
+    if (format === 'print') {
+        // Direct print on current page — no new tab or popup
+        // Fetch the print-format HTML and inject into #report-print-root, then call window.print()
+        var printUrl = 'export_pricing_products.php?tab=' + activeTab + '&format=print&q=' + q + '&status=' + st + '&category=' + cat + '&brand=' + brd + '&_ts=' + Date.now();
+        fetch(printUrl, { credentials: 'same-origin' })
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                // Remove auto-print scripts from the fetched page
+                doc.querySelectorAll('script').forEach(function(s) { s.remove(); });
+
+                // Remove any existing print root and print styles
+                var existing = document.getElementById('report-print-root');
+                if (existing) existing.remove();
+                var existingPs = document.getElementById('pricing-print-styles');
+                if (existingPs) existingPs.remove();
+
+                // Inject fetched content into report-print-root
+                var printRoot = document.createElement('div');
+                printRoot.id = 'report-print-root';
+                printRoot.innerHTML = doc.body ? doc.body.innerHTML : html;
+                document.body.appendChild(printRoot);
+
+                // Inject print styles from the fetched page
+                var styleContent = '';
+                doc.querySelectorAll('style').forEach(function(s) { styleContent += s.textContent; });
+                if (styleContent) {
+                    var styleEl = document.createElement('style');
+                    styleEl.id = 'pricing-print-styles';
+                    styleEl.textContent = styleContent;
+                    document.head.appendChild(styleEl);
+                }
+
+                // Use report-printing class (footer.php handles: hide all UI, show only #report-print-root)
+                document.body.classList.add('report-printing');
+                var cleanup = function() {
+                    document.body.classList.remove('report-printing');
+                    var n = document.getElementById('report-print-root');
+                    if (n) n.remove();
+                    var ps = document.getElementById('pricing-print-styles');
+                    if (ps) ps.remove();
+                    window.removeEventListener('afterprint', cleanup);
+                };
+                window.addEventListener('afterprint', cleanup);
+                window.print();
+                setTimeout(cleanup, 1500);
+            })
+            .catch(function() {
+                // Fallback: open in new tab if fetch fails
+                window.open('export_pricing_products.php?tab=' + activeTab + '&format=print&q=' + q + '&status=' + st + '&category=' + cat + '&brand=' + brd, '_blank');
+            });
     } else {
-        // Excel / CSV — direct download, no new tab
+        // PDF, Excel, CSV — direct download via location.href (no new tab)
         window.location.href = url;
     }
 }
