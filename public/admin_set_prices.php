@@ -2977,8 +2977,7 @@ function showCustomAlert(message, type, callback) {
         + '<div style="flex:1;min-width:0;">'
             + '<div style="font-size:14.5px;font-weight:800;color:#0f172a;margin-bottom:3px;letter-spacing:0.01em;">' + titleText + '</div>'
             + '<div style="font-size:15.5px;font-weight:500;color:#475569;line-height:1.45;">' + message + '</div>'
-        + '</div>'
-        + (isError ? '<button type="button" onclick="this.closest(\'[style]\').style.opacity=0;setTimeout(function(){this.remove();}.bind(this.closest(\'[style]\')),300);" style="background:none;border:none;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;flex-shrink:0;align-self:flex-start;transition:color 0.15s;" onmouseover="this.style.color=\'#475569\'" onmouseout="this.style.color=\'#94a3b8\'">&times;</button>' : '');
+        + '</div>';
 
     container.appendChild(toast);
     setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
@@ -2993,6 +2992,11 @@ function showCustomAlert(message, type, callback) {
         }, 350);
     }, delay);
 }
+
+// Map window.alert to showCustomAlert for clean, uniform feedback without standard popup dialogs
+window.alert = function(msg) {
+    showCustomAlert(msg, 'warning');
+};
 
 // ── 1. Admin Edit Product Modal ────────────────────────────────────────────
 function openAdminEditProductModal(id) {
@@ -4171,7 +4175,7 @@ function validateEditFuelForm() {
     const rEl  = document.getElementById('aef_reorder');
 
     if (nameEl && !nameEl.value.trim()) {
-        alert('Fuel product name cannot be empty.');
+        showCustomAlert('Fuel product name cannot be empty.', 'warning');
         nameEl.focus();
         return false;
     }
@@ -4182,32 +4186,32 @@ function validateEditFuelForm() {
     const r  = parseFloat(rEl?.value || 0);
 
     if (isNaN(p) || p <= 0) {
-        alert('Price / Liter must be a valid positive number greater than 0.');
+        showCustomAlert('Price / Liter must be a valid positive number greater than 0.', 'warning');
         if (pEl) pEl.focus();
         return false;
     }
     if (isNaN(c) || c <= 0) {
-        alert('Tank Capacity must be a valid positive number greater than 0.');
+        showCustomAlert('Tank Capacity must be a valid positive number greater than 0.', 'warning');
         if (cEl) cEl.focus();
         return false;
     }
     if (isNaN(cr) || cr <= 0) {
-        alert('Critical Level must be a valid positive number greater than 0.');
+        showCustomAlert('Critical Level must be a valid positive number greater than 0.', 'warning');
         if (crEl) crEl.focus();
         return false;
     }
     if (cr >= c) {
-        alert('Critical Level cannot be greater than or equal to Tank Capacity (' + c + ' L).');
+        showCustomAlert('Critical Level cannot be greater than or equal to Tank Capacity (' + c + ' L).', 'error');
         if (crEl) crEl.focus();
         return false;
     }
     if (isNaN(r) || r <= 0) {
-        alert('Reorder Level must be a valid positive number greater than 0.');
+        showCustomAlert('Reorder Level must be a valid positive number greater than 0.', 'warning');
         if (rEl) rEl.focus();
         return false;
     }
     if (r >= c) {
-        alert('Reorder Level cannot be greater than or equal to Tank Capacity (' + c + ' L).');
+        showCustomAlert('Reorder Level cannot be greater than or equal to Tank Capacity (' + c + ' L).', 'error');
         if (rEl) rEl.focus();
         return false;
     }
