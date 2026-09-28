@@ -1096,6 +1096,7 @@ function mark_deliveries_complete(PDO $pdo, array $ids, int $station_id, int $us
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $params = array_merge([
         'Stock-In Complete',
+        $batch_id,
         $user_id,
         "Stock-In approved by {$role_label}. Batch: {$batch_id}",
         $user_id,
@@ -1105,6 +1106,7 @@ function mark_deliveries_complete(PDO $pdo, array $ids, int $station_id, int $us
     $pdo->prepare("
         UPDATE deliveries_oversight
         SET status = ?,
+            batch_id = ?,
             manager_id = ?,
             manager_action_at = NOW(),
             manager_notes = ?,

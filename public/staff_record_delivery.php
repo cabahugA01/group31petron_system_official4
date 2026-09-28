@@ -18,7 +18,7 @@ $msg_type = 'success';
 
 // Get active tab
 $active_tab = $_GET['tab'] ?? 'merchandise';
-if (!in_array($active_tab, ['merchandise', 'fuel'])) {
+if (!in_array($active_tab, ['merchandise', 'fuel', 'history', 'delivery'])) {
     $active_tab = 'merchandise';
 }
 
@@ -1134,6 +1134,107 @@ $stmt = $pdo->prepare("
 $stmt->execute([$station_id]);
 $count_fuel_completed_deliveries = (int)$stmt->fetchColumn();
 
+// ── Compile Unified Delivery History List (Merchandise + Fuel) ──
+$delivery_history_list = [];
+$all_del_refs = [];
+
+// 1. Merchandise recorded deliveries
+foreach ($recorded_merch_deliveries as $del) {
+    $del['delivery_type'] = 'merchandise';
+    $del['sort_time'] = strtotime(($del['delivery_date'] ?? '') . ' ' . ($del['delivery_time'] ?? '00:00:00')) ?: strtotime($del['recorded_at'] ?? 0);
+    $delivery_history_list[] = $del;
+    if (!empty($del['delivery_ref'])) $all_del_refs[$del['delivery_ref']] = true;
+    if (!empty($del['dr_number']))    $all_del_refs[$del['dr_number']] = true;
+}
+
+// 2. Fuel recorded deliveries from deliveries_oversight
+foreach ($recorded_fuel_deliveries as $del) {
+    $del['delivery_type'] = 'fuel';
+    $del['sort_time'] = strtotime(($del['delivery_date'] ?? '') . ' ' . ($del['delivery_time'] ?? '00:00:00')) ?: strtotime($del['recorded_at'] ?? 0);
+    $delivery_history_list[] = $del;
+    if (!empty($del['delivery_ref'])) $all_del_refs[$del['delivery_ref']] = true;
+    if (!empty($del['dr_number']))    $all_del_refs[$del['dr_number']] = true;
+}
+
+// 3. Fallback: check fuel_deliveries table if any exist not in deliveries_oversight
+try {
+    $stmt_fd = $pdo->prepare("
+        SELECT fd.*, 
+               COALESCE(NULLIF(u.name,''), u.username, 'Staff') AS encoded_by_name,
+               COALESCE(NULLIF(um.name,''), um.username, 'Manager') AS manager_name
+        FROM fuel_deliveries fd
+        LEFT JOIN users u ON fd.received_by = u.id
+        LEFT JOIN users um ON fd.verified_by = um.id
+        WHERE fd.station_id = ?
+        ORDER BY fd.delivery_date DESC, fd.created_at DESC
+        LIMIT 200
+    ");
+    $stmt_fd->execute([$station_id]);
+    foreach ($stmt_fd->fetchAll(PDO::FETCH_ASSOC) as $fd_row) {
+        $f_ref = 'FD-' . date('Ymd', strtotime($fd_row['delivery_date'] ?? 'now')) . '-' . $fd_row['id'];
+        $f_dr  = trim($fd_row['dr_number'] ?? '');
+        if (($f_dr !== '' && isset($all_del_refs[$f_dr])) || isset($all_del_refs[$f_ref])) {
+            continue;
+        }
+        $f_vol   = (float)($fd_row['received_volume'] ?? 0);
+        $f_cost  = (float)($fd_row['total_amount'] ?? 0);
+        $f_price = (float)($fd_row['unit_price'] ?? 0);
+        $f_stat  = $fd_row['status'] ?: 'Stock-In Complete';
+
+        $delivery_history_list[] = [
+            'id'            => $fd_row['id'],
+            'kind'          => 'recorded',
+            'delivery_type' => 'fuel',
+            'delivery_ref'  => $f_ref,
+            'po_number'     => !empty($fd_row['po_number']) ? $fd_row['po_number'] : ('POF-' . $fd_row['id']),
+            'dr_number'     => $f_dr,
+            'invoice_no'    => $fd_row['invoice_number'] ?? '—',
+            'supplier_name' => 'Petron Corporation',
+            'delivery_date' => $fd_row['delivery_date'] ?? '',
+            'delivery_time' => $fd_row['delivery_time'] ?? '',
+            'received_by'   => $fd_row['encoded_by_name'] ?? 'Staff',
+            'recorded_by'   => $fd_row['encoded_by_name'] ?? 'Staff',
+            'recorded_at'   => $fd_row['created_at'] ?? '',
+            'status'        => $f_stat,
+            'remarks'       => $fd_row['remarks'] ?? '',
+            'items'         => [
+                [
+                    'name'       => $fd_row['fuel_type'] ?? 'Fuel',
+                    'qty'        => $f_vol,
+                    'unit'       => 'L',
+                    'expected'   => (float)($fd_row['invoiced_volume'] ?? $f_vol),
+                    'actual'     => $f_vol,
+                    'unit_price' => $f_price,
+                    'total'      => $f_cost,
+                ]
+            ],
+            'total_qty'     => $f_vol,
+            'total_cost'    => $f_cost,
+            'sort_time'     => strtotime(($fd_row['delivery_date'] ?? '') . ' ' . ($fd_row['delivery_time'] ?? '00:00:00')) ?: strtotime($fd_row['created_at'] ?? 0),
+        ];
+    }
+} catch (Exception $e) {}
+
+// Sort delivery history descending by date and time
+usort($delivery_history_list, fn($a, $b) => ($b['sort_time'] ?? 0) - ($a['sort_time'] ?? 0));
+
+// Compute Delivery History summary card metrics
+$cnt_del_hist_total     = count($delivery_history_list);
+$cnt_del_hist_fuel      = count(array_filter($delivery_history_list, fn($r) => ($r['delivery_type'] ?? '') === 'fuel'));
+$cnt_del_hist_merch     = count(array_filter($delivery_history_list, fn($r) => ($r['delivery_type'] ?? '') === 'merchandise'));
+$cnt_del_hist_completed = count(array_filter($delivery_history_list, fn($r) => in_array(strtolower(trim($r['status'] ?? '')), ['stock-in complete', 'stocked-in', 'completed', 'confirmed', 'closed', 'approved', 'verified'])));
+$cnt_del_hist_pending   = count(array_filter($delivery_history_list, fn($r) => in_array(strtolower(trim($r['status'] ?? '')), ['pending stock-in', 'pending manager approval', 'pending validation', 'pending', 'received'])));
+
+// History supplier list for filter dropdown
+$hist_suppliers = [];
+foreach ($delivery_history_list as $del_item) {
+    $sup = trim($del_item['supplier_name'] ?? '');
+    if ($sup !== '') {
+        $hist_suppliers[$sup] = true;
+    }
+}
+ksort($hist_suppliers);
+
 include __DIR__ . '/../partials/header.php';
 ?>
 <div class="stock-page">
@@ -1239,16 +1340,14 @@ include __DIR__ . '/../partials/header.php';
     }
 }
 
-/* Tabs - Reports-style boxed design */
-.tabs-container { margin-bottom: 22px; }
-.tabs-header {
-    display: flex !important; flex-wrap: wrap !important;
-    border: 1px solid #d1d9e6 !important; border-radius: 0 !important;
-    overflow: hidden !important; border-bottom: 3px solid #00264D !important;
-    gap: 0 !important; background: transparent !important; padding: 0 !important; width: 100% !important;
+/* Main Page Tabs (matching Manager Purchase Management tab-nav) */
+.tab-nav { 
+    display: flex !important; flex-wrap: wrap !important; margin-bottom: 22px !important; 
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; 
+    border-bottom: 3px solid #00264D !important; gap: 0 !important; width: 100% !important; background: #fff !important;
 }
 .tab-btn {
-    flex: 1 !important; min-width: 140px !important;
+    flex: 1 !important; min-width: 150px !important;
     padding: 12px 16px !important; font-size: 11.5px !important; font-weight: 700 !important;
     color: #334155 !important; background: #ffffff !important;
     border: none !important; border-right: 1px solid #d1d9e6 !important;
@@ -1261,12 +1360,74 @@ include __DIR__ . '/../partials/header.php';
     margin-bottom: 0 !important; box-shadow: none !important; white-space: nowrap;
 }
 .tab-btn:last-child { border-right: none !important; }
-.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .tab-btn.active {
     background: #00264D !important; color: #ffffff !important;
     font-weight: 800 !important; box-shadow: none !important;
 }
 .tab-btn.active *, .tab-btn.active span, .tab-btn.active i { color: #ffffff !important; }
+
+/* Sub-tab nav (Merchandise / Fuel - matches Manager Purchase Management style) */
+.sub-tab-nav { 
+    display: flex !important; flex-wrap: wrap !important; margin-bottom: 20px !important; 
+    border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; 
+    border-bottom: 3px solid #00264D !important; gap: 0 !important; width: 100% !important; background: #fff !important;
+}
+.sub-tab-nav-btn { 
+    flex: 1 !important; min-width: 120px !important; padding: 11px 16px !important; 
+    font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; 
+    background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; 
+    border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; 
+    display: inline-flex !important; align-items: center !important; justify-content: center !important; 
+    gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; 
+    cursor: pointer !important; margin-bottom: 0 !important; 
+}
+.sub-tab-nav-btn:last-child { border-right: none !important; }
+.sub-tab-nav-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.sub-tab-nav-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; }
+.sub-tab-nav-btn.active * { color: #ffffff !important; }
+
+/* History Summary Cards Grid */
+.summary-grid-hist {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    gap: 14px !important;
+    margin-bottom: 20px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.summary-card-hist {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.summary-card-hist:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+.summary-card-hist-label {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    text-transform: uppercase !important;
+    letter-spacing: .4px !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.summary-card-hist-val {
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    line-height: 1.1 !important;
+}
 
 
 /* Tab Content */
@@ -1810,23 +1971,33 @@ body[data-page="staff_record_delivery"] .main {
     </div>
 </div>
 
-<div class="tabs-container">
-    <div class="tabs-header">
-        <button class="tab-btn <?php echo $active_tab === 'merchandise' ? 'active' : ''; ?>" 
-                onclick="switchTab('merchandise')">
+<!-- Main Page Tabs (Identical to Manager Purchase Management) -->
+<div class="tab-nav">
+    <button type="button" id="mainTabRecordBtn" onclick="switchMainDeliveryTab('delivery')" class="tab-btn <?= $active_tab !== 'history' ? 'active' : '' ?>">
+        <i class="fas fa-truck-loading"></i> Record Delivery
+    </button>
+    <button type="button" id="mainTabHistoryBtn" onclick="switchMainDeliveryTab('history')" class="tab-btn <?= $active_tab === 'history' ? 'active' : '' ?>">
+        <i class="fas fa-history"></i> Delivery History
+    </button>
+</div>
+
+<!-- Record Delivery Section (Contains Merchandise and Fuel Sub-tabs) -->
+<div id="recordDeliverySection" style="<?= $active_tab === 'history' ? 'display:none;' : '' ?>">
+
+    <!-- Sub-tabs Navigation (Merchandise / Fuel - matches Manager Purchase Management style) -->
+    <div id="deliveryCategoryNav" class="sub-tab-nav">
+        <button type="button" id="subtabMerchBtn" onclick="switchCategoryTab('merchandise')" class="sub-tab-nav-btn <?= $active_tab !== 'fuel' ? 'active' : '' ?>">
             <i class="fas fa-boxes"></i> Merchandise
         </button>
-        <button class="tab-btn <?php echo $active_tab === 'fuel' ? 'active' : ''; ?>" 
-                onclick="switchTab('fuel')">
+        <button type="button" id="subtabFuelBtn" onclick="switchCategoryTab('fuel')" class="sub-tab-nav-btn <?= $active_tab === 'fuel' ? 'active' : '' ?>">
             <i class="fas fa-gas-pump"></i> Fuel
         </button>
     </div>
-</div>
 
 <!-- =========================================================================
      MERCHANDISE TAB
      ========================================================================= -->
-<div id="merchandise-tab" class="tab-content <?php echo $active_tab === 'merchandise' ? 'active' : ''; ?>">
+<div id="merchandise-tab" class="tab-content <?= $active_tab !== 'fuel' ? 'active' : '' ?>">
     
     <!-- Summary Cards -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
@@ -1857,7 +2028,7 @@ body[data-page="staff_record_delivery"] .main {
                 <div style="font-size:24px; font-weight:800; color:#1e293b; margin-top:2px;"><?= $count_pending_stock_in ?></div>
             </div>
         </div>
-        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+        <div onclick="switchMainDeliveryTab('history')" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 2px 4px rgba(0,0,0,0.02); cursor:pointer; transition:transform .15s, box-shadow .15s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 10px rgba(0,0,0,0.08)';" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)';" title="Click to view Delivery History">
             <div style="width:48px; height:48px; border-radius:8px; background:#f5f3ff; display:flex; align-items:center; justify-content:center; color:#8b5cf6; font-size:20px;">
                 <i class="fas fa-check-circle"></i>
             </div>
@@ -1918,12 +2089,12 @@ body[data-page="staff_record_delivery"] .main {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($grouped_merch_pos) && empty($recorded_merch_deliveries)): ?>
+                    <?php if (empty($grouped_merch_pos)): ?>
                     <tr>
                         <td colspan="6" style="text-align:center;padding:34px 16px;color:#64748b;background:#fff;">
                             <i class="fas fa-inbox" style="font-size:32px;color:#cbd5e1;display:block;margin-bottom:10px;"></i>
                             <strong style="display:block;color:#1e293b;font-size:14px;margin-bottom:4px;">No Pending Merchandise Deliveries</strong>
-                            <span style="font-size:13px;">All approved purchase orders have already been recorded.</span>
+                            <span style="font-size:13px;">All approved purchase orders have already been recorded. You can view past records in <a href="javascript:void(0)" onclick="switchMainDeliveryTab('history')" style="color:#002F70;font-weight:700;text-decoration:underline;">Delivery History</a>.</span>
                         </td>
                     </tr>
                     <?php else: ?>
@@ -2048,7 +2219,7 @@ body[data-page="staff_record_delivery"] .main {
                                     <form method="POST" action="staff_record_delivery.php?tab=merchandise" id="merch-form-<?= $safe_key ?>" autocomplete="off">
                                         <input type="hidden" name="action" value="record_merchandise">
                                         <?php foreach ($po['po_ids'] as $pid): ?>
-                                        <input type="hidden" name="po_ids[]" value="<?= (int)$pid ?>">
+                                         <input type="hidden" name="po_ids[]" value="<?= (int)$pid ?>">
                                         <?php endforeach; ?>
                                         <div style="font-size:10.5px;font-weight:800;color:#002F70;text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px;"><i class="fas fa-truck-loading" style="margin-right:5px;"></i> Delivery Information</div>
                                         <!-- Delivery inputs -->
@@ -2129,87 +2300,11 @@ body[data-page="staff_record_delivery"] .main {
                         </td>
                     </tr>
                     <?php endforeach; ?>
-                    <?php foreach ($recorded_merch_deliveries as $delivery):
-                        $delivery_key = 'merch_done_' . preg_replace('/[^a-zA-Z0-9]/', '_', ($delivery['delivery_ref'] ?? '') . '_' . ($delivery['dr_number'] ?? ''));
-                        $delivery_status = rd_status_meta($delivery['status'] ?? 'Received');
-                        $delivery_item_count = count($delivery['items']);
-                        $delivery_first_item = $delivery['items'][0]['name'] ?? 'No items';
-                        $delivery_more_count = max(0, $delivery_item_count - 1);
-                        $delivery_unit = $delivery['items'][0]['unit'] ?? 'pcs';
-                        $delivery_filter_date = !empty($delivery['delivery_date']) ? date('Y-m-d', strtotime($delivery['delivery_date'])) : '';
-                        $delivery_search = strtolower(trim(implode(' ', [
-                            $delivery['po_number'] ?? '',
-                            $delivery['delivery_ref'] ?? '',
-                            $delivery['dr_number'] ?? '',
-                            $delivery['invoice_no'] ?? '',
-                            $delivery['supplier_name'] ?? '',
-                            $delivery_first_item,
-                            $delivery_status['label']
-                        ])));
-                        $delivery_view_data = [
-                            'type'            => 'Merchandise',
-                            'delivery_ref'    => $delivery['delivery_ref'],
-                            'po_number'       => $delivery['po_number'],
-                            'dr_number'       => $delivery['dr_number'],
-                            'invoice_no'      => $delivery['invoice_no'],
-                            'supplier'        => $delivery['supplier_name'],
-                            'delivery_date'   => rd_date_display($delivery['delivery_date']),
-                            'delivery_time'   => $delivery['delivery_time'] ?: '-',
-                            'received_by'     => $delivery['received_by'],
-                            'recorded_by'     => $delivery['recorded_by'],
-                            'recorded_at'     => !empty($delivery['recorded_at']) ? date('M d, Y h:i A', strtotime($delivery['recorded_at'])) : '-',
-                            'status'          => $delivery_status['label'],
-                            'remarks'         => $delivery['remarks'],
-                            'total_products'  => $delivery_item_count,
-                            'total_qty'       => rd_format_qty((float)$delivery['total_qty']) . ' ' . $delivery_unit,
-                            'total_cost'      => $delivery['total_cost'],
-                            'items'           => array_map(fn($it) => [
-                                'name'       => $it['name'],
-                                'qty'        => $it['qty'],
-                                'unit'       => $it['unit'],
-                                'expected'   => $it['expected'],
-                                'actual'     => $it['actual'],
-                                'unit_price' => $it['unit_price'],
-                                'total'      => $it['total'],
-                            ], $delivery['items'])
-                        ];
-                    ?>
-                    <tr id="row_<?= $delivery_key ?>" class="delivery-main-row"
-                        data-tab="merchandise"
-                        data-search="<?= htmlspecialchars($delivery_search) ?>"
-                        data-supplier="<?= htmlspecialchars(strtolower($delivery['supplier_name'] ?? '')) ?>"
-                        data-status="<?= htmlspecialchars(strtolower($delivery_status['label'])) ?>"
-                        data-date="<?= htmlspecialchars($delivery_filter_date) ?>">
-                        <td style="font-weight:700; font-family:monospace; color:#002F70;">
-                            <?= htmlspecialchars($delivery['po_number']) ?>
-                            <div style="font-size:11px;color:#64748b;margin-top:3px;"><?= htmlspecialchars($delivery['delivery_ref']) ?></div>
-                        </td>
-                        <td style="font-weight:600; color:#0f172a;"><?= htmlspecialchars($delivery['supplier_name']) ?></td>
-                        <td style="font-weight:600; color:#334155;">
-                            <div><?= rd_date_display($delivery['delivery_date']) ?></div>
-                            <?php if (!empty($delivery['dr_number'])): ?><div style="font-size:11px;color:#64748b;margin-top:3px;">DR <?= htmlspecialchars($delivery['dr_number']) ?></div><?php endif; ?>
-                        </td>
-                        <td style="text-align:center;">
-                            <div style="font-weight:800; color:#002F70;"><?= $delivery_item_count ?> Item<?= $delivery_item_count === 1 ? '' : 's' ?></div>
-                            <div style="font-size:11px;color:#64748b;line-height:1.3;margin-top:2px;"><?= htmlspecialchars($delivery_first_item) ?><?= $delivery_more_count ? '<br><span style="font-weight:700;color:#475569;">+' . $delivery_more_count . ' more item' . ($delivery_more_count === 1 ? '' : 's') . '</span>' : '' ?></div>
-                            <div style="font-size:11px;color:#0f172a;font-weight:700;margin-top:3px;">Qty: <?= rd_format_qty((float)$delivery['total_qty']) ?> <?= htmlspecialchars($delivery_unit) ?></div>
-                        </td>
-                        <td style="text-align:center;">
-                            <span class="status-badge <?= htmlspecialchars($delivery_status['class']) ?>"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($delivery_status['label']) ?></span>
-                        </td>
-                        <td style="text-align:center;">
-                            <div class="delivery-actions">
-                                <button type="button" class="txn-btn secondary" onclick='openDeliveryView(<?= rd_js_attr($delivery_view_data) ?>)'><i class="fas fa-eye"></i> View Delivery Details</button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
                     <tr id="merchDeliveryNoResults" style="display:none;">
                         <td colspan="6" style="text-align:center;padding:26px 16px;color:#64748b;background:#fff;">
                             <i class="fas fa-search" style="font-size:24px;color:#cbd5e1;display:block;margin-bottom:8px;"></i>
                             No matching merchandise delivery records found.
                         </td>
-                    </tr>
                     <?php endif; ?>
                 </tbody>
             </table>
@@ -2282,12 +2377,14 @@ body[data-page="staff_record_delivery"] .main {
                 <div style="font-size:24px; font-weight:800; color:#1e293b; margin-top:2px;"><?= $count_fuel_pending_stock_in ?></div>
             </div>
         </div>
-        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; display:flex; align-items:center; gap:16px; box-shadow:0 2px 4px rgba(0,0,0,0.02); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;" onclick="switchMainDeliveryTab('history')" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';this.style.transform='translateY(-1px)';" onmouseout="this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)';this.style.transform='none';" title="Click to view Delivery History">
             <div style="width:48px; height:48px; border-radius:8px; background:#f5f3ff; display:flex; align-items:center; justify-content:center; color:#8b5cf6; font-size:20px;">
                 <i class="fas fa-check-circle"></i>
             </div>
             <div>
-                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;">Completed Deliveries</div>
+                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; display:flex; align-items:center; gap:4px;">
+                    Completed Deliveries <i class="fas fa-external-link-alt" style="font-size:9px; color:#8b5cf6;"></i>
+                </div>
                 <div style="font-size:24px; font-weight:800; color:#1e293b; margin-top:2px;"><?= $count_fuel_completed_deliveries ?></div>
             </div>
         </div>
@@ -2342,12 +2439,12 @@ body[data-page="staff_record_delivery"] .main {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($grouped_fuel_pos) && empty($recorded_fuel_deliveries)): ?>
+                    <?php if (empty($grouped_fuel_pos)): ?>
                     <tr>
                         <td colspan="6" style="text-align:center;padding:34px 16px;color:#64748b;background:#fff;">
                             <i class="fas fa-gas-pump" style="font-size:32px;color:#cbd5e1;display:block;margin-bottom:10px;"></i>
                             <strong style="display:block;color:#1e293b;font-size:14px;margin-bottom:4px;">No Pending Fuel Deliveries</strong>
-                            <span style="font-size:13px;">All approved fuel purchase orders have already been recorded.</span>
+                            <span style="font-size:13px;">All approved fuel purchase orders have already been recorded. You can view past records in <a href="javascript:void(0)" onclick="switchMainDeliveryTab('history')" style="color:#002F70;font-weight:700;text-decoration:underline;">Delivery History</a>.</span>
                         </td>
                     </tr>
                     <?php else: ?>
@@ -2529,80 +2626,6 @@ body[data-page="staff_record_delivery"] .main {
                         </td>
                     </tr>
                     <?php endforeach; ?>
-                    <?php foreach ($recorded_fuel_deliveries as $delivery):
-                        $delivery_key = 'fuel_done_' . preg_replace('/[^a-zA-Z0-9]/', '_', ($delivery['delivery_ref'] ?? '') . '_' . ($delivery['dr_number'] ?? ''));
-                        $delivery_status = rd_status_meta($delivery['status'] ?? 'Received');
-                        $delivery_item_count = count($delivery['items']);
-                        $delivery_first_item = $delivery['items'][0]['name'] ?? 'Fuel';
-                        $delivery_more_count = max(0, $delivery_item_count - 1);
-                        $delivery_filter_date = !empty($delivery['delivery_date']) ? date('Y-m-d', strtotime($delivery['delivery_date'])) : '';
-                        $delivery_search = strtolower(trim(implode(' ', [
-                            $delivery['po_number'] ?? '',
-                            $delivery['delivery_ref'] ?? '',
-                            $delivery['dr_number'] ?? '',
-                            $delivery['invoice_no'] ?? '',
-                            $delivery['supplier_name'] ?? '',
-                            $delivery_first_item,
-                            $delivery_status['label']
-                        ])));
-                        $delivery_view_data = [
-                            'type'            => 'Fuel',
-                            'delivery_ref'    => $delivery['delivery_ref'],
-                            'po_number'       => $delivery['po_number'],
-                            'dr_number'       => $delivery['dr_number'],
-                            'invoice_no'      => $delivery['invoice_no'],
-                            'supplier'        => $delivery['supplier_name'],
-                            'delivery_date'   => rd_date_display($delivery['delivery_date']),
-                            'delivery_time'   => $delivery['delivery_time'] ?: '-',
-                            'received_by'     => $delivery['received_by'],
-                            'recorded_by'     => $delivery['recorded_by'],
-                            'recorded_at'     => !empty($delivery['recorded_at']) ? date('M d, Y h:i A', strtotime($delivery['recorded_at'])) : '-',
-                            'status'          => $delivery_status['label'],
-                            'remarks'         => $delivery['remarks'],
-                            'total_products'  => $delivery_item_count,
-                            'total_qty'       => rd_format_qty((float)$delivery['total_qty']) . ' L',
-                            'total_cost'      => $delivery['total_cost'],
-                            'items'           => array_map(fn($it) => [
-                                'name'       => $it['name'],
-                                'qty'        => $it['qty'],
-                                'unit'       => $it['unit'] ?: 'L',
-                                'expected'   => $it['expected'],
-                                'actual'     => $it['actual'],
-                                'unit_price' => $it['unit_price'],
-                                'total'      => $it['total'],
-                            ], $delivery['items'])
-                        ];
-                    ?>
-                    <tr id="row_<?= $delivery_key ?>" class="delivery-main-row"
-                        data-tab="fuel"
-                        data-search="<?= htmlspecialchars($delivery_search) ?>"
-                        data-supplier="<?= htmlspecialchars(strtolower($delivery['supplier_name'] ?? '')) ?>"
-                        data-status="<?= htmlspecialchars(strtolower($delivery_status['label'])) ?>"
-                        data-date="<?= htmlspecialchars($delivery_filter_date) ?>">
-                        <td style="font-weight:700; font-family:monospace; color:#002F70;">
-                            <?= htmlspecialchars($delivery['po_number']) ?>
-                            <div style="font-size:11px;color:#64748b;margin-top:3px;"><?= htmlspecialchars($delivery['delivery_ref']) ?></div>
-                        </td>
-                        <td style="font-weight:600; color:#0f172a;"><?= htmlspecialchars($delivery['supplier_name']) ?></td>
-                        <td style="text-align:center;">
-                            <div style="font-weight:800; color:#002F70;"><?= $delivery_item_count ?> Type<?= $delivery_item_count === 1 ? '' : 's' ?></div>
-                            <div style="font-size:11px;color:#64748b;line-height:1.3;margin-top:2px;"><?= htmlspecialchars($delivery_first_item) ?><?= $delivery_more_count ? '<br><span style="font-weight:700;color:#475569;">+' . $delivery_more_count . ' more type' . ($delivery_more_count === 1 ? '' : 's') . '</span>' : '' ?></div>
-                            <div style="font-weight:800; font-family:monospace; color:#0f172a; font-size:13px;"><?= rd_format_qty((float)$delivery['total_qty']) ?> L</div>
-                        </td>
-                        <td style="font-weight:600; color:#334155;">
-                            <div><?= rd_date_display($delivery['delivery_date']) ?></div>
-                            <?php if (!empty($delivery['dr_number'])): ?><div style="font-size:11px;color:#64748b;margin-top:3px;">DR <?= htmlspecialchars($delivery['dr_number']) ?></div><?php endif; ?>
-                        </td>
-                        <td style="text-align:center;">
-                            <span class="status-badge <?= htmlspecialchars($delivery_status['class']) ?>"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($delivery_status['label']) ?></span>
-                        </td>
-                        <td style="text-align:center;">
-                            <div class="delivery-actions">
-                                <button type="button" class="txn-btn secondary" onclick='openDeliveryView(<?= rd_js_attr($delivery_view_data) ?>)'><i class="fas fa-eye"></i> View Delivery Details</button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
                     <tr id="fuelDeliveryNoResults" style="display:none;">
                         <td colspan="6" style="text-align:center;padding:26px 16px;color:#64748b;background:#fff;">
                             <i class="fas fa-search" style="font-size:24px;color:#cbd5e1;display:block;margin-bottom:8px;"></i>
@@ -2646,6 +2669,267 @@ body[data-page="staff_record_delivery"] .main {
     </div>
 </div>
 
+</div> <!-- /#recordDeliverySection -->
+
+<!-- =========================================================================
+     DELIVERY HISTORY SECTION (Merchandise & Fuel Delivered Records)
+     ========================================================================= -->
+<div id="deliveryHistorySection" style="<?= $active_tab === 'history' ? 'display:block;' : 'display:none;' ?>;">
+
+    <!-- History Summary Metrics Grid -->
+    <div class="summary-grid-hist">
+        <div class="summary-card-hist">
+            <div class="summary-card-hist-label"><i class="fas fa-truck-loading" style="color:#002F70;"></i> Total Deliveries</div>
+            <div class="summary-card-hist-val"><?= number_format($cnt_del_hist_total) ?></div>
+        </div>
+        <div class="summary-card-hist">
+            <div class="summary-card-hist-label"><i class="fas fa-gas-pump" style="color:#0284c7;"></i> Fuel Deliveries</div>
+            <div class="summary-card-hist-val" style="color:#0284c7;"><?= number_format($cnt_del_hist_fuel) ?></div>
+        </div>
+        <div class="summary-card-hist">
+            <div class="summary-card-hist-label"><i class="fas fa-boxes" style="color:#d97706;"></i> Merchandise</div>
+            <div class="summary-card-hist-val" style="color:#d97706;"><?= number_format($cnt_del_hist_merch) ?></div>
+        </div>
+        <div class="summary-card-hist">
+            <div class="summary-card-hist-label"><i class="fas fa-check-circle" style="color:#16a34a;"></i> Stock-In Complete</div>
+            <div class="summary-card-hist-val" style="color:#16a34a;"><?= number_format($cnt_del_hist_completed) ?></div>
+        </div>
+        <div class="summary-card-hist">
+            <div class="summary-card-hist-label"><i class="fas fa-hourglass-half" style="color:#eab308;"></i> Pending Stock-In</div>
+            <div class="summary-card-hist-val" style="color:#eab308;"><?= number_format($cnt_del_hist_pending) ?></div>
+        </div>
+    </div>
+
+    <!-- History Filter Bar -->
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+        <div style="flex:1.5; min-width:200px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">Search Delivery</label>
+            <div style="position:relative;">
+                <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:12px;"></i>
+                <input type="text" id="histSearchDelivery" placeholder="PO, DR, Ref, Supplier, Product..." oninput="filterDeliveryHistoryTable()"
+                       style="width:100%; box-sizing:border-box; padding:8px 12px 8px 32px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; outline:none; transition:border-color .15s;">
+            </div>
+        </div>
+        <div style="flex:1; min-width:130px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">Category</label>
+            <select id="histCategoryFilter" onchange="filterDeliveryHistoryTable()" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#334155; outline:none;">
+                <option value="">All Categories</option>
+                <option value="fuel">Fuel</option>
+                <option value="merchandise">Merchandise</option>
+            </select>
+        </div>
+        <div style="flex:1; min-width:140px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">Supplier</label>
+            <select id="histSupplierFilter" onchange="filterDeliveryHistoryTable()" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#334155; outline:none;">
+                <option value="">All Suppliers</option>
+                <?php foreach (array_keys($hist_suppliers) as $sup): ?>
+                <option value="<?= htmlspecialchars(strtolower($sup)) ?>"><?= htmlspecialchars($sup) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div style="flex:1; min-width:125px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">Start Date</label>
+            <input type="date" id="histStartDate" onchange="filterDeliveryHistoryTable()" style="width:100%; box-sizing:border-box; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none;">
+        </div>
+        <div style="flex:1; min-width:125px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">End Date</label>
+            <input type="date" id="histEndDate" onchange="filterDeliveryHistoryTable()" style="width:100%; box-sizing:border-box; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; color:#334155; outline:none;">
+        </div>
+        <div style="flex:1; min-width:130px;">
+            <label style="display:block; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:5px;">Status</label>
+            <select id="histStatusFilter" onchange="filterDeliveryHistoryTable()" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; color:#334155; outline:none;">
+                <option value="">All Statuses</option>
+                <option value="stock-in complete">Stock-In Complete</option>
+                <option value="pending stock-in">Pending Stock-In</option>
+                <option value="received">Received</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div>
+            <button type="button" onclick="resetDeliveryHistoryFilter()" class="txn-btn secondary" style="padding:8px 16px; font-size:13px; font-weight:700; height:37px; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fas fa-rotate-left"></i> Reset
+            </button>
+        </div>
+    </div>
+
+    <!-- History Table Container -->
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); overflow:hidden;">
+        <div style="padding:14px 20px; background:#002F70; color:#fff; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; justify-content:space-between;">
+            <span><i class="fas fa-history" style="margin-right:6px;"></i> Delivery History Table</span>
+            <span style="font-size:12px; font-weight:600; color:rgba(255,255,255,0.85);"><?= count($delivery_history_list) ?> Record<?= count($delivery_history_list) === 1 ? '' : 's' ?></span>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="sr-table" id="deliveryHistoryTable">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">PO / Reference</th>
+                        <th style="text-align:center; width:110px;">Category</th>
+                        <th style="text-align:left;">Supplier</th>
+                        <th style="text-align:left;">Date Received</th>
+                        <th style="text-align:center;">Delivered Items</th>
+                        <th style="text-align:center; width:140px;">Status</th>
+                        <th style="text-align:center; width:160px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="deliveryHistoryBody">
+                    <?php if (empty($delivery_history_list)): ?>
+                    <tr id="delHistEmptyRow">
+                        <td colspan="7" style="text-align:center;padding:34px 16px;color:#64748b;background:#fff;">
+                            <i class="fas fa-history" style="font-size:32px;color:#cbd5e1;display:block;margin-bottom:10px;"></i>
+                            <strong style="display:block;color:#1e293b;font-size:14px;margin-bottom:4px;">No Delivery History Found</strong>
+                            <span style="font-size:13px;">There are no recorded deliveries yet in the system.</span>
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php foreach ($delivery_history_list as $del_idx => $del):
+                        $h_is_fuel = (($del['delivery_type'] ?? '') === 'fuel');
+                        $h_type_label = $h_is_fuel ? 'Fuel' : 'Merchandise';
+                        $h_status_meta = rd_status_meta($del['status'] ?? 'Received');
+                        $h_items = $del['items'] ?? [];
+                        $h_item_count = count($h_items);
+                        $h_first_item = $h_items[0]['name'] ?? ($h_is_fuel ? 'Fuel' : 'Product');
+                        $h_more_count = max(0, $h_item_count - 1);
+                        $h_unit = $h_is_fuel ? 'L' : 'pcs';
+                        $h_date_raw = !empty($del['delivery_date']) ? date('Y-m-d', strtotime($del['delivery_date'])) : '';
+                        $h_date_fmt = rd_date_display($del['delivery_date'] ?? '');
+                        $h_time_fmt = !empty($del['delivery_time']) ? date('h:i A', strtotime($del['delivery_time'])) : '';
+
+                        $hist_view_data = [
+                            'type'            => $h_type_label,
+                            'delivery_ref'    => $del['delivery_ref'] ?? '—',
+                            'po_number'       => $del['po_number'] ?? '—',
+                            'dr_number'       => $del['dr_number'] ?? '—',
+                            'invoice_no'      => $del['invoice_no'] ?? '—',
+                            'supplier'        => $del['supplier_name'] ?? '—',
+                            'delivery_date'   => $h_date_fmt,
+                            'delivery_time'   => $h_time_fmt ?: '—',
+                            'received_by'     => $del['received_by'] ?? 'Staff',
+                            'recorded_by'     => $del['recorded_by'] ?? ($del['received_by'] ?? 'Staff'),
+                            'recorded_at'     => !empty($del['recorded_at']) ? date('M d, Y h:i A', strtotime($del['recorded_at'])) : '—',
+                            'status'          => $h_status_meta['label'],
+                            'remarks'         => $del['remarks'] ?? '',
+                            'total_products'  => $h_item_count,
+                            'total_qty'       => rd_format_qty((float)($del['total_qty'] ?? 0)) . ' ' . $h_unit,
+                            'total_cost'      => (float)($del['total_cost'] ?? 0),
+                            'items'           => array_map(fn($it) => [
+                                'name'       => $it['name'] ?? '',
+                                'qty'        => (float)($it['qty'] ?? 0),
+                                'unit'       => $it['unit'] ?? $h_unit,
+                                'expected'   => (float)($it['expected'] ?? ($it['qty'] ?? 0)),
+                                'actual'     => (float)($it['actual'] ?? ($it['qty'] ?? 0)),
+                                'unit_price' => (float)($it['unit_price'] ?? 0),
+                                'total'      => (float)($it['total'] ?? 0),
+                            ], $h_items)
+                        ];
+
+                        $h_search = strtolower(trim(implode(' ', [
+                            $del['po_number'] ?? '',
+                            $del['delivery_ref'] ?? '',
+                            $del['dr_number'] ?? '',
+                            $del['invoice_no'] ?? '',
+                            $del['supplier_name'] ?? '',
+                            $h_first_item,
+                            $h_type_label,
+                            $h_status_meta['label']
+                        ])));
+                    ?>
+                    <tr class="del-hist-row"
+                        data-search="<?= htmlspecialchars($h_search) ?>"
+                        data-category="<?= htmlspecialchars($del['delivery_type']) ?>"
+                        data-supplier="<?= htmlspecialchars(strtolower($del['supplier_name'] ?? '')) ?>"
+                        data-status="<?= htmlspecialchars(strtolower($h_status_meta['label'])) ?>"
+                        data-date="<?= htmlspecialchars($h_date_raw) ?>"
+                        style="border-bottom:1px solid #f1f5f9; transition:background 0.12s;">
+                        <td style="font-weight:700; font-family:monospace; color:#002F70;">
+                            <div><?= htmlspecialchars($del['po_number'] ?? '—') ?></div>
+                            <div style="font-size:11px;color:#64748b;margin-top:2px;">
+                                <?= !empty($del['delivery_ref']) ? htmlspecialchars($del['delivery_ref']) : '' ?>
+                                <?= (!empty($del['dr_number']) && $del['dr_number'] !== ($del['delivery_ref'] ?? '')) ? (' • DR ' . htmlspecialchars($del['dr_number'])) : '' ?>
+                            </div>
+                        </td>
+                        <td style="text-align:center;">
+                            <?php if ($h_is_fuel): ?>
+                                <span style="background:#e0f2fe; color:#0369a1; font-weight:800; font-size:11px; padding:3px 9px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                    <i class="fas fa-gas-pump" style="font-size:10px;"></i> Fuel
+                                </span>
+                            <?php else: ?>
+                                <span style="background:#fef3c7; color:#92400e; font-weight:800; font-size:11px; padding:3px 9px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                    <i class="fas fa-boxes" style="font-size:10px;"></i> Merch
+                                </span>
+                            <?php endif; ?>
+                        </td>
+                        <td style="font-weight:600; color:#0f172a;"><?= htmlspecialchars($del['supplier_name'] ?? '—') ?></td>
+                        <td style="font-weight:600; color:#334155;">
+                            <div><?= $h_date_fmt ?></div>
+                            <div style="font-size:11px;color:#64748b;margin-top:2px;">
+                                <?= $h_time_fmt ? ($h_time_fmt . ' • ') : '' ?>By <?= htmlspecialchars($del['received_by'] ?? 'Staff') ?>
+                            </div>
+                        </td>
+                        <td style="text-align:center;">
+                            <div style="font-weight:800; color:#002F70;"><?= $h_item_count ?> Item<?= $h_item_count === 1 ? '' : 's' ?></div>
+                            <div style="font-size:11px;color:#64748b;line-height:1.3;margin-top:2px;">
+                                <?= htmlspecialchars($h_first_item) ?>
+                                <?= $h_more_count ? ('<br><span style="font-weight:700;color:#475569;">+' . $h_more_count . ' more</span>') : '' ?>
+                            </div>
+                            <div style="font-weight:800; font-family:monospace; color:#0f172a; font-size:12px; margin-top:2px;">
+                                <?= rd_format_qty((float)($del['total_qty'] ?? 0)) ?> <?= htmlspecialchars($h_unit) ?>
+                            </div>
+                        </td>
+                        <td style="text-align:center;">
+                            <span class="status-badge <?= htmlspecialchars($h_status_meta['class']) ?>">
+                                <i class="fas <?= htmlspecialchars($h_status_meta['icon'] ?? 'fa-check-circle') ?>"></i> <?= htmlspecialchars($h_status_meta['label']) ?>
+                            </span>
+                        </td>
+                        <td style="text-align:center;">
+                            <button type="button" class="txn-btn secondary" style="padding:6px 12px; font-size:12px; gap:5px;" onclick='openDeliveryView(<?= rd_js_attr($hist_view_data) ?>)'>
+                                <i class="fas fa-eye"></i> View Details
+                            </button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <tr id="delHistNoResultsRow" style="display:none;">
+                        <td colspan="7" style="text-align:center;padding:28px 16px;color:#64748b;background:#fff;">
+                            <i class="fas fa-search" style="font-size:24px;color:#cbd5e1;display:block;margin-bottom:8px;"></i>
+                            No matching delivery history records found.
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <!-- Delivery History Pagination Footer -->
+        <div id="delHistPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 10px 10px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center;">
+                <span id="delHistShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                    <select id="delHistPerPage" onchange="changeDelHistPerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="delHistPrevBtn" onclick="goDelHistPage(delHistState.page - 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="delHistPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                    <button id="delHistNextBtn" onclick="goDelHistPage(delHistState.page + 1)" 
+                            style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                            onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> <!-- /#deliveryHistorySection -->
+
 <script>
 // Toast Notification
 function showToast(type, message) {
@@ -2655,15 +2939,79 @@ function showToast(type, message) {
     }
 }
 
-// Tab Switching
-function switchTab(tab) {
+// Main Tab Switching (Record Delivery vs Delivery History)
+function switchMainDeliveryTab(tab) {
     const url = new URL(window.location);
     url.searchParams.set('tab', tab);
     window.history.pushState({}, '', url);
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
-    document.getElementById(`${tab}-tab`).classList.add('active');
+
+    const mainRecordBtn = document.getElementById('mainTabRecordBtn');
+    const mainHistBtn   = document.getElementById('mainTabHistoryBtn');
+    const recSection    = document.getElementById('recordDeliverySection');
+    const histSection   = document.getElementById('deliveryHistorySection');
+
+    if (tab === 'history') {
+        if (mainRecordBtn) mainRecordBtn.classList.remove('active');
+        if (mainHistBtn)   mainHistBtn.classList.add('active');
+        if (recSection)    recSection.style.display = 'none';
+        if (histSection)   histSection.style.display = 'block';
+        if (typeof renderDelHistPagination === 'function') {
+            renderDelHistPagination();
+        }
+    } else {
+        if (mainHistBtn)   mainHistBtn.classList.remove('active');
+        if (mainRecordBtn) mainRecordBtn.classList.add('active');
+        if (histSection)   histSection.style.display = 'none';
+        if (recSection)    recSection.style.display = 'block';
+    }
+}
+
+// Sub-Tab Switching (Merchandise vs Fuel within Record Delivery)
+function switchCategoryTab(cat) {
+    // Ensure Record Delivery main section is visible
+    const mainRecordBtn = document.getElementById('mainTabRecordBtn');
+    const mainHistBtn   = document.getElementById('mainTabHistoryBtn');
+    const recSection    = document.getElementById('recordDeliverySection');
+    const histSection   = document.getElementById('deliveryHistorySection');
+
+    if (mainHistBtn)   mainHistBtn.classList.remove('active');
+    if (mainRecordBtn) mainRecordBtn.classList.add('active');
+    if (histSection)   histSection.style.display = 'none';
+    if (recSection)    recSection.style.display = 'block';
+
+    const url = new URL(window.location);
+    url.searchParams.set('tab', cat);
+    window.history.pushState({}, '', url);
+
+    const merchBtn = document.getElementById('subtabMerchBtn');
+    const fuelBtn  = document.getElementById('subtabFuelBtn');
+    const merchTab = document.getElementById('merchandise-tab');
+    const fuelTab  = document.getElementById('fuel-tab');
+
+    if (cat === 'fuel') {
+        if (merchBtn) merchBtn.classList.remove('active');
+        if (fuelBtn)  fuelBtn.classList.add('active');
+        if (merchTab) merchTab.classList.remove('active');
+        if (fuelTab)  fuelTab.classList.add('active');
+        if (typeof renderDeliveryPagination === 'function') renderDeliveryPagination('fuel');
+    } else {
+        if (fuelBtn)  fuelBtn.classList.remove('active');
+        if (merchBtn) merchBtn.classList.add('active');
+        if (fuelTab)  fuelTab.classList.remove('active');
+        if (merchTab) merchTab.classList.add('active');
+        if (typeof renderDeliveryPagination === 'function') renderDeliveryPagination('merchandise');
+    }
+}
+
+// Backward compatibility alias
+function switchTab(tab) {
+    if (tab === 'history') {
+        switchMainDeliveryTab('history');
+    } else if (tab === 'fuel' || tab === 'merchandise') {
+        switchCategoryTab(tab);
+    } else {
+        switchMainDeliveryTab('delivery');
+    }
 }
 
 // Real-time live TIME sync only — Delivery Date defaults to PO expected date, not today
@@ -2826,6 +3174,131 @@ function resetDeliveryFilters(tab) {
     filterDeliveryTable(tab);
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Delivery History Table: Pagination & Filtering
+   ───────────────────────────────────────────────────────────── */
+var delHistState = {
+    page: 1,
+    per_page: 10
+};
+
+function renderDelHistPagination() {
+    const state = delHistState;
+    const searchValue   = (document.getElementById('histSearchDelivery')?.value || '').toLowerCase().trim();
+    const categoryValue = (document.getElementById('histCategoryFilter')?.value || '').toLowerCase().trim();
+    const supplierValue = (document.getElementById('histSupplierFilter')?.value || '').toLowerCase().trim();
+    const startDate     = document.getElementById('histStartDate')?.value || '';
+    const endDate       = document.getElementById('histEndDate')?.value || '';
+    const statusValue   = (document.getElementById('histStatusFilter')?.value || '').toLowerCase().trim();
+
+    const allRows = Array.from(document.querySelectorAll('#deliveryHistoryBody .del-hist-row'));
+    if (allRows.length === 0) return;
+
+    const matchedRows = allRows.filter(function(row) {
+        const rowSearch    = (row.dataset.search || '').toLowerCase();
+        const rowCategory  = (row.dataset.category || '').toLowerCase();
+        const rowSupplier  = (row.dataset.supplier || '').toLowerCase();
+        const rowStatus    = (row.dataset.status || '').toLowerCase();
+        const rowDate      = row.dataset.date || '';
+
+        const matchesSearch   = !searchValue || rowSearch.includes(searchValue);
+        const matchesCategory = !categoryValue || rowCategory === categoryValue;
+        const matchesSupplier = !supplierValue || rowSupplier === supplierValue;
+        let matchesStatus     = !statusValue || rowStatus === statusValue || rowStatus.includes(statusValue);
+        if (statusValue === 'stock-in complete') {
+            matchesStatus = matchesStatus || rowStatus.includes('complete') || rowStatus.includes('stocked');
+        } else if (statusValue === 'pending stock-in') {
+            matchesStatus = matchesStatus || rowStatus.includes('pending') || rowStatus === 'received';
+        }
+        
+        let matchesDate = true;
+        if (startDate && rowDate && rowDate < startDate) matchesDate = false;
+        if (endDate && rowDate && rowDate > endDate) matchesDate = false;
+
+        return matchesSearch && matchesCategory && matchesSupplier && matchesStatus && matchesDate;
+    });
+
+    const total = matchedRows.length;
+    const perPage = state.per_page || 10;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (state.page > totalPages) state.page = totalPages;
+    if (state.page < 1) state.page = 1;
+    const p = state.page;
+
+    const start = (p - 1) * perPage;
+    const end   = p * perPage;
+
+    allRows.forEach(function(row) {
+        const isMatched = matchedRows.includes(row);
+        const matchIndex = matchedRows.indexOf(row);
+        const isVisible = isMatched && (matchIndex >= start && matchIndex < end);
+        row.style.display = isVisible ? '' : 'none';
+    });
+
+    const noResults = document.getElementById('delHistNoResultsRow');
+    if (noResults) {
+        noResults.style.display = (allRows.length > 0 && total === 0) ? 'table-row' : 'none';
+    }
+
+    const showingStart = total === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, total);
+    const entriesLbl   = document.getElementById('delHistShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (total === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + total + ' entries';
+    }
+
+    const lbl = document.getElementById('delHistPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + totalPages;
+
+    const prev = document.getElementById('delHistPrevBtn');
+    const next = document.getElementById('delHistNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= totalPages);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+function goDelHistPage(p) {
+    delHistState.page = p;
+    renderDelHistPagination();
+}
+
+function changeDelHistPerPage() {
+    const sel = document.getElementById('delHistPerPage');
+    if (sel) {
+        delHistState.per_page = parseInt(sel.value, 10) || 10;
+        delHistState.page = 1;
+        renderDelHistPagination();
+    }
+}
+
+function filterDeliveryHistoryTable() {
+    delHistState.page = 1;
+    renderDelHistPagination();
+}
+
+function resetDeliveryHistoryFilter() {
+    const searchEl = document.getElementById('histSearchDelivery');
+    if (searchEl) searchEl.value = '';
+    const catEl = document.getElementById('histCategoryFilter');
+    if (catEl) { catEl.value = ''; catEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    const supEl = document.getElementById('histSupplierFilter');
+    if (supEl) { supEl.value = ''; supEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    const startEl = document.getElementById('histStartDate');
+    if (startEl) startEl.value = '';
+    const endEl = document.getElementById('histEndDate');
+    if (endEl) endEl.value = '';
+    const statEl = document.getElementById('histStatusFilter');
+    if (statEl) { statEl.value = ''; statEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    delHistState.page = 1;
+    renderDelHistPagination();
+}
 
 function setupPetronDownwardDropdowns(selectors) {
     var selects = [];
@@ -2927,12 +3400,26 @@ function setupPetronDownwardDropdowns(selectors) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = (urlParams.get('tab') || '').toLowerCase();
+
+    if (tabParam === 'history') {
+        switchMainDeliveryTab('history');
+    } else if (tabParam === 'fuel') {
+        switchCategoryTab('fuel');
+    } else {
+        switchCategoryTab('merchandise');
+    }
+
     renderDeliveryPagination('merchandise');
     renderDeliveryPagination('fuel');
+    renderDelHistPagination();
+
     if (typeof setupPetronDownwardDropdowns === 'function') {
         setupPetronDownwardDropdowns([
             '#merchDeliverySupplier', '#merchDeliveryStatus',
-            '#fuelDeliverySupplier',  '#fuelDeliveryStatus'
+            '#fuelDeliverySupplier',  '#fuelDeliveryStatus',
+            '#histCategoryFilter',    '#histSupplierFilter', '#histStatusFilter'
         ]);
     }
 });

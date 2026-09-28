@@ -21,6 +21,16 @@ if (!in_array($active_type, ['merch', 'fuel'], true)) {
     $active_type = 'merch';
 }
 
+$active_main_tab = $_GET['tab'] ?? 'stockin';
+if (!in_array($active_main_tab, ['stockin', 'history'], true)) {
+    if (in_array($_GET['tab'] ?? '', ['fuel', 'merch', 'merchandise'], true)) {
+        $active_main_tab = 'stockin';
+        $active_type = ($_GET['tab'] === 'fuel') ? 'fuel' : 'merch';
+    } else {
+        $active_main_tab = 'stockin';
+    }
+}
+
 try {
     $pdo->exec("ALTER TABLE fuel_purchase_orders ADD COLUMN IF NOT EXISTS batch_id VARCHAR(100) NULL DEFAULT NULL");
 } catch (Exception $ignored) {}
@@ -303,7 +313,7 @@ function si_group_rows(array $rows, string $type): array
                 'id' => substr(md5($type . '-' . $key), 0, 12),
                 'po_no' => $key,
                 'purchase_request_no' => $row['purchase_request_no'] ?? ($row['source_ref'] ?? ''),
-                'supplier' => 'Petron Corporation',
+                'supplier' => !empty($row['supplier']) ? $row['supplier'] : 'Petron Corporation',
                 'delivery_ref' => $row['delivery_ref'] ?? '',
                 'delivery_date' => $row['delivery_date'] ?? '',
                 'delivery_time' => $row['delivery_time'] ?? '',
@@ -334,7 +344,282 @@ foreach (array_merge($merch_groups, $fuel_groups) as $group) {
     }
 }
 
-$supplier_options = ['Petron Corporation'];
+function si_fetch_history_list(PDO $pdo, int $station_id): array
+{
+    $history_list = [];
+    $tracked_keys = [];
+
+    // 1. Fetch completed stock-in records from deliveries_oversight
+    try {
+        $stmt = $pdo->prepare("
+            SELECT do2.*,
+                   COALESCE(NULLIF(do2.batch_id, ''), msi.batch_ref, fsi.batch_ref) AS matched_batch_ref,
+                   COALESCE(NULLIF(do2.unit_cost, 0), msi.unit_cost, fb.unit_cost, do2.unit_price, 0) AS matched_unit_cost,
+                   COALESCE(msi.selling_price, fsi.selling_price_per_liter, 0) AS matched_selling_price,
+                   COALESCE(msi.condition_flag, fsi.condition_flag, CASE WHEN do2.damaged_quantity > 0 THEN 'Damaged' ELSE 'Good' END) AS matched_condition,
+                   COALESCE(NULLIF(do2.received_by_name, ''), u_enc.name, u_enc.username, 'Staff') AS received_by_display,
+                   COALESCE(u_mgr.name, u_mgr.username, u_fin.name, u_fin.username, 'Manager') AS manager_display
+            FROM deliveries_oversight do2
+            LEFT JOIN merchandise_stock_in msi ON msi.delivery_id = do2.id
+            LEFT JOIN fuel_stock_in fsi ON fsi.delivery_id = do2.id
+            LEFT JOIN fuel_batches fb ON fb.delivery_id = do2.id
+            LEFT JOIN users u_enc ON u_enc.id = do2.encoded_by
+            LEFT JOIN users u_mgr ON u_mgr.id = do2.manager_id
+            LEFT JOIN users u_fin ON u_fin.id = do2.finalized_by
+            WHERE do2.station_id = ?
+              AND do2.status NOT IN ('Pending Stock-In', 'Ready for Stock-In', 'Validated', 'Verified', 'Cancelled', 'Rejected')
+              AND (
+                  do2.status IN ('Stock-In Complete', 'Stocked-In', 'Completed', 'Approved')
+                  OR do2.finalized_at IS NOT NULL
+                  OR do2.manager_action_at IS NOT NULL
+              )
+            ORDER BY COALESCE(do2.finalized_at, do2.manager_action_at, do2.delivery_date, do2.created_at) DESC, do2.id DESC
+        ");
+        $stmt->execute([$station_id]);
+        $comp_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $groups = [];
+        foreach ($comp_rows as $row) {
+            $b_key = trim((string)($row['matched_batch_ref'] ?: ($row['batch_id'] ?? '')));
+            $d_ref = trim((string)($row['delivery_ref'] ?? ''));
+            $s_ref = trim((string)($row['source_ref'] ?? ''));
+            $dr    = trim((string)($row['dr_number'] ?? ''));
+
+            $group_key = $b_key ?: ($d_ref ?: ($s_ref ? ($s_ref . '_' . ($row['delivery_date'] ?? '')) : ('DO-' . $row['id'])));
+
+            if (!isset($groups[$group_key])) {
+                $groups[$group_key] = [
+                    'key'              => $group_key,
+                    'batch_id'         => $b_key ?: ($d_ref ?: ($s_ref ?: '—')),
+                    'delivery_ref'     => $d_ref,
+                    'po_number'        => $s_ref ?: ($d_ref ?: '—'),
+                    'dr_number'        => $dr,
+                    'delivery_type'    => ($row['delivery_type'] === 'fuel') ? 'fuel' : 'merchandise',
+                    'supplier'         => $row['supplier'] ?: 'Petron Corporation',
+                    'delivery_date'    => $row['delivery_date'] ?? '',
+                    'delivery_time'    => $row['delivery_time'] ?? '',
+                    'stock_in_date'    => $row['finalized_at'] ?: ($row['manager_action_at'] ?: ($row['delivery_date'] ?: ($row['created_at'] ?? ''))),
+                    'stocked_by'       => $row['manager_display'] ?: 'Manager',
+                    'received_by'      => $row['received_by_display'] ?: 'Staff',
+                    'status'           => $row['status'] ?: 'Stock-In Complete',
+                    'remarks'          => $row['manager_notes'] ?: ($row['remarks'] ?? ''),
+                    'items'            => [],
+                    'total_qty'        => 0,
+                    'total_cost'       => 0,
+                ];
+            }
+
+            $actual_qty = (float)($row['actual_quantity'] !== null ? $row['actual_quantity'] : ($row['quantity'] ?? 0));
+            $unit_cost  = (float)($row['matched_unit_cost'] ?: ($row['unit_cost'] ?? ($row['unit_price'] ?? 0)));
+            $sell_price = (float)($row['matched_selling_price'] ?: ($row['selling_price'] ?? 0));
+            $item_total = $actual_qty * $unit_cost;
+            $condition  = !empty($row['matched_condition']) ? $row['matched_condition'] : (($row['damaged_quantity'] > 0) ? 'Damaged' : 'Good');
+
+            $groups[$group_key]['items'][] = [
+                'name'         => $row['product'],
+                'sku'          => '',
+                'qty_ordered'  => (float)($row['expected_quantity'] ?? ($row['quantity'] ?? 0)),
+                'qty_received' => $actual_qty,
+                'unit'         => $row['unit'] ?: (($row['delivery_type'] === 'fuel') ? 'L' : 'pcs'),
+                'unit_cost'    => $unit_cost,
+                'selling_price'=> $sell_price,
+                'total_cost'   => $item_total,
+                'condition'    => $condition
+            ];
+            $groups[$group_key]['total_qty']  += $actual_qty;
+            $groups[$group_key]['total_cost'] += $item_total;
+
+            if ($b_key !== '') $tracked_keys[$b_key] = true;
+            if ($d_ref !== '') $tracked_keys[$d_ref] = true;
+            if ($dr !== '')    $tracked_keys[$dr]    = true;
+            if (!empty($row['id'])) $tracked_keys['DO-' . $row['id']] = true;
+        }
+
+        foreach ($groups as $g) {
+            $history_list[] = $g;
+        }
+    } catch (Exception $e) {
+        error_log('si_fetch_history_list oversight error: ' . $e->getMessage());
+    }
+
+    // 2. Fetch from merchandise_stock_in for any batches not yet captured
+    try {
+        $stmt_msi = $pdo->prepare("
+            SELECT msi.*, 
+                   COALESCE(u.name, u.username, 'Manager') AS encoded_by_name
+            FROM merchandise_stock_in msi
+            LEFT JOIN users u ON u.id = msi.encoded_by
+            WHERE msi.station_id = ?
+            ORDER BY msi.encoded_at DESC, msi.id DESC
+        ");
+        $stmt_msi->execute([$station_id]);
+        $msi_rows = $stmt_msi->fetchAll(PDO::FETCH_ASSOC);
+
+        $msi_groups = [];
+        foreach ($msi_rows as $row) {
+            $b_ref = trim((string)($row['batch_ref'] ?? ''));
+            $po_no = trim((string)($row['po_number'] ?? ''));
+            $g_key = $b_ref ?: ($po_no ?: ('MSI-' . $row['id']));
+
+            if (isset($tracked_keys[$g_key]) || ($b_ref && isset($tracked_keys[$b_ref])) || (!empty($row['delivery_id']) && isset($tracked_keys['DO-' . $row['delivery_id']]))) {
+                continue;
+            }
+
+            if (!isset($msi_groups[$g_key])) {
+                $msi_groups[$g_key] = [
+                    'key'              => $g_key,
+                    'batch_id'         => $b_ref ?: $g_key,
+                    'delivery_ref'     => $b_ref,
+                    'po_number'        => $po_no ?: '—',
+                    'dr_number'        => '',
+                    'delivery_type'    => 'merchandise',
+                    'supplier'         => 'Petron Corporation',
+                    'delivery_date'    => $row['encoded_at'] ? date('Y-m-d', strtotime($row['encoded_at'])) : '',
+                    'delivery_time'    => $row['encoded_at'] ? date('H:i', strtotime($row['encoded_at'])) : '',
+                    'stock_in_date'    => $row['encoded_at'] ?? '',
+                    'stocked_by'       => $row['encoded_by_name'] ?: 'Manager',
+                    'received_by'      => 'Staff',
+                    'status'           => 'Stock-In Complete',
+                    'remarks'          => $row['remarks'] ?? '',
+                    'items'            => [],
+                    'total_qty'        => 0,
+                    'total_cost'       => 0,
+                ];
+            }
+
+            $qty_rec   = (float)$row['qty_received'];
+            $unit_cost = (float)$row['unit_cost'];
+            $tot_cost  = (float)($row['total_cost'] ?: ($qty_rec * $unit_cost));
+
+            $msi_groups[$g_key]['items'][] = [
+                'name'         => $row['product_name'],
+                'sku'          => $row['sku'] ?? '',
+                'qty_ordered'  => (float)$row['qty_ordered'],
+                'qty_received' => $qty_rec,
+                'unit'         => 'pcs',
+                'unit_cost'    => $unit_cost,
+                'selling_price'=> (float)$row['selling_price'],
+                'total_cost'   => $tot_cost,
+                'condition'    => $row['condition_flag'] ?: 'Good'
+            ];
+            $msi_groups[$g_key]['total_qty']  += $qty_rec;
+            $msi_groups[$g_key]['total_cost'] += $tot_cost;
+            if ($b_ref) $tracked_keys[$b_ref] = true;
+            if (!empty($row['delivery_id'])) $tracked_keys['DO-' . $row['delivery_id']] = true;
+        }
+
+        foreach ($msi_groups as $g) {
+            $history_list[] = $g;
+        }
+    } catch (Exception $e) {}
+
+    // 3. Fetch from fuel_stock_in for any batches not yet captured
+    try {
+        $stmt_fsi = $pdo->prepare("
+            SELECT fsi.*, 
+                   COALESCE(fb.unit_cost, (SELECT fpo.unit_price FROM fuel_purchase_orders fpo WHERE fpo.station_id = fsi.station_id AND (fpo.po_number = fsi.delivery_ref OR fpo.batch_id = fsi.batch_ref) LIMIT 1), 0) AS batch_unit_cost,
+                   COALESCE(u.name, u.username, 'Manager') AS encoded_by_name
+            FROM fuel_stock_in fsi
+            LEFT JOIN fuel_batches fb ON (fb.delivery_id = fsi.delivery_id OR fb.batch_number = fsi.batch_ref)
+            LEFT JOIN users u ON u.id = fsi.encoded_by
+            WHERE fsi.station_id = ?
+            ORDER BY fsi.encoded_at DESC, fsi.id DESC
+        ");
+        $stmt_fsi->execute([$station_id]);
+        $fsi_rows = $stmt_fsi->fetchAll(PDO::FETCH_ASSOC);
+
+        $fsi_groups = [];
+        foreach ($fsi_rows as $row) {
+            $b_ref = trim((string)($row['batch_ref'] ?? ''));
+            $d_ref = trim((string)($row['delivery_ref'] ?? ''));
+            $g_key = $b_ref ?: ($d_ref ?: ('FSI-' . $row['id']));
+
+            if (isset($tracked_keys[$g_key]) || ($b_ref && isset($tracked_keys[$b_ref])) || (!empty($row['delivery_id']) && isset($tracked_keys['DO-' . $row['delivery_id']]))) {
+                continue;
+            }
+
+            if (!isset($fsi_groups[$g_key])) {
+                $fsi_groups[$g_key] = [
+                    'key'              => $g_key,
+                    'batch_id'         => $b_ref ?: $g_key,
+                    'delivery_ref'     => $d_ref ?: $b_ref,
+                    'po_number'        => $d_ref ?: '—',
+                    'dr_number'        => $row['invoice_no'] ?? '',
+                    'delivery_type'    => 'fuel',
+                    'supplier'         => 'Petron Corporation',
+                    'delivery_date'    => $row['encoded_at'] ? date('Y-m-d', strtotime($row['encoded_at'])) : '',
+                    'delivery_time'    => $row['encoded_at'] ? date('H:i', strtotime($row['encoded_at'])) : '',
+                    'stock_in_date'    => $row['encoded_at'] ?? '',
+                    'stocked_by'       => $row['encoded_by_name'] ?: 'Manager',
+                    'received_by'      => 'Staff',
+                    'status'           => 'Stock-In Complete',
+                    'remarks'          => $row['remarks'] ?? '',
+                    'items'            => [],
+                    'total_qty'        => 0,
+                    'total_cost'       => 0,
+                ];
+            }
+
+            $qty_rec   = (float)$row['qty_received'];
+            $unit_cost = (float)($row['batch_unit_cost'] ?? 0);
+            $sell_pr   = (float)($row['selling_price_per_liter'] ?? 0);
+            $tot_cost  = $qty_rec * $unit_cost;
+
+            $fsi_groups[$g_key]['items'][] = [
+                'name'         => $row['fuel_type'],
+                'sku'          => '',
+                'qty_ordered'  => (float)$row['qty_expected'],
+                'qty_received' => $qty_rec,
+                'unit'         => 'L',
+                'unit_cost'    => $unit_cost,
+                'selling_price'=> $sell_pr,
+                'total_cost'   => $tot_cost,
+                'condition'    => $row['condition_flag'] ?: 'Good'
+            ];
+            $fsi_groups[$g_key]['total_qty']  += $qty_rec;
+            $fsi_groups[$g_key]['total_cost'] += $tot_cost;
+            if ($b_ref) $tracked_keys[$b_ref] = true;
+            if (!empty($row['delivery_id'])) $tracked_keys['DO-' . $row['delivery_id']] = true;
+        }
+
+        foreach ($fsi_groups as $g) {
+            $history_list[] = $g;
+        }
+    } catch (Exception $e) {}
+
+    // Sort by stock_in_date descending
+    usort($history_list, function($a, $b) {
+        $ta = strtotime($a['stock_in_date'] ?: ($a['delivery_date'] ?: 'now'));
+        $tb = strtotime($b['stock_in_date'] ?: ($b['delivery_date'] ?: 'now'));
+        return $tb - $ta;
+    });
+
+    return $history_list;
+}
+
+$stock_in_history_list = si_fetch_history_list($pdo, $station_id);
+$cnt_si_hist_total  = count($stock_in_history_list);
+$cnt_si_hist_fuel   = count(array_filter($stock_in_history_list, fn($r) => $r['delivery_type'] === 'fuel'));
+$cnt_si_hist_merch  = count(array_filter($stock_in_history_list, fn($r) => $r['delivery_type'] === 'merchandise'));
+$cnt_si_hist_volume = array_sum(array_map(fn($r) => $r['delivery_type'] === 'fuel' ? (float)$r['total_qty'] : 0, $stock_in_history_list));
+$cnt_si_hist_units  = array_sum(array_map(fn($r) => $r['delivery_type'] === 'merchandise' ? (float)$r['total_qty'] : 0, $stock_in_history_list));
+
+$si_hist_suppliers = ['Petron Corporation' => true];
+foreach ($stock_in_history_list as $h_item) {
+    $sup = trim($h_item['supplier'] ?? '');
+    if ($sup !== '') {
+        $si_hist_suppliers[$sup] = true;
+    }
+}
+ksort($si_hist_suppliers);
+
+$supplier_options_map = ['Petron Corporation' => true];
+foreach (array_merge($merch_rows, $fuel_rows) as $pr_row) {
+    $sup = trim($pr_row['supplier'] ?? '');
+    if ($sup !== '') $supplier_options_map[$sup] = true;
+}
+$supplier_options = array_keys($supplier_options_map);
+sort($supplier_options);
 
 function si_tab_url(string $type, array $filters): string
 {
@@ -373,11 +658,141 @@ body .main,
 .summary-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:800;}
 .summary-value{font-size:28px;color:#002F70;font-weight:850;margin-top:4px;}
 .summary-icon{width:38px;height:38px;border-radius:8px;background:#eff6ff;color:#002F70;display:flex;align-items:center;justify-content:center;font-size:17px;}
+/* Main Page Tabs (Stock-In / Stock-In History - matches Manager Purchase Management style) */
+.tab-nav {
+    display: flex !important;
+    gap: 0 !important;
+    border: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    margin-bottom: 20px !important;
+    border-bottom: 3px solid #00264D !important;
+    width: 100% !important;
+}
+.tab-btn {
+    flex: 1 !important;
+    min-width: 150px !important;
+    padding: 12px 16px !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    color: #334155 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-right: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    margin-bottom: 0 !important;
+    box-shadow: none !important;
+    white-space: nowrap;
+}
+.tab-btn:last-child { border-right: none !important; }
+.tab-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.tab-btn.active {
+    background: #00264D !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    box-shadow: none !important;
+}
+.tab-btn.active *, .tab-btn.active span, .tab-btn.active i { color: #ffffff !important; }
+
+/* Sub-tab nav (Merchandise / Fuel inside Stock-In) */
+.sub-tab-nav {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    margin: 8px 0 20px !important;
+    border: 1px solid #d1d9e6 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    border-bottom: 3px solid #00264D !important;
+    gap: 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+}
+.sub-tab-nav-btn {
+    flex: 1 !important;
+    min-width: 120px !important;
+    padding: 11px 16px !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    color: #334155 !important;
+    background: #ffffff !important;
+    border: none !important;
+    border-right: 1px solid #d1d9e6 !important;
+    border-bottom: none !important;
+    text-decoration: none !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    cursor: pointer !important;
+    margin-bottom: 0 !important;
+}
+.sub-tab-nav-btn:last-child { border-right: none !important; }
+.sub-tab-nav-btn:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
+.sub-tab-nav-btn.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; }
+.sub-tab-nav-btn.active * { color: #ffffff !important; }
+
+/* Backward-compatible stock-tabs */
 .stock-tabs { display: flex !important; flex-wrap: wrap !important; margin: 8px 0 20px !important; border: 1px solid #d1d9e6 !important; border-radius: 0 !important; overflow: hidden !important; border-bottom: 3px solid #00264D !important; gap: 0 !important; }
 .stock-tab { flex: 1 !important; min-width: 120px !important; padding: 11px 16px !important; font-size: 11.5px !important; font-weight: 700 !important; color: #334155 !important; background: #ffffff !important; border: none !important; border-right: 1px solid #d1d9e6 !important; border-bottom: none !important; text-decoration: none !important; transition: all 0.15s ease !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 7px !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; cursor: pointer !important; }
 .stock-tab:last-child { border-right: none !important; }
 .stock-tab:hover { background: #f1f5f9 !important; color: #00264D !important; text-decoration: none !important; }
 .stock-tab.active { background: #00264D !important; color: #ffffff !important; font-weight: 800 !important; }
+
+/* History Summary Cards Grid */
+.summary-grid-hist {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    gap: 14px !important;
+    margin-bottom: 20px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.summary-card-hist {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.summary-card-hist:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+.summary-card-hist-label {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    color: #64748b !important;
+    text-transform: uppercase !important;
+    letter-spacing: .4px !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.summary-card-hist-val {
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    color: #002F70 !important;
+    line-height: 1.1 !important;
+}
 .filter-panel{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;box-shadow:0 2px 8px rgba(15,23,42,.04);width:100%;box-sizing:border-box;}
 .filter-grid{display:grid;grid-template-columns:2fr 1.4fr 1fr 1fr auto;gap:10px;align-items:end;}
 .field label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.45px;font-weight:800;color:#64748b;margin-bottom:5px;}
@@ -606,65 +1021,79 @@ body .main,
         </div>
     </div>
 
-    <!-- Stock-In Success Banner -->
-    <div class="stock-banner stock-banner-success" id="stockSuccessBanner" style="<?= !empty($session_success) ? 'display:flex;' : 'display:none;' ?>">
-        <div class="stock-banner-icon">
-            <i class="fas fa-check-circle"></i>
-        </div>
-        <div class="stock-banner-content">
-            <div class="stock-banner-title" id="stockBannerTitle">Stock-In Approved Successfully!</div>
-            <div class="stock-banner-desc" id="stockBannerDesc">
-                <?= !empty($session_success) ? htmlspecialchars($session_success) : 'The delivery stock-in has been approved. Official station inventory and prices have been updated.' ?>
+    <!-- Main Page Tabs -->
+    <div class="tab-nav">
+        <button type="button" id="mainTabStockInBtn" onclick="switchStockInMainTab('stockin')" class="tab-btn <?= $active_main_tab !== 'history' ? 'active' : '' ?>">
+            <i class="fas fa-dolly"></i> Stock-In
+        </button>
+        <button type="button" id="mainTabHistoryBtn" onclick="switchStockInMainTab('history')" class="tab-btn <?= $active_main_tab === 'history' ? 'active' : '' ?>">
+            <i class="fas fa-history"></i> Stock-In History
+        </button>
+    </div>
+
+    <!-- Stock-In Section (Pending Deliveries) -->
+    <div id="stockInPendingSection" style="<?= $active_main_tab === 'history' ? 'display:none;' : 'display:block;' ?>;">
+
+        <!-- Stock-In Success Banner -->
+        <div class="stock-banner stock-banner-success" id="stockSuccessBanner" style="<?= !empty($session_success) ? 'display:flex;' : 'display:none;' ?>">
+            <div class="stock-banner-icon">
+                <i class="fas fa-check-circle"></i>
             </div>
-            <div class="stock-banner-meta" id="stockBannerMeta" style="display:none;"></div>
+            <div class="stock-banner-content">
+                <div class="stock-banner-title" id="stockBannerTitle">Stock-In Approved Successfully!</div>
+                <div class="stock-banner-desc" id="stockBannerDesc">
+                    <?= !empty($session_success) ? htmlspecialchars($session_success) : 'The delivery stock-in has been approved. Official station inventory and prices have been updated.' ?>
+                </div>
+                <div class="stock-banner-meta" id="stockBannerMeta" style="display:none;"></div>
+            </div>
+            <div class="stock-banner-actions">
+                <a id="stockBannerPrintBtn" href="#" target="_blank" class="stock-banner-btn" style="display:none;">
+                    <i class="fas fa-print"></i> Print Invoice
+                </a>
+                <button type="button" class="stock-banner-dismiss-btn" onclick="dismissStockBanner()">Dismiss</button>
+            </div>
         </div>
-        <div class="stock-banner-actions">
-            <a id="stockBannerPrintBtn" href="#" target="_blank" class="stock-banner-btn" style="display:none;">
-                <i class="fas fa-print"></i> Print Invoice
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div>
+                    <div class="summary-label">Pending Merchandise Deliveries</div>
+                    <div class="summary-value"><?= count($merch_groups) ?></div>
+                </div>
+                <div class="summary-icon"><i class="fas fa-boxes"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-label">Pending Fuel Deliveries</div>
+                    <div class="summary-value"><?= count($fuel_groups) ?></div>
+                </div>
+                <div class="summary-icon"><i class="fas fa-gas-pump"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-label">Total Pending Stock-In</div>
+                    <div class="summary-value"><?= count($merch_groups) + count($fuel_groups) ?></div>
+                </div>
+                <div class="summary-icon"><i class="fas fa-inbox"></i></div>
+            </div>
+            <div class="summary-card">
+                <div>
+                    <div class="summary-label">Today's Deliveries</div>
+                    <div class="summary-value"><?= $today_deliveries ?></div>
+                </div>
+                <div class="summary-icon"><i class="fas fa-calendar-day"></i></div>
+            </div>
+        </div>
+
+        <!-- Sub-Tabs for Pending Deliveries -->
+        <div class="sub-tab-nav">
+            <a class="sub-tab-nav-btn <?= $active_type === 'merch' ? 'active' : '' ?>" href="<?= si_h(si_tab_url('merch', $filters)) ?>">
+                <i class="fas fa-boxes"></i> Merchandise
             </a>
-            <button type="button" class="stock-banner-dismiss-btn" onclick="dismissStockBanner()">Dismiss</button>
+            <a class="sub-tab-nav-btn <?= $active_type === 'fuel' ? 'active' : '' ?>" href="<?= si_h(si_tab_url('fuel', $filters)) ?>">
+                <i class="fas fa-gas-pump"></i> Fuel
+            </a>
         </div>
-    </div>
-
-    <div class="summary-grid">
-        <div class="summary-card">
-            <div>
-                <div class="summary-label">Pending Merchandise Deliveries</div>
-                <div class="summary-value"><?= count($merch_groups) ?></div>
-            </div>
-            <div class="summary-icon"><i class="fas fa-boxes"></i></div>
-        </div>
-        <div class="summary-card">
-            <div>
-                <div class="summary-label">Pending Fuel Deliveries</div>
-                <div class="summary-value"><?= count($fuel_groups) ?></div>
-            </div>
-            <div class="summary-icon"><i class="fas fa-gas-pump"></i></div>
-        </div>
-        <div class="summary-card">
-            <div>
-                <div class="summary-label">Total Pending Stock-In</div>
-                <div class="summary-value"><?= count($merch_groups) + count($fuel_groups) ?></div>
-            </div>
-            <div class="summary-icon"><i class="fas fa-inbox"></i></div>
-        </div>
-        <div class="summary-card">
-            <div>
-                <div class="summary-label">Today's Deliveries</div>
-                <div class="summary-value"><?= $today_deliveries ?></div>
-            </div>
-            <div class="summary-icon"><i class="fas fa-calendar-day"></i></div>
-        </div>
-    </div>
-
-    <div class="stock-tabs">
-        <a class="stock-tab <?= $active_type === 'merch' ? 'active' : '' ?>" href="<?= si_h(si_tab_url('merch', $filters)) ?>">
-            <i class="fas fa-boxes"></i> Merchandise
-        </a>
-        <a class="stock-tab <?= $active_type === 'fuel' ? 'active' : '' ?>" href="<?= si_h(si_tab_url('fuel', $filters)) ?>">
-            <i class="fas fa-gas-pump"></i> Fuel
-        </a>
-    </div>
 
     <form class="filter-panel" method="get" action="<?= htmlspecialchars($_si_base . '/public/manager_stock_in.php') ?>">
         <input type="hidden" name="type" value="<?= si_h($active_type) ?>">
@@ -893,6 +1322,264 @@ body .main,
             </div>
         </div>
     </div>
+    </div> <!-- /#stockInPendingSection -->
+
+    <!-- Stock-In History Section -->
+    <div id="stockInHistorySection" style="<?= $active_main_tab === 'history' ? 'display:block;' : 'display:none;' ?>;">
+        <!-- Stock-In History Summary Cards -->
+        <div class="summary-grid-hist">
+            <div class="summary-card-hist">
+                <div class="summary-card-hist-label"><i class="fas fa-boxes" style="color:#002F70;"></i> Total Stock-Ins</div>
+                <div class="summary-card-hist-val"><?= number_format($cnt_si_hist_total) ?></div>
+            </div>
+            <div class="summary-card-hist">
+                <div class="summary-card-hist-label"><i class="fas fa-gas-pump" style="color:#1d4ed8;"></i> Fuel Stock-Ins</div>
+                <div class="summary-card-hist-val" style="color:#1d4ed8;"><?= number_format($cnt_si_hist_fuel) ?></div>
+            </div>
+            <div class="summary-card-hist">
+                <div class="summary-card-hist-label"><i class="fas fa-box" style="color:#9333ea;"></i> Merch Stock-Ins</div>
+                <div class="summary-card-hist-val" style="color:#9333ea;"><?= number_format($cnt_si_hist_merch) ?></div>
+            </div>
+            <div class="summary-card-hist">
+                <div class="summary-card-hist-label"><i class="fas fa-tint" style="color:#0284c7;"></i> Total Fuel Stocked</div>
+                <div class="summary-card-hist-val" style="color:#0284c7; font-size:20px !important;"><?= number_format($cnt_si_hist_volume, 2) ?> <span style="font-size:13px; font-weight:700; color:#64748b;">L</span></div>
+            </div>
+            <div class="summary-card-hist">
+                <div class="summary-card-hist-label"><i class="fas fa-layer-group" style="color:#16a34a;"></i> Total Merch Units</div>
+                <div class="summary-card-hist-val" style="color:#16a34a; font-size:20px !important;"><?= number_format($cnt_si_hist_units) ?> <span style="font-size:13px; font-weight:700; color:#64748b;">pcs</span></div>
+            </div>
+        </div>
+
+        <!-- History Filter Bar -->
+        <div class="filter-panel" style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px; box-shadow:0 2px 8px rgba(15,23,42,.04);">
+            <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+                <div style="flex:1.5; min-width:200px;">
+                    <label style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.45px; margin-bottom:5px;">Search Stock-In</label>
+                    <div style="position:relative;">
+                        <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:12px;"></i>
+                        <input type="text" id="histSearchStockIn" placeholder="Batch, PO, DR, Item, Supplier..." oninput="filterStockInHistory()"
+                               style="width:100%; box-sizing:border-box; height:38px; padding:0 12px 0 34px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; color:#1e293b; background:#fff; outline:none;">
+                    </div>
+                </div>
+                <div style="flex:1; min-width:130px;">
+                    <label style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.45px; margin-bottom:5px;">Category</label>
+                    <select id="histCategoryFilter" onchange="filterStockInHistory()" style="width:100%; height:38px; border:1px solid #cbd5e1; border-radius:6px; padding:0 10px; font-size:12px; color:#1e293b; background:#fff;">
+                        <option value="">All Categories</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="merchandise">Merchandise</option>
+                    </select>
+                </div>
+                <div style="flex:1; min-width:150px;">
+                    <label style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.45px; margin-bottom:5px;">Supplier</label>
+                    <select id="histSupplierFilter" onchange="filterStockInHistory()" style="width:100%; height:38px; border:1px solid #cbd5e1; border-radius:6px; padding:0 10px; font-size:12px; color:#1e293b; background:#fff;">
+                        <option value="">All Suppliers</option>
+                        <?php foreach (array_keys($si_hist_suppliers) as $sup): ?>
+                        <option value="<?= htmlspecialchars(strtolower($sup)) ?>"><?= htmlspecialchars($sup) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div style="flex:1; min-width:130px;">
+                    <label style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.45px; margin-bottom:5px;">Start Date</label>
+                    <input type="date" id="histStartDate" onchange="filterStockInHistory()" style="width:100%; height:38px; border:1px solid #cbd5e1; border-radius:6px; padding:0 10px; font-size:12px; color:#1e293b; background:#fff; box-sizing:border-box;">
+                </div>
+                <div style="flex:1; min-width:130px;">
+                    <label style="display:block; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.45px; margin-bottom:5px;">End Date</label>
+                    <input type="date" id="histEndDate" onchange="filterStockInHistory()" style="width:100%; height:38px; border:1px solid #cbd5e1; border-radius:6px; padding:0 10px; font-size:12px; color:#1e293b; background:#fff; box-sizing:border-box;">
+                </div>
+                <div class="filter-actions" style="display:flex; gap:8px;">
+                    <button class="si-btn primary" type="button" onclick="filterStockInHistory()"><i class="fas fa-filter"></i> Filter</button>
+                    <button class="si-btn outline" type="button" onclick="resetStockInHistoryFilter()"><i class="fas fa-undo"></i> Reset</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Table Card -->
+        <div class="table-card">
+            <div class="table-head">
+                <div class="table-title">
+                    <i class="fas fa-history"></i> Stock-In History Records
+                </div>
+                <span style="font-size:12px; font-weight:700; color:#64748b;">
+                    <?= count($stock_in_history_list) ?> Record<?= count($stock_in_history_list) === 1 ? '' : 's' ?>
+                </span>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="stock-table" id="stockInHistoryTable">
+                    <thead>
+                        <tr>
+                            <th>Reference / Batch No.</th>
+                            <th>PO / DR No.</th>
+                            <th style="text-align:center;">Category</th>
+                            <th>Supplier</th>
+                            <th>Date Stocked-In</th>
+                            <th>Stocked By</th>
+                            <th style="text-align:center;">Delivered Items</th>
+                            <th style="text-align:center;">Status</th>
+                            <th style="text-align:center; width:170px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockInHistoryBody">
+                        <?php if (empty($stock_in_history_list)): ?>
+                        <tr id="siHistEmptyRow">
+                            <td colspan="9" class="empty-state" style="padding:50px 20px;">
+                                <i class="fas fa-history" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:10px;"></i>
+                                <strong style="font-size:15px; color:#1e293b;">No Stock-In History Found</strong><br>
+                                <span style="font-size:13px; color:#64748b;">Approved stock-in deliveries will automatically appear here.</span>
+                            </td>
+                        </tr>
+                        <?php else: ?>
+                            <?php foreach ($stock_in_history_list as $si_row): 
+                                $h_is_fuel = ($si_row['delivery_type'] === 'fuel');
+                                $h_dt_raw = $si_row['stock_in_date'] ?: ($si_row['delivery_date'] ?? '');
+                                $h_dt_fmt = $h_dt_raw ? date('M d, Y', strtotime($h_dt_raw)) : '—';
+                                $h_tm_fmt = $h_dt_raw && strlen($h_dt_raw) > 10 ? date('h:i A', strtotime($h_dt_raw)) : '';
+                                
+                                $h_item_count = count($si_row['items'] ?? []);
+                                $h_first_item = !empty($si_row['items'][0]['name']) ? $si_row['items'][0]['name'] : '—';
+                                $h_more_count = max(0, $h_item_count - 1);
+                                $h_unit       = $h_is_fuel ? 'L' : 'pcs';
+
+                                // Search text helper
+                                $h_search_parts = [
+                                    $si_row['batch_id'] ?? '',
+                                    $si_row['delivery_ref'] ?? '',
+                                    $si_row['po_number'] ?? '',
+                                    $si_row['dr_number'] ?? '',
+                                    $si_row['supplier'] ?? '',
+                                    $si_row['stocked_by'] ?? '',
+                                    $si_row['received_by'] ?? '',
+                                ];
+                                foreach ($si_row['items'] as $it) {
+                                    $h_search_parts[] = $it['name'] ?? '';
+                                }
+                                $h_search_str = strtolower(implode(' ', array_filter($h_search_parts)));
+                                
+                                // Modal payload
+                                $h_modal_data = [
+                                    'batch_id'      => $si_row['batch_id'] ?: ($si_row['delivery_ref'] ?: '—'),
+                                    'po_number'     => $si_row['po_number'] ?: '—',
+                                    'dr_number'     => $si_row['dr_number'] ?: '—',
+                                    'delivery_type' => $h_is_fuel ? 'Fuel' : 'Merchandise',
+                                    'supplier'      => $si_row['supplier'] ?: 'Petron Corporation',
+                                    'stock_in_date' => $h_dt_fmt . ($h_tm_fmt ? ' ' . $h_tm_fmt : ''),
+                                    'stocked_by'    => $si_row['stocked_by'] ?: 'Manager',
+                                    'received_by'   => $si_row['received_by'] ?: 'Staff',
+                                    'status'        => $si_row['status'] ?: 'Stock-In Complete',
+                                    'remarks'       => $si_row['remarks'] ?? '',
+                                    'total_qty'     => $si_row['total_qty'],
+                                    'total_cost'    => $si_row['total_cost'],
+                                    'items'         => $si_row['items']
+                                ];
+                                $h_json_attr = htmlspecialchars(json_encode($h_modal_data), ENT_QUOTES, 'UTF-8');
+                                
+                                $row_date_ymd = $h_dt_raw ? date('Y-m-d', strtotime($h_dt_raw)) : '';
+                            ?>
+                            <tr class="si-hist-row"
+                                data-search="<?= htmlspecialchars($h_search_str) ?>"
+                                data-category="<?= $h_is_fuel ? 'fuel' : 'merchandise' ?>"
+                                data-supplier="<?= htmlspecialchars(strtolower($si_row['supplier'])) ?>"
+                                data-date="<?= $row_date_ymd ?>"
+                                data-details='<?= $h_json_attr ?>'>
+                                <td style="font-weight:800; color:#002F70; font-family:Consolas, monospace; font-size:12.5px;">
+                                    <?= htmlspecialchars($si_row['batch_id'] ?: ($si_row['delivery_ref'] ?: '—')) ?>
+                                </td>
+                                <td>
+                                    <div style="font-weight:700; color:#0f172a; font-family:Consolas, monospace;"><?= htmlspecialchars($si_row['po_number'] ?: '—') ?></div>
+                                    <?php if (!empty($si_row['dr_number'])): ?>
+                                        <div style="font-size:11px; color:#64748b;">DR: <?= htmlspecialchars($si_row['dr_number']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="text-align:center;">
+                                    <?php if ($h_is_fuel): ?>
+                                        <span style="background:#e0f2fe; color:#0369a1; font-weight:800; font-size:11px; padding:3px 9px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                            <i class="fas fa-gas-pump" style="font-size:10px;"></i> Fuel
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="background:#fef3c7; color:#92400e; font-weight:800; font-size:11px; padding:3px 9px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                            <i class="fas fa-boxes" style="font-size:10px;"></i> Merch
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="font-weight:600; color:#1e293b;"><?= htmlspecialchars($si_row['supplier']) ?></td>
+                                <td style="color:#334155; white-space:nowrap;">
+                                    <div style="font-weight:700;"><?= $h_dt_fmt ?></div>
+                                    <?php if ($h_tm_fmt): ?>
+                                        <div style="font-size:11px; color:#64748b;"><?= $h_tm_fmt ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="font-weight:600; color:#334155;">
+                                    <div><?= htmlspecialchars($si_row['stocked_by']) ?></div>
+                                    <div style="font-size:11px; color:#64748b;">Rec: <?= htmlspecialchars($si_row['received_by']) ?></div>
+                                </td>
+                                <td style="text-align:center;">
+                                    <div style="font-weight:800; color:#002F70;"><?= $h_item_count ?> Item<?= $h_item_count === 1 ? '' : 's' ?></div>
+                                    <div style="font-size:11px; color:#64748b; line-height:1.2; margin-top:2px;">
+                                        <?= htmlspecialchars($h_first_item) ?>
+                                        <?= $h_more_count ? '<br><span style="font-weight:700;color:#475569;">+' . $h_more_count . ' more</span>' : '' ?>
+                                    </div>
+                                    <div style="font-weight:800; font-family:monospace; color:#0f172a; font-size:11.5px; margin-top:2px;">
+                                        <?= $h_is_fuel ? number_format($si_row['total_qty'], 2) : number_format($si_row['total_qty']) ?> <?= htmlspecialchars($h_unit) ?>
+                                    </div>
+                                </td>
+                                <td style="text-align:center;">
+                                    <span style="display:inline-flex; align-items:center; gap:4px; background:#dcfce7; color:#15803d; font-weight:800; font-size:11px; padding:4px 9px; border-radius:12px;">
+                                        <i class="fas fa-check-circle" style="font-size:10px;"></i> <?= htmlspecialchars($si_row['status']) ?>
+                                    </span>
+                                </td>
+                                <td style="text-align:center; white-space:nowrap;">
+                                    <button type="button" class="si-btn outline" style="height:32px; padding:0 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:5px;" onclick="openStockInViewModal(this)">
+                                        <i class="fas fa-eye" style="color:#002F70;"></i> View Details
+                                    </button>
+                                    <a href="print_supplier_invoice.php?batch_id=<?= urlencode($si_row['batch_id'] ?: $si_row['po_number']) ?>&type=<?= urlencode($si_row['delivery_type']) ?>" target="_blank" class="si-btn outline" style="height:32px; padding:0 8px; font-size:11.5px; display:inline-flex; align-items:center;" title="Print Invoice">
+                                        <i class="fas fa-print" style="color:#64748b;"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <tr id="siHistNoResultsRow" style="display:none;">
+                                <td colspan="9" style="text-align:center; padding:32px 16px; color:#64748b; background:#fff;">
+                                    <i class="fas fa-search" style="font-size:24px; color:#cbd5e1; display:block; margin-bottom:8px;"></i>
+                                    No matching stock-in history records found.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Stock-In History Pagination Footer -->
+            <div id="siHistPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 8px 8px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center;">
+                    <span id="siHistShowingEntriesText" style="font-size:13px; color:#64748b; font-weight:600;">Showing 0 of 0 entries</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label style="margin:0; font-weight:600; color:#64748b; font-size:13px;">Rows per page:</label>
+                        <select id="siHistPerPage" onchange="siHistChangePerPage()" style="padding:4px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-weight:600; background:transparent !important; color:#334155; outline:none; cursor:pointer;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <button id="siHistPrevBtn" onclick="siHistGoPage(siHistState.page - 1)" 
+                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="siHistPageLabel" style="color:#334155; font-size:13px; font-weight:600; padding:0 4px;">Page 1 of 1</span>
+                        <button id="siHistNextBtn" onclick="siHistGoPage(siHistState.page + 1)" 
+                                style="width:32px; height:32px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:not-allowed; color:#cbd5e1; display:flex; align-items:center; justify-content:center; transition: all 0.2s;"
+                                onmouseover="if(!this.disabled) this.style.backgroundColor='#f1f5f9';" onmouseout="this.style.backgroundColor='#fff';">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- /#stockInHistorySection -->
 </div>
 
 <!-- Toast -->
@@ -906,6 +1593,85 @@ body .main,
         <div style="display:flex;justify-content:flex-end;gap:12px;">
             <button type="button" id="siConfirmCancelBtn" onclick="siConfirmCancel()" style="padding:10px 22px!important;border:1.5px solid #dc2626!important;border-radius:7px!important;background:#dc2626!important;background-color:#dc2626!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:700!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;">Cancel</button>
             <button type="button" id="siConfirmOkBtn" style="padding:10px 22px!important;border:1.5px solid #16a34a!important;border-radius:7px!important;background:#16a34a!important;background-color:#16a34a!important;color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;font-weight:800!important;font-size:13.5px!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;gap:7px!important;"><i class="fas fa-check"></i> Yes, Approve</button>
+        </div>
+    </div>
+</div>
+
+<!-- Stock-In View Details Modal -->
+<div id="stockInViewModal" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,0.65); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); align-items:flex-start; justify-content:center; padding:75px 20px 35px 20px; box-sizing:border-box; overflow-y:auto;" onclick="if(event.target===this) closeStockInViewModal();">
+    <div style="background:#fff; border-radius:14px; width:96%; max-width:920px; max-height:calc(100vh - 110px); display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.35); overflow:hidden; margin:0 auto;" onclick="event.stopPropagation();">
+        <div style="background:#002F70; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <i class="fas fa-boxes" style="color:#fff; font-size:18px;"></i>
+                <div>
+                    <div style="color:#fff; font-weight:800; font-size:15px; letter-spacing:0.3px;" id="siv_title">Stock-In Details</div>
+                    <div style="color:rgba(255,255,255,0.75); font-size:11.5px; margin-top:1px;" id="siv_subtitle">Completed Stock-In Verification Record</div>
+                </div>
+            </div>
+            <button type="button" onclick="closeStockInViewModal()" style="background:transparent; border:none; color:#fff; font-size:18px; cursor:pointer; padding:4px 8px; border-radius:4px; opacity:0.85;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div style="overflow-y:auto; flex:1; padding:22px 24px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:16px;">
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Reference / Batch No.</div><div style="font-weight:800;color:#002F70;font-family:Consolas,monospace;font-size:13px;" id="siv_batch_id">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">PO Number</div><div style="font-weight:800;color:#0f172a;font-family:Consolas,monospace;font-size:13px;" id="siv_po_number">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">DR Number</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_dr_number">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Category</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_category">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Supplier</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_supplier">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Date Stocked-In</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_stock_date">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Stocked By</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_stocked_by">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Received By</div><div style="font-weight:700;color:#1e293b;font-size:13px;" id="siv_received_by">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Status</div><div id="siv_status" style="font-weight:800;color:#15803d;font-size:13px;">—</div></div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:18px;">
+                <div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; background:#fff;">
+                    <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:4px;">Total Items</div>
+                    <div style="font-size:22px; font-weight:900; color:#002F70;" id="siv_total_items">0</div>
+                </div>
+                <div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; background:#fff;">
+                    <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:4px;">Total Quantity</div>
+                    <div style="font-size:22px; font-weight:900; color:#0f172a;" id="siv_total_qty">0</div>
+                </div>
+                <div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; background:#fff;">
+                    <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:4px;">Total Value</div>
+                    <div style="font-size:22px; font-weight:900; color:#16a34a;" id="siv_total_cost">₱ 0.00</div>
+                </div>
+            </div>
+
+            <div style="font-size:11px; font-weight:800; color:#002F70; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">
+                <i class="fas fa-list" style="margin-right:5px;"></i> Stocked Items Breakdown
+            </div>
+            <div style="border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto; margin-bottom:16px; background:#fff;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead style="background:#002F70;">
+                        <tr>
+                            <th style="padding:9px 10px; text-align:left; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Item / Product</th>
+                            <th style="padding:9px 10px; text-align:right; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Ordered</th>
+                            <th style="padding:9px 10px; text-align:right; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Received</th>
+                            <th style="padding:9px 10px; text-align:right; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Unit Cost</th>
+                            <th style="padding:9px 10px; text-align:right; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Selling Price</th>
+                            <th style="padding:9px 10px; text-align:right; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Total Cost</th>
+                            <th style="padding:9px 10px; text-align:center; color:#fff; font-size:10.5px; font-weight:800; text-transform:uppercase;">Condition</th>
+                        </tr>
+                    </thead>
+                    <tbody id="siv_items_body"></tbody>
+                </table>
+            </div>
+
+            <div id="siv_remarks_wrap" style="display:none; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px 16px;">
+                <div style="font-size:10px; font-weight:800; color:#92400e; text-transform:uppercase; margin-bottom:3px;">Remarks / Notes</div>
+                <div id="siv_remarks" style="font-size:12.5px; color:#78350f; line-height:1.45;"></div>
+            </div>
+        </div>
+        <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+            <a id="siv_print_btn" href="#" target="_blank" class="si-btn primary" style="font-size:12.5px; height:36px;">
+                <i class="fas fa-print"></i> Print Invoice
+            </a>
+            <button type="button" onclick="closeStockInViewModal()" style="background:#64748b; color:#fff; border:none; padding:8px 22px; border-radius:7px; font-weight:700; font-size:13px; cursor:pointer;">
+                Close
+            </button>
         </div>
     </div>
 </div>
@@ -955,6 +1721,7 @@ function siConfirmCancel() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         siConfirmCancel();
+        closeStockInViewModal();
     }
 });
 
@@ -1232,8 +1999,280 @@ function siEscapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+// Tab Switching between Pending Stock-In and Stock-In History
+function switchStockInMainTab(tab) {
+    const pendingSec = document.getElementById('stockInPendingSection');
+    const histSec    = document.getElementById('stockInHistorySection');
+    const btnStockIn = document.getElementById('mainTabStockInBtn');
+    const btnHist    = document.getElementById('mainTabHistoryBtn');
+
+    if (tab === 'history') {
+        if (btnStockIn) btnStockIn.classList.remove('active');
+        if (btnHist)    btnHist.classList.add('active');
+        if (pendingSec) pendingSec.style.display = 'none';
+        if (histSec)    histSec.style.display = 'block';
+        if (typeof renderSiHistPagination === 'function') {
+            renderSiHistPagination();
+        }
+    } else {
+        if (btnHist)    btnHist.classList.remove('active');
+        if (btnStockIn) btnStockIn.classList.add('active');
+        if (histSec)    histSec.style.display = 'none';
+        if (pendingSec) pendingSec.style.display = 'block';
+        if (typeof siRender === 'function') {
+            siRender();
+        }
+    }
+
+    try {
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tab);
+        window.history.pushState({}, '', url);
+    } catch(e) {}
+}
+
+// ── Stock-In History Engine ──
+var siHistState = { page: 1, per_page: 10 };
+
+function getSiHistFilteredRows() {
+    return Array.from(document.querySelectorAll('.si-hist-row')).filter(function(row) {
+        return row.dataset.filteredOut !== 'true';
+    });
+}
+
+function renderSiHistPagination() {
+    const allRows = Array.from(document.querySelectorAll('.si-hist-row'));
+    if (!allRows.length) {
+        const entriesLbl = document.getElementById('siHistShowingEntriesText');
+        if (entriesLbl) entriesLbl.textContent = 'Showing 0 of 0 entries';
+        const lbl = document.getElementById('siHistPageLabel');
+        if (lbl) lbl.textContent = 'Page 1 of 1';
+        return;
+    }
+
+    const visibleRows = getSiHistFilteredRows();
+    const tot = visibleRows.length;
+    const pp = siHistState.per_page || 10;
+    const tp = Math.max(1, Math.ceil(tot / pp));
+
+    if (siHistState.page > tp) siHistState.page = tp;
+    if (siHistState.page < 1) siHistState.page = 1;
+    const p = siHistState.page;
+
+    const start = (p - 1) * pp;
+    const end   = p * pp;
+
+    // Show or hide based on filter and page
+    allRows.forEach(function(row) {
+        if (row.dataset.filteredOut === 'true') {
+            row.style.display = 'none';
+        }
+    });
+
+    visibleRows.forEach(function(row, idx) {
+        row.style.display = (idx >= start && idx < end) ? '' : 'none';
+    });
+
+    // Handle no results row
+    const noResultsRow = document.getElementById('siHistNoResultsRow');
+    if (noResultsRow) {
+        noResultsRow.style.display = (tot === 0 && allRows.length > 0) ? '' : 'none';
+    }
+
+    // Update Showing Entries text
+    const showingStart = tot === 0 ? 0 : start + 1;
+    const showingEnd   = Math.min(end, tot);
+    const entriesLbl   = document.getElementById('siHistShowingEntriesText');
+    if (entriesLbl) {
+        entriesLbl.textContent = 'Showing ' + (tot === 0 ? '0' : showingStart + '–' + showingEnd) + ' of ' + tot + ' entries';
+    }
+
+    const lbl = document.getElementById('siHistPageLabel');
+    if (lbl) lbl.textContent = 'Page ' + p + ' of ' + tp;
+
+    const prev = document.getElementById('siHistPrevBtn');
+    const next = document.getElementById('siHistNextBtn');
+    if (prev) {
+        prev.disabled = (p <= 1);
+        prev.style.cursor = prev.disabled ? 'not-allowed' : 'pointer';
+        prev.style.color = prev.disabled ? '#cbd5e1' : '#475569';
+    }
+    if (next) {
+        next.disabled = (p >= tp);
+        next.style.cursor = next.disabled ? 'not-allowed' : 'pointer';
+        next.style.color = next.disabled ? '#cbd5e1' : '#475569';
+    }
+}
+
+function siHistGoPage(p) {
+    const tot = getSiHistFilteredRows().length;
+    const tp = Math.max(1, Math.ceil(tot / (siHistState.per_page || 10)));
+    if (p < 1 || p > tp) return;
+    siHistState.page = p;
+    renderSiHistPagination();
+}
+
+function siHistChangePerPage() {
+    const s = document.getElementById('siHistPerPage');
+    if (s) {
+        siHistState.per_page = parseInt(s.value, 10);
+        siHistState.page = 1;
+        renderSiHistPagination();
+    }
+}
+
+function filterStockInHistory() {
+    const q        = (document.getElementById('histSearchStockIn')?.value || '').trim().toLowerCase();
+    const cat      = (document.getElementById('histCategoryFilter')?.value || '').trim().toLowerCase();
+    const sup      = (document.getElementById('histSupplierFilter')?.value || '').trim().toLowerCase();
+    const startDt  = document.getElementById('histStartDate')?.value || '';
+    const endDt    = document.getElementById('histEndDate')?.value || '';
+
+    const rows = document.querySelectorAll('.si-hist-row');
+    rows.forEach(function(row) {
+        const rowSearch = (row.dataset.search || '').toLowerCase();
+        const rowCat    = (row.dataset.category || '').toLowerCase();
+        const rowSup    = (row.dataset.supplier || '').toLowerCase();
+        const rowDt     = row.dataset.date || '';
+
+        let match = true;
+
+        if (q && !rowSearch.includes(q)) match = false;
+        if (cat && rowCat !== cat) match = false;
+        if (sup && !rowSup.includes(sup)) match = false;
+        if (startDt && rowDt && rowDt < startDt) match = false;
+        if (endDt && rowDt && rowDt > endDt) match = false;
+
+        row.dataset.filteredOut = match ? 'false' : 'true';
+    });
+
+    siHistState.page = 1;
+    renderSiHistPagination();
+}
+
+function resetStockInHistoryFilter() {
+    if (document.getElementById('histSearchStockIn')) document.getElementById('histSearchStockIn').value = '';
+    if (document.getElementById('histCategoryFilter')) document.getElementById('histCategoryFilter').value = '';
+    if (document.getElementById('histSupplierFilter')) document.getElementById('histSupplierFilter').value = '';
+    if (document.getElementById('histStartDate')) document.getElementById('histStartDate').value = '';
+    if (document.getElementById('histEndDate')) document.getElementById('histEndDate').value = '';
+
+    const rows = document.querySelectorAll('.si-hist-row');
+    rows.forEach(function(row) {
+        row.dataset.filteredOut = 'false';
+    });
+
+    siHistState.page = 1;
+    renderSiHistPagination();
+}
+
+// ── Stock-In View Modal Engine ──
+function openStockInViewModal(btn) {
+    const row = btn.closest('.si-hist-row');
+    if (!row) return;
+
+    let data = {};
+    try {
+        data = JSON.parse(row.getAttribute('data-details') || '{}');
+    } catch(e) {
+        console.error('Failed to parse stock-in details', e);
+        return;
+    }
+
+    const modal = document.getElementById('stockInViewModal');
+    if (!modal) return;
+
+    const setText = function(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '—';
+    };
+
+    setText('siv_title', (data.delivery_type || 'Stock-In') + ' Details');
+    setText('siv_subtitle', 'Reference: ' + (data.batch_id || data.po_number || '—'));
+    setText('siv_batch_id', data.batch_id);
+    setText('siv_po_number', data.po_number);
+    setText('siv_dr_number', data.dr_number);
+    setText('siv_category', data.delivery_type);
+    setText('siv_supplier', data.supplier);
+    setText('siv_stock_date', data.stock_in_date);
+    setText('siv_stocked_by', data.stocked_by);
+    setText('siv_received_by', data.received_by);
+    setText('siv_status', data.status);
+
+    const isFuel = (data.delivery_type === 'Fuel');
+    const unit = isFuel ? 'L' : 'pcs';
+
+    setText('siv_total_items', String((data.items || []).length));
+    setText('siv_total_qty', (isFuel ? parseFloat(data.total_qty || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : Math.round(parseFloat(data.total_qty || 0)).toLocaleString()) + ' ' + unit);
+    setText('siv_total_cost', '₱ ' + parseFloat(data.total_cost || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}));
+
+    // Render item rows
+    const tbody = document.getElementById('siv_items_body');
+    if (tbody) {
+        tbody.innerHTML = (data.items || []).map(function(it) {
+            const itUnit = it.unit || unit;
+            const ordQty = parseFloat(it.qty_ordered || 0);
+            const recQty = parseFloat(it.qty_received || 0);
+            const uCost  = parseFloat(it.unit_cost || 0);
+            const sPrice = parseFloat(it.selling_price || 0);
+            const tCost  = parseFloat(it.total_cost || (recQty * uCost));
+
+            return '<tr>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#1e293b;">' + siEscapeHtml(it.name) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:right; color:#64748b; font-weight:600;">' + (isFuel ? ordQty.toFixed(2) : Math.round(ordQty)) + ' ' + siEscapeHtml(itUnit) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:right; color:#002F70; font-weight:800;">' + (isFuel ? recQty.toFixed(2) : Math.round(recQty)) + ' ' + siEscapeHtml(itUnit) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:right; color:#475569; font-weight:600;">₱ ' + uCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:right; color:#002F70; font-weight:700;">₱ ' + sPrice.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:right; color:#16a34a; font-weight:800;">₱ ' + tCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>' +
+                '<td style="padding:9px 10px; border-bottom:1px solid #f1f5f9; text-align:center;">' +
+                    '<span style="display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; background:' + (it.condition === 'Damaged' ? '#fee2e2;color:#b91c1c;' : '#dcfce7;color:#15803d;') + '">' +
+                        siEscapeHtml(it.condition || 'Good') +
+                    '</span>' +
+                '</td>' +
+            '</tr>';
+        }).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:#94a3b8;">No items listed.</td></tr>';
+    }
+
+    // Remarks
+    const remWrap = document.getElementById('siv_remarks_wrap');
+    if (remWrap) {
+        if (data.remarks && String(data.remarks).trim()) {
+            document.getElementById('siv_remarks').textContent = data.remarks;
+            remWrap.style.display = 'block';
+        } else {
+            remWrap.style.display = 'none';
+        }
+    }
+
+    // Print Invoice Button
+    const printBtn = document.getElementById('siv_print_btn');
+    if (printBtn) {
+        const batchRef = data.batch_id && data.batch_id !== '—' ? data.batch_id : data.po_number;
+        const bType = (data.delivery_type === 'Fuel') ? 'fuel' : 'merch';
+        printBtn.href = 'print_supplier_invoice.php?batch_id=' + encodeURIComponent(batchRef) + '&type=' + encodeURIComponent(bType);
+    }
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeStockInViewModal() {
+    const modal = document.getElementById('stockInViewModal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     siRender();
+    renderSiHistPagination();
+
+    // Check URL param tab
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tab') === 'history') {
+            switchStockInMainTab('history');
+        }
+    } catch(e) {}
 
     // Check for stored success banner from previous stock-in
     try {
