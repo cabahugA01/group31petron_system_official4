@@ -36,7 +36,7 @@ CREATE TABLE `activity_logs` (
   KEY `idx_action` (`action`),
   KEY `idx_created_at` (`created_at`),
   CONSTRAINT `fk_log_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=452 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=451 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -582,7 +582,7 @@ CREATE TABLE `database_backups` (
   KEY `idx_created_at` (`created_at`),
   CONSTRAINT `fk_database_backups_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_database_backups_station_id` FOREIGN KEY (`station_id`) REFERENCES `stations` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -591,7 +591,7 @@ CREATE TABLE `database_backups` (
 
 LOCK TABLES `database_backups` WRITE;
 /*!40000 ALTER TABLE `database_backups` DISABLE KEYS */;
-INSERT INTO `database_backups` VALUES (1,'petron_pos_db_secure.sql','/backup/database/petron_pos_db_secure.sql',831518,'Full Backup',NULL,1,'Completed',NULL,NULL,'2026-09-28 16:46:28',NULL,'ZIP',0),(2,'petron_pos_db_secure.sql','/backup/database/petron_pos_db_secure.sql',837118,'Full Backup',NULL,NULL,'Completed',NULL,NULL,'2026-09-28 17:14:52',NULL,'SQL',0);
+INSERT INTO `database_backups` VALUES (1,'petron_pos_db_secure.sql','/backup/database/petron_pos_db_secure.sql',831518,'Full Backup',NULL,1,'Completed',NULL,NULL,'2026-09-28 16:46:28',NULL,'ZIP',0);
 /*!40000 ALTER TABLE `database_backups` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -4074,7 +4074,7 @@ CREATE TABLE `system_config` (
   KEY `idx_config_key` (`config_key`),
   KEY `fk_syscfg_station` (`station_id`),
   CONSTRAINT `fk_syscfg_station` FOREIGN KEY (`station_id`) REFERENCES `stations` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=37 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=36 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -4083,7 +4083,7 @@ CREATE TABLE `system_config` (
 
 LOCK TABLES `system_config` WRITE;
 /*!40000 ALTER TABLE `system_config` DISABLE KEYS */;
-INSERT INTO `system_config` VALUES (1,NULL,'backup_frequency','manual','Database backup frequency setting','2026-07-05 18:17:42','2026-08-21 08:52:01'),(2,NULL,'storage_location','local','Backup storage location','2026-07-05 18:17:42','2026-07-05 18:17:42'),(3,NULL,'retention_period','30','Backup retention period in days','2026-07-05 18:17:42','2026-07-05 18:17:42'),(16,NULL,'backup_scheduled_time','02:00',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(17,NULL,'backup_type','Full Backup',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(18,NULL,'backup_compression','ZIP',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(19,NULL,'backup_retention_days','30',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(35,NULL,'backup_last_auto_run','2026-09-29 01:14:52',NULL,'2026-09-28 17:14:48','2026-09-28 17:14:52');
+INSERT INTO `system_config` VALUES (1,NULL,'backup_frequency','manual','Database backup frequency setting','2026-07-05 18:17:42','2026-08-21 08:52:01'),(2,NULL,'storage_location','local','Backup storage location','2026-07-05 18:17:42','2026-07-05 18:17:42'),(3,NULL,'retention_period','30','Backup retention period in days','2026-07-05 18:17:42','2026-07-05 18:17:42'),(16,NULL,'backup_scheduled_time','02:00',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(17,NULL,'backup_type','Full Backup',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(18,NULL,'backup_compression','ZIP',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(19,NULL,'backup_retention_days','30',NULL,'2026-08-05 08:20:49','2026-08-21 08:52:01'),(35,NULL,'backup_last_auto_run','2026-09-29 01:14:48',NULL,'2026-09-28 17:14:48','2026-09-28 17:14:48');
 /*!40000 ALTER TABLE `system_config` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -4560,4 +4560,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-09-29  1:14:55
+-- Dump completed on 2026-09-29  1:14:52

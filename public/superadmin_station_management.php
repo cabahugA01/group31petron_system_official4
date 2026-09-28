@@ -1,20 +1,13 @@
 <?php
 
 // ============================================================
-// SuperAdmin – Station Management
+// SuperAdmin – Station Management (Deprecated & Consolidated into Admin Management)
 // public/superadmin_station_management.php
 // ============================================================
 if (session_status() === PHP_SESSION_NONE) session_start();
-$page_id = 'station_management';
-require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';
-require_login();
+header('Location: superadmin_admin_management.php');
+exit;
 
-$me   = current_user();
-$role = role_key($me['role'] ?? '');
-if (!in_array($role, ['superadmin', 'developer'])) {
-    header('Location: super_admin_dashboard.php'); exit;
-}
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

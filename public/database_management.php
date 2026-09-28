@@ -11,6 +11,14 @@ if (!in_array($my_role, ['superadmin', 'developer'])) {
 }
 
 // ── Helper: get/set system_config ─────────────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS system_config (
+        config_key VARCHAR(100) PRIMARY KEY,
+        config_value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) { /* ignore */ }
+
 function cfg_get(PDO $pdo, string $key, string $default = ''): string {
     try {
         $r = $pdo->prepare("SELECT config_value FROM system_config WHERE config_key = ?");
@@ -19,9 +27,8 @@ function cfg_get(PDO $pdo, string $key, string $default = ''): string {
         return $v === false ? $default : (string)$v;
     } catch (Exception $e) { return $default; }
 }
-function cfg_set(PDO $pdo, string $key, string $value, int $uid): void {
+function cfg_set(PDO $pdo, string $key, string $value, int $uid = 0): void {
     try {
-        // system_config has no updated_by column — use only existing columns
         $pdo->prepare("INSERT INTO system_config (config_key, config_value)
             VALUES(?, ?) ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), updated_at=NOW()")
             ->execute([$key, $value]);
@@ -29,6 +36,197 @@ function cfg_set(PDO $pdo, string $key, string $value, int $uid): void {
         error_log("cfg_set failed for key={$key}: " . $e->getMessage());
     }
 }
+
+// ── Retention Policy Engine ───────────────────────────────────────────
+function apply_backup_retention_policy(PDO $pdo, int $retention_days): int {
+    if ($retention_days <= 0) return 0;
+    try {
+        $cutoff = date('Y-m-d H:i:s', strtotime("-{$retention_days} days"));
+        $stmt = $pdo->prepare("UPDATE database_backups 
+            SET status = 'Archived' 
+            WHERE created_at < ? AND status = 'Completed'");
+        $stmt->execute([$cutoff]);
+        return (int)$stmt->rowCount();
+    } catch (Exception $e) {
+        error_log("Retention policy error: " . $e->getMessage());
+        return 0;
+    }
+}
+
+// ── Core System Backup Engine ─────────────────────────────────────────
+function execute_database_backup(PDO $pdo, string $backup_dir, ?int $user_id = null, string $trigger_label = 'Manual'): array {
+    $btype = 'Full Backup';
+    $comp  = 'SQL';
+    $fname = 'petron_pos_db_secure.sql';
+    $fpath = $backup_dir . $fname;
+    $db_name = 'petron_pos_db_secure';
+
+    if (!is_dir($backup_dir)) @mkdir($backup_dir, 0755, true);
+
+    // 1. Try real mysqldump first
+    $mysqldump_bin = 'C:\\xampp\\mysql\\bin\\mysqldump.exe';
+    if (!file_exists($mysqldump_bin)) $mysqldump_bin = 'mysqldump';
+
+    $dump_args  = "--host=localhost --user=root --single-transaction --quick --skip-lock-tables --routines --triggers";
+    $dump_cmd   = "\"{$mysqldump_bin}\" {$dump_args} {$db_name} > " . escapeshellarg($fpath) . " 2>&1";
+    $dump_out_arr = [];
+    @exec($dump_cmd, $dump_out_arr, $dump_ret);
+
+    $fsize  = file_exists($fpath) ? filesize($fpath) : 0;
+    $status = ($dump_ret === 0 && $fsize > 500) ? 'Completed' : 'Simulated';
+
+    // 2. Fallback: PHP-PDO full SQL dump
+    if ($status === 'Simulated') {
+        try {
+            $header  = "-- ============================================================\n";
+            $header .= "-- Petron Station Management System\n";
+            $header .= "-- Database: {$db_name}\n";
+            $header .= "-- Backup Type: Full Backup\n";
+            $header .= "-- Trigger: {$trigger_label}\n";
+            $header .= "-- Generated: " . date('Y-m-d H:i:s') . "\n";
+            $header .= "-- ============================================================\n\n";
+            $header .= "SET FOREIGN_KEY_CHECKS=0;\n";
+            $header .= "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n";
+            $header .= "SET NAMES utf8mb4;\n\n";
+            file_put_contents($fpath, $header);
+
+            $tables  = $pdo->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN);
+            $skipped = [];
+
+            foreach ($tables as $tbl) {
+                try {
+                    $create = $pdo->query("SHOW CREATE TABLE `{$tbl}`")->fetch(PDO::FETCH_NUM);
+                    $block  = "\n-- -----------------------------------------------------------\n";
+                    $block .= "-- Table: `{$tbl}`\n";
+                    $block .= "-- -----------------------------------------------------------\n";
+                    $block .= "DROP TABLE IF EXISTS `{$tbl}`;\n";
+                    $block .= $create[1] . ";\n";
+
+                    $rows = $pdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($rows)) {
+                        $cols    = array_map(fn($c) => "`{$c}`", array_keys($rows[0]));
+                        $block  .= "\nINSERT INTO `{$tbl}` (" . implode(', ', $cols) . ") VALUES\n";
+                        $vblocks = [];
+                        foreach ($rows as $row) {
+                            $vals    = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote($v), array_values($row));
+                            $vblocks[] = '(' . implode(', ', $vals) . ')';
+                        }
+                        $block .= implode(",\n", $vblocks) . ";\n";
+                    }
+                    $block .= "\n";
+                    file_put_contents($fpath, $block, FILE_APPEND);
+
+                } catch (Exception $tblEx) {
+                    $skipped[] = $tbl;
+                    file_put_contents($fpath,
+                        "\n-- SKIPPED `{$tbl}`: " . $tblEx->getMessage() . "\n\n",
+                        FILE_APPEND
+                    );
+                }
+            }
+
+            $footer  = "SET FOREIGN_KEY_CHECKS=1;\n";
+            $footer .= "\n-- Dump completed: " . date('Y-m-d H:i:s') . "\n";
+            if (!empty($skipped)) {
+                $footer .= "-- Skipped tables (" . count($skipped) . "): " . implode(', ', $skipped) . "\n";
+            }
+            file_put_contents($fpath, $footer, FILE_APPEND);
+
+            $fsize  = filesize($fpath);
+            $status = 'Completed';
+
+        } catch (Exception $dumpEx) {
+            $stub = "-- Backup generation failed: " . $dumpEx->getMessage() . "\n";
+            file_put_contents($fpath, $stub);
+            $fsize  = strlen($stub);
+            $status = 'Simulated';
+        }
+    }
+
+    // Also maintain a timestamped archive copy for point-in-time recovery
+    $timestamp = date('Ymd_His');
+    $archive_name = "petron_pos_db_{$timestamp}.sql";
+    if (file_exists($fpath) && $fsize > 0) {
+        @copy($fpath, $backup_dir . $archive_name);
+    }
+
+    // Save record to database_backups
+    $pdo->prepare("INSERT INTO database_backups
+        (backup_name, backup_file, backup_size, backup_type, compression, status, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,NOW())")
+        ->execute([$fname, '/backup/database/' . $fname, $fsize, $btype, $comp, $status, $user_id]);
+
+    $bid = (int)$pdo->lastInsertId();
+
+    if ($user_id) {
+        log_activity($pdo, $user_id, 'Database Management',
+            "{$trigger_label} backup: {$fname} (Status:{$status}, Size:" . round($fsize/1024,1) . " KB)");
+    } else {
+        log_activity($pdo, 0, 'Database Management',
+            "Automated system backup: {$fname} (Status:{$status}, Size:" . round($fsize/1024,1) . " KB)");
+    }
+
+    return [
+        'success'  => true,
+        'id'       => $bid,
+        'filename' => $fname,
+        'size'     => $fsize,
+        'status'   => $status,
+    ];
+}
+
+// ── Automated Scheduled Backup Checker ────────────────────────────────
+function check_and_run_scheduled_backup(PDO $pdo, string $backup_dir): bool {
+    $freq = cfg_get($pdo, 'backup_frequency', 'manual');
+    if ($freq === 'manual' || empty($freq)) {
+        return false;
+    }
+
+    $last_run_str = cfg_get($pdo, 'backup_last_auto_run', '');
+    $last_run = !empty($last_run_str) ? strtotime($last_run_str) : 0;
+    $now = time();
+    $is_due = false;
+
+    if ($freq === 'hourly') {
+        // Run if never run or >= 3600 seconds (1 hour) since last run
+        if ($last_run === 0 || ($now - $last_run) >= 3600) {
+            $is_due = true;
+        }
+    } elseif ($freq === 'daily') {
+        $stime = cfg_get($pdo, 'backup_scheduled_time', '02:00');
+        $todayScheduled = strtotime(date('Y-m-d') . ' ' . $stime);
+        // If scheduled time has arrived today and we haven't run today at or after the scheduled time
+        if ($now >= $todayScheduled && $last_run < $todayScheduled) {
+            $is_due = true;
+        }
+    } elseif ($freq === 'weekly') {
+        // Run once every 7 days (604800s)
+        if ($last_run === 0 || ($now - $last_run) >= 604800) {
+            $is_due = true;
+        }
+    } elseif ($freq === 'monthly') {
+        // Run once every 30 days (2592000s)
+        if ($last_run === 0 || ($now - $last_run) >= 2592000) {
+            $is_due = true;
+        }
+    }
+
+    if ($is_due) {
+        // Prevent concurrent execution races
+        cfg_set($pdo, 'backup_last_auto_run', date('Y-m-d H:i:s'), 0);
+
+        execute_database_backup($pdo, $backup_dir, null, 'Automated');
+
+        // Apply retention policy
+        $ret = max(1, (int)cfg_get($pdo, 'backup_retention_days', '30'));
+        apply_backup_retention_policy($pdo, $ret);
+
+        return true;
+    }
+
+    return false;
+}
+
 
 // ── Ensure backup columns exist ────────────────────────────────────────
 try {
@@ -44,8 +242,6 @@ try {
 // ── Load config ────────────────────────────────────────────────────────
 $cfg_backup_frequency = cfg_get($pdo, 'backup_frequency',       'manual');
 $cfg_scheduled_time   = cfg_get($pdo, 'backup_scheduled_time',  '02:00');
-$cfg_backup_type      = cfg_get($pdo, 'backup_type',            'Full Backup');
-$cfg_compression      = cfg_get($pdo, 'backup_compression',     'SQL');
 $cfg_retention_days   = cfg_get($pdo, 'backup_retention_days',  '30');
 $backup_dir           = __DIR__ . '/../backups/';
 $backup_dir_display   = '/backup/database/';
@@ -74,127 +270,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_backup_config') {
         $freq     = $_POST['backup_frequency']    ?? 'manual';
         $stime    = $_POST['scheduled_time']      ?? '02:00';
-        $btype    = $_POST['backup_type']         ?? 'Full Backup';
-        $comp     = $_POST['compression']         ?? 'SQL';
         $ret      = max(1, (int)($_POST['retention_days'] ?? 30));
         cfg_set($pdo, 'backup_frequency',      $freq,  $me['id']);
         cfg_set($pdo, 'backup_scheduled_time', $stime, $me['id']);
-        cfg_set($pdo, 'backup_type',           $btype, $me['id']);
-        cfg_set($pdo, 'backup_compression',    $comp,  $me['id']);
         cfg_set($pdo, 'backup_retention_days', $ret,   $me['id']);
         $cfg_backup_frequency = $freq;
         $cfg_scheduled_time   = $stime;
-        $cfg_backup_type      = $btype;
-        $cfg_compression      = $comp;
         $cfg_retention_days   = $ret;
-        log_activity($pdo, $me['id'], 'Database Management', 'Saved backup configuration');
+
+        // Apply retention policy immediately
+        apply_backup_retention_policy($pdo, $ret);
+
+        // Check if automated backup is immediately due under the schedule
+        check_and_run_scheduled_backup($pdo, $backup_dir);
+
+        log_activity($pdo, $me['id'], 'Database Management', "Saved backup configuration: Frequency={$freq}, Time={$stime}, Retention={$ret} Days");
         $success = "Backup configuration saved successfully.";
     }
 
     // ── Run Manual Backup ──────────────────────────────────────────────
     elseif ($action === 'run_backup') {
-        $btype = cfg_get($pdo, 'backup_type',        'Full Backup');
-        $comp  = cfg_get($pdo, 'backup_compression', 'SQL');
+        $res   = execute_database_backup($pdo, $backup_dir, $me['id'], 'Manual');
+        $fname = $res['filename'];
+        $fsize = $res['size'];
+        $status= $res['status'];
 
-        // Fixed: filename is always petron_pos_db_secure.sql
-        $fname = 'petron_pos_db_secure.sql';
-        $fpath = $backup_dir . $fname;
-
-        $db_name = 'petron_pos_db_secure';
-
-        // ── 1. Try real mysqldump first ──────────────────────────────
-        $mysqldump_bin = 'C:\\xampp\\mysql\\bin\\mysqldump.exe';
-        if (!file_exists($mysqldump_bin)) $mysqldump_bin = 'mysqldump';
-
-        $dump_args  = "--host=localhost --user=root";
-        if ($btype === 'Schema Only') $dump_args .= " --no-data";
-        if ($btype === 'Data Only')   $dump_args .= " --no-create-info";
-        $dump_args .= " --single-transaction --quick --skip-lock-tables --routines --triggers";
-        $dump_cmd = "\"{$mysqldump_bin}\" {$dump_args} {$db_name} > " . escapeshellarg($fpath) . " 2>&1";
-        $dump_out_arr = [];
-        @exec($dump_cmd, $dump_out_arr, $dump_ret);
-
-        $fsize  = file_exists($fpath) ? filesize($fpath) : 0;
-        $status = ($dump_ret === 0 && $fsize > 500) ? 'Completed' : 'Simulated';
-
-        // ── 2. Fallback: PHP-PDO full SQL dump ────────────────────────
-        if ($status === 'Simulated') {
-            try {
-                $header  = "-- ============================================================\n";
-                $header .= "-- Petron Station Management System\n";
-                $header .= "-- Database: {$db_name}\n";
-                $header .= "-- Backup Type: {$btype}\n";
-                $header .= "-- Generated: " . date('Y-m-d H:i:s') . "\n";
-                $header .= "-- ============================================================\n\n";
-                $header .= "SET FOREIGN_KEY_CHECKS=0;\n";
-                $header .= "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n";
-                $header .= "SET NAMES utf8mb4;\n\n";
-                file_put_contents($fpath, $header);
-
-                $tables       = $pdo->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN);
-                $skipped      = [];
-
-                foreach ($tables as $tbl) {
-                    try {
-                        $create = $pdo->query("SHOW CREATE TABLE `{$tbl}`")->fetch(PDO::FETCH_NUM);
-                        $block  = "\n-- -----------------------------------------------------------\n";
-                        $block .= "-- Table: `{$tbl}`\n";
-                        $block .= "-- -----------------------------------------------------------\n";
-                        $block .= "DROP TABLE IF EXISTS `{$tbl}`;\n";
-                        $block .= $create[1] . ";\n";
-
-                        if ($btype !== 'Schema Only') {
-                            $rows = $pdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
-                            if (!empty($rows)) {
-                                $cols    = array_map(fn($c) => "`{$c}`", array_keys($rows[0]));
-                                $block  .= "\nINSERT INTO `{$tbl}` (" . implode(', ', $cols) . ") VALUES\n";
-                                $vblocks = [];
-                                foreach ($rows as $row) {
-                                    $vals    = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote($v), array_values($row));
-                                    $vblocks[] = '(' . implode(', ', $vals) . ')';
-                                }
-                                $block .= implode(",\n", $vblocks) . ";\n";
-                            }
-                        }
-                        $block .= "\n";
-                        file_put_contents($fpath, $block, FILE_APPEND);
-
-                    } catch (Exception $tblEx) {
-                        // Skip broken/orphaned tables, note them in the dump
-                        $skipped[] = $tbl;
-                        file_put_contents($fpath,
-                            "\n-- SKIPPED `{$tbl}`: " . $tblEx->getMessage() . "\n\n",
-                            FILE_APPEND
-                        );
-                    }
-                }
-
-                $footer  = "SET FOREIGN_KEY_CHECKS=1;\n";
-                $footer .= "\n-- Dump completed: " . date('Y-m-d H:i:s') . "\n";
-                if (!empty($skipped)) {
-                    $footer .= "-- Skipped tables (" . count($skipped) . "): " . implode(', ', $skipped) . "\n";
-                }
-                file_put_contents($fpath, $footer, FILE_APPEND);
-
-                $fsize  = filesize($fpath);
-                $status = 'Completed';
-
-            } catch (Exception $dumpEx) {
-                $stub = "-- Backup generation failed: " . $dumpEx->getMessage() . "\n";
-                file_put_contents($fpath, $stub);
-                $fsize  = strlen($stub);
-                $status = 'Simulated';
-            }
-        }
-
-        // ── 3. Save record ───────────────────────────────────────────
-        $pdo->prepare("INSERT INTO database_backups
-            (backup_name, backup_file, backup_size, backup_type, compression, status, created_by, created_at)
-            VALUES (?,?,?,?,?,?,?,NOW())")
-            ->execute([$fname, '/backup/database/' . $fname, $fsize, $btype, $comp, $status, $me['id']]);
-
-        log_activity($pdo, $me['id'], 'Database Management',
-            "Manual backup: {$fname} (Type:{$btype}, Status:{$status}, Size:" . round($fsize/1024,1) . " KB)");
+        // Apply retention policy
+        $ret = max(1, (int)cfg_get($pdo, 'backup_retention_days', '30'));
+        apply_backup_retention_policy($pdo, $ret);
 
         $success = "Backup <strong>{$fname}</strong> created successfully. <small>(Status: {$status}, Size: " .
                    ($fsize >= 1048576 ? round($fsize/1048576,2).' MB' : round($fsize/1024,1).' KB') . ")</small>";
@@ -319,6 +422,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// ── Auto-run scheduled backup if due ─────────────────────────────────
+check_and_run_scheduled_backup($pdo, $backup_dir);
+
 // ── Data queries ───────────────────────────────────────────────────────
 // Backup history with created_by user join
 try {
@@ -395,6 +501,17 @@ $csrf = $_SESSION['csrf_token'] ?? '';
 // ── AJAX REAL-TIME AUTO-REFRESH ENDPOINT FOR DATABASE MANAGEMENT ──────────────
 if (isset($_GET['ajax_db']) && $_GET['ajax_db'] == '1') {
     header('Content-Type: application/json');
+    
+    // Check and run scheduled auto-backup in the background if due
+    if (check_and_run_scheduled_backup($pdo, $backup_dir)) {
+        try {
+            $backup_history = $pdo->query(
+                "SELECT b.*, u.first_name, u.last_name
+                 FROM database_backups b LEFT JOIN users u ON u.id = b.created_by
+                 ORDER BY b.created_at DESC LIMIT 50"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {}
+    }
     
     $verified_cnt = count(array_filter($backup_history, fn($b) => !empty($b['verified'])));
     $last_b_date  = !empty($backup_history) ? date('M d', strtotime($backup_history[0]['created_at'])) : '—';
@@ -1070,42 +1187,26 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <h3 class="db-card-title"><i class="fas fa-cog"></i> Backup Configuration</h3>
       </div>
       <div class="db-card-body">
-        <form method="POST">
+        <form method="POST" id="backupConfigForm">
           <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>" class="db-form-tab-input">
           <input type="hidden" name="action" value="save_backup_config">
           <div class="db-form-grid" style="margin-bottom:16px;">
             <div class="db-form-group">
               <label class="db-label">Backup Frequency</label>
-              <select name="backup_frequency" class="db-select">
+              <select name="backup_frequency" id="backupFrequencySelect" class="db-select">
                 <?php foreach(['manual'=>'Manual Only','hourly'=>'Every Hour','daily'=>'Daily','weekly'=>'Weekly','monthly'=>'Monthly'] as $k=>$v): ?>
                 <option value="<?= $k ?>" <?= $cfg_backup_frequency===$k?'selected':''?>><?= $v ?></option>
                 <?php endforeach; ?>
               </select>
               <span class="db-hint">How often automatic backups are triggered.</span>
             </div>
-            <div class="db-form-group" id="sched-time-wrap" style="<?= $cfg_backup_frequency==='manual'?'opacity:.4;pointer-events:none;':''?>">
+            <div class="db-form-group" id="sched-time-wrap" style="<?= in_array($cfg_backup_frequency, ['manual', 'hourly'], true) ? 'opacity:.45;pointer-events:none;' : ''?>">
               <label class="db-label">Scheduled Time</label>
-              <input type="time" name="scheduled_time" class="db-input" value="<?= htmlspecialchars($cfg_scheduled_time) ?>">
+              <input type="time" name="scheduled_time" id="scheduledTimeInput" class="db-input" value="<?= htmlspecialchars($cfg_scheduled_time) ?>">
               <span class="db-hint">Applies when Daily, Weekly, or Monthly is selected.</span>
             </div>
           </div>
-          <div class="db-form-grid-3" style="margin-bottom:16px;">
-            <div class="db-form-group">
-              <label class="db-label">Backup Type</label>
-              <select name="backup_type" class="db-select">
-                <?php foreach(['Full Backup','Incremental Backup','Schema Only','Data Only'] as $bt): ?>
-                <option value="<?= $bt ?>" <?= $cfg_backup_type===$bt?'selected':''?>><?= $bt ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="db-form-group">
-              <label class="db-label">Compression</label>
-              <select name="compression" class="db-select">
-                <?php foreach(['SQL','ZIP','GZIP'] as $c): ?>
-                <option value="<?= $c ?>" <?= $cfg_compression===$c?'selected':''?>><?= $c ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
+          <div class="db-form-grid" style="margin-bottom:20px;">
             <div class="db-form-group">
               <label class="db-label">Retention Period</label>
               <select name="retention_days" class="db-select">
@@ -1115,12 +1216,11 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               </select>
               <span class="db-hint">Old backups beyond this period will be flagged for cleanup.</span>
             </div>
-          </div>
-          <!-- Storage Location — read only -->
-          <div class="db-form-group" style="max-width:360px; margin-bottom:20px;">
-            <label class="db-label">Storage Location</label>
-            <input type="text" class="db-input" value="<?= htmlspecialchars($backup_dir_display) ?>" readonly>
-            <span class="db-hint">Server-side storage path (managed by system administrator).</span>
+            <div class="db-form-group">
+              <label class="db-label">Storage Location</label>
+              <input type="text" class="db-input" value="<?= htmlspecialchars($backup_dir_display) ?>" readonly>
+              <span class="db-hint">Server-side storage path (managed by system administrator).</span>
+            </div>
           </div>
           <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center; margin-top:16px;">
             <button type="submit" class="db-btn db-btn-primary">
@@ -1138,9 +1238,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       </div>
       <div class="db-card-body">
         <p style="color:#555; font-size:14.5px; margin:0 0 16px; line-height:1.5;">
-          Triggers an immediate backup using the current configuration.
-          Current type: <strong><?= htmlspecialchars($cfg_backup_type) ?></strong> |
-          Compression: <strong><?= htmlspecialchars($cfg_compression) ?></strong>
+          Triggers an immediate database backup using the current configuration.
         </p>
 
         <!-- Progress bar (animated on click) -->
@@ -1189,7 +1287,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <tr>
                 <th>#</th>
                 <th>Filename</th>
-                <th>Backup Type</th>
                 <th>Size</th>
                 <th>Status</th>
                 <th>Created At</th>
@@ -1206,11 +1303,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                   <?php if (!empty($bk['verified'])): ?>
                   <div style="font-size:12.5px; color:var(--db-green); margin-top:2px; font-weight:600;"><i class="fas fa-shield-alt"></i> Verified</div>
                   <?php endif; ?>
-                </td>
-                <td>
-                  <span class="db-badge <?= ($bk['backup_type'] ?? 'Full Backup')==='Full Backup'?'db-badge-blue':'db-badge-gray' ?>">
-                    <?= htmlspecialchars($bk['backup_type'] ?? 'Full Backup') ?>
-                  </span>
                 </td>
                 <td style="font-size:14px;">
                   <?php
@@ -1236,24 +1328,13 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                 </td>
                 <td>
                   <div class="db-action-row" style="display:flex; gap:8px; align-items:center;">
-                    <!-- Verify -->
-                    <form method="POST" style="display:inline;">
-                      <input type="hidden" name="tab" value="backup">
-                      <input type="hidden" name="action" value="verify_backup">
-                      <input type="hidden" name="backup_id" value="<?= $bk['id'] ?>">
-                      <button type="submit" class="db-btn db-btn-primary db-btn-icon" title="Verify Integrity">
-                        <i class="fas fa-shield-alt"></i>
-                      </button>
-                    </form>
-                    <!-- Download via secure PHP handler → always served as petron_pos_db_secure
-.sql -->
+                    <!-- Download via secure PHP handler → always served as petron_pos_db_secure.sql -->
                     <?php
                       $fexists = file_exists($backup_dir . ($bk['backup_name'] ?? ''));
                       $dl_url  = 'db_download.php?id=' . (int)$bk['id'];
                     ?>
                     <a href="<?= $fexists ? $dl_url : '#' ?>"
-                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (petron_pos_db_secure
-.sql)"
+                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (petron_pos_db_secure.sql)"
                        <?= $fexists ? '' : 'onclick="alert(\'Backup file not found on server.\');return false;"' ?>>
                       <i class="fas fa-download"></i>
                     </a>
@@ -1278,19 +1359,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
       </div>
     </div>
 
-    <!-- Verify Latest -->
-    <div style="display:flex; justify-content:flex-end; margin-top:-10px; margin-bottom:20px;">
-      <?php if (!empty($backup_history)): ?>
-      <form method="POST">
-        <input type="hidden" name="tab" value="backup">
-        <input type="hidden" name="action" value="verify_backup">
-        <input type="hidden" name="backup_id" value="<?= $backup_history[0]['id'] ?>">
-        <button type="submit" class="db-btn db-btn-primary">
-          <i class="fas fa-shield-check"></i> Verify Latest Backup
-        </button>
-      </form>
-      <?php endif; ?>
-    </div>
 
   </div><!-- /tab-backup -->
 
@@ -1315,7 +1383,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <tr>
                 <th>#</th>
                 <th>Filename</th>
-                <th>Backup Type</th>
                 <th>Size</th>
                 <th>Date</th>
                 <th>Status</th>
@@ -1327,7 +1394,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               <tr>
                 <td style="color:#666; font-size:13.5px;"><?= $i+1 ?></td>
                 <td style="font-weight:600; font-size:14px; font-family:monospace;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></td>
-                <td><span class="db-badge db-badge-blue"><?= htmlspecialchars($bk['backup_type'] ?? 'Full Backup') ?></span></td>
                 <td style="font-size:14px;">
                   <?php $sz=(int)($bk['backup_size']??0); echo $sz>=1048576?round($sz/1048576,2).' MB':($sz>=1024?round($sz/1024,1).' KB':$sz.' B'); ?>
                 </td>
@@ -2231,6 +2297,31 @@ function downloadSecLogs() {
           showToast(t.type, t.text, t.sub || null);
         }, i * 200);
       });
+    }
+
+    // ── Dynamic Scheduled Time toggle for Backup Frequency ────────────
+    const freqSelect = document.getElementById('backupFrequencySelect');
+    const schedWrap  = document.getElementById('sched-time-wrap');
+    const schedInput = document.getElementById('scheduledTimeInput');
+
+    function updateSchedTimeVisibility() {
+      if (!freqSelect || !schedWrap || !schedInput) return;
+      const val = freqSelect.value;
+      const isManualOrHourly = (val === 'manual' || val === 'hourly');
+      if (isManualOrHourly) {
+        schedWrap.style.opacity = '0.45';
+        schedWrap.style.pointerEvents = 'none';
+        schedInput.setAttribute('tabindex', '-1');
+      } else {
+        schedWrap.style.opacity = '1';
+        schedWrap.style.pointerEvents = 'auto';
+        schedInput.removeAttribute('tabindex');
+      }
+    }
+
+    if (freqSelect) {
+      freqSelect.addEventListener('change', updateSchedTimeVisibility);
+      updateSchedTimeVisibility();
     }
 
     // Clean query parameters from URL so F5/auto-refresh doesn't re-trigger old banners

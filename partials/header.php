@@ -4171,7 +4171,7 @@ require_once __DIR__ . '/rbac_menu.php';
       'admin_management'              => 'admin_management',
       'module_config'                 => 'module_config',
       'database_management'           => 'database_management',
-      'station_management'            => 'station_management',
+      'station_management'            => 'admin_management',
       'system_settings'               => 'system_settings',
       'superadmin_reports'            => 'superadmin_reports',
       'audit_trail'                   => 'audit_trail',
