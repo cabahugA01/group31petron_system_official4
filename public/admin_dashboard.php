@@ -993,7 +993,27 @@ if (adm_table_exists($pdo, 'audit_logs')) {
 }
 
 // Operational User / Shift / Branch Status
-$active_staff_count = (int) adm_value($pdo, "SELECT COUNT(*) FROM users WHERE status = 'active'", []);
+// Must strictly match Admin User Management (users.php) for this station:
+// counts active staff & manager accounts assigned to this station (excluding superadmin and other stations)
+$active_staff_count = 0;
+if ($station_id > 0) {
+    $active_staff_count = (int) adm_value(
+        $pdo,
+        "SELECT COUNT(*) FROM users 
+         WHERE station_id = ? 
+           AND LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') 
+           AND LOWER(COALESCE(status, 'active')) NOT IN ('disabled', 'archived', 'inactive', 'locked')",
+        [$station_id]
+    );
+} else {
+    $active_staff_count = (int) adm_value(
+        $pdo,
+        "SELECT COUNT(*) FROM users 
+         WHERE LOWER(role) IN ('manager', 'staff', 'operations_staff', 'operations staff') 
+           AND LOWER(COALESCE(status, 'active')) NOT IN ('disabled', 'archived', 'inactive', 'locked')",
+        []
+    );
+}
 $current_hour       = (int)date('H');
 $current_shift_name = ($current_hour >= 6 && $current_hour < 14) ? 'Shift 1 (06:00 - 14:00)' : 'Shift 2 (14:00 - 22:00)';
 
@@ -1025,6 +1045,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             'payment_maya'         => number_format($payment_map['Maya'] ?? 0, 2),
             'payment_fleet'        => number_format($payment_map['Petron Fleet Card'] ?? 0, 2),
             'payment_credit_acct'  => number_format($payment_map['Credit Account'] ?? 0, 2),
+            'active_staff_count'   => number_format($active_staff_count),
         ],
         'charts' => [
             'week_labels'          => $week_labels,
@@ -2294,7 +2315,9 @@ include __DIR__ . '/../partials/header.php';
                 <div class="adm-metric-list">
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Active Staff Members</span>
-                        <span class="adm-metric-value" style="color:#15803D;"><?= number_format($active_staff_count) ?> Active</span>
+                        <a href="users.php" style="text-decoration:none;" title="View Active Staff in User Management">
+                            <span class="adm-metric-value" style="color:#15803D;" id="op_active_staff"><?= number_format($active_staff_count) ?> Active</span>
+                        </a>
                     </div>
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Current Operational Shift</span>
@@ -2710,6 +2733,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (document.getElementById('pm_maya')) document.getElementById('pm_maya').innerHTML = '&#8369; ' + data.kpis.payment_maya;
                 if (document.getElementById('pm_fleet')) document.getElementById('pm_fleet').innerHTML = '&#8369; ' + data.kpis.payment_fleet;
                 if (document.getElementById('pm_credit_acct')) document.getElementById('pm_credit_acct').innerHTML = '&#8369; ' + data.kpis.payment_credit_acct;
+                if (document.getElementById('op_active_staff') && data.kpis.active_staff_count !== undefined) document.getElementById('op_active_staff').textContent = data.kpis.active_staff_count + ' Active';
             }
 
             if (data.charts) {

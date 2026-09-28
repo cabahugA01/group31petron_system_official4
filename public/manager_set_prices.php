@@ -3018,9 +3018,16 @@ div[id$="Modal"] .modal-table-wrap {
 
 <script>
 // ── Right-Side Toast Banner Notification System (Replaces modal popup forms) ──
+var mgrToastDismissTimer = null;
+var mgrToastRemoveTimer = null;
+
 function showCustomAlert(message, type, callback) {
     type = type || 'success';
     var isError = (type === 'error' || type === 'danger');
+
+    // Dismiss any existing global toasts from header
+    var globalStack = document.getElementById('globalToastStack');
+    if (globalStack) globalStack.innerHTML = '';
 
     var container = document.getElementById('rightToastContainer');
     if (!container) {
@@ -3032,6 +3039,11 @@ function showCustomAlert(message, type, callback) {
         container.style.top = '85px';
         container.style.zIndex = '2147483647';
     }
+
+    // Strictly ONE banner at a time: clear existing toasts and pending timers
+    if (mgrToastDismissTimer) clearTimeout(mgrToastDismissTimer);
+    if (mgrToastRemoveTimer) clearTimeout(mgrToastRemoveTimer);
+    container.innerHTML = '';
 
     var toast = document.createElement('div');
     toast.className = 'right-toast-banner ' + (isError ? 'error' : 'success');
@@ -3075,10 +3087,10 @@ function showCustomAlert(message, type, callback) {
     }, 20);
 
     var delay = (typeof callback === 'function') ? 2200 : 4000;
-    setTimeout(function() {
+    mgrToastDismissTimer = setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
-        setTimeout(function() {
+        mgrToastRemoveTimer = setTimeout(function() {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
             if (typeof callback === 'function') {
                 callback();

@@ -6871,32 +6871,32 @@ require_once __DIR__ . '/rbac_menu.php';
 <style id="globalToastSystemStyles">
 .global-toast-stack {
     position: fixed !important;
-    top: 20px !important;
-    right: 20px !important;
-    z-index: 9999999 !important;
+    top: 85px !important;
+    right: 24px !important;
+    z-index: 2147483647 !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 10px !important;
     pointer-events: none !important;
-    max-width: 420px !important;
-    width: calc(100vw - 40px) !important;
+    max-width: 440px !important;
+    width: calc(100vw - 48px) !important;
 }
 .global-toast {
     pointer-events: auto !important;
     min-width: 280px !important;
     background: #16a34a !important;
     color: #ffffff !important;
-    padding: 13px 42px 13px 16px !important;
-    border-radius: 8px !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22) !important;
-    font-size: 13.5px !important;
+    padding: 14px 44px 14px 18px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     position: relative !important;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
-    line-height: 1.4 !important;
+    line-height: 1.45 !important;
     display: flex !important;
     align-items: center !important;
-    gap: 10px !important;
+    gap: 12px !important;
     animation: globalToastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
     transition: opacity 0.3s ease, transform 0.3s ease !important;
 }
@@ -6917,11 +6917,14 @@ require_once __DIR__ . '/rbac_menu.php';
     background: none !important;
     border: none !important;
     color: #ffffff !important;
-    font-size: 20px !important;
+    font-size: 22px !important;
     line-height: 1 !important;
     cursor: pointer !important;
     opacity: 0.85 !important;
     padding: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 .global-toast-close:hover {
     opacity: 1 !important;
@@ -6936,7 +6939,10 @@ require_once __DIR__ . '/rbac_menu.php';
 
 <script id="globalToastSystemScript">
 (function() {
+    let globalToastTimer = null;
+
     // ── Global Toast Notification Generator ─────────────────────────────────────
+    // Enforces single-banner display (no stacking/overlapping) positioned safely below header
     window.showGlobalToast = function(msg, type = 'success') {
         if (!msg) return;
         let stack = document.getElementById('globalToastStack');
@@ -6946,29 +6952,42 @@ require_once __DIR__ . '/rbac_menu.php';
             stack.className = 'global-toast-stack';
             document.body.appendChild(stack);
         }
+
+        // Clean up any pending timer
+        if (globalToastTimer) {
+            clearTimeout(globalToastTimer);
+            globalToastTimer = null;
+        }
+
+        // Single banner rule: instantly clear any existing banners in stack or page-specific containers
+        stack.innerHTML = '';
+        const adminContainer = document.getElementById('adminToastContainer');
+        if (adminContainer) adminContainer.innerHTML = '';
+        const rightContainer = document.getElementById('rightToastContainer');
+        if (rightContainer) rightContainer.innerHTML = '';
         
         const typeKey = String(type || 'success').toLowerCase();
-        let iconHtml = '<i class="fas fa-check-circle" style="font-size:16px;"></i>';
+        let iconHtml = '<i class="fas fa-check-circle" style="font-size:17px;flex-shrink:0;"></i>';
         if (typeKey === 'error' || typeKey === 'danger') {
-            iconHtml = '<i class="fas fa-exclamation-circle" style="font-size:16px;"></i>';
+            iconHtml = '<i class="fas fa-exclamation-circle" style="font-size:17px;flex-shrink:0;"></i>';
         } else if (typeKey === 'warning') {
-            iconHtml = '<i class="fas fa-exclamation-triangle" style="font-size:16px;"></i>';
+            iconHtml = '<i class="fas fa-exclamation-triangle" style="font-size:17px;flex-shrink:0;"></i>';
         } else if (typeKey === 'info') {
-            iconHtml = '<i class="fas fa-info-circle" style="font-size:16px;"></i>';
+            iconHtml = '<i class="fas fa-info-circle" style="font-size:17px;flex-shrink:0;"></i>';
         }
 
         const toast = document.createElement('div');
         toast.className = 'global-toast ' + typeKey;
-        toast.innerHTML = `${iconHtml}<span>${msg}</span><button type="button" class="global-toast-close" onclick="this.parentElement.remove()">&times;</button>`;
+        toast.innerHTML = `${iconHtml}<span style="flex:1;min-width:0;word-break:break-word;">${msg}</span><button type="button" class="global-toast-close" onclick="this.parentElement.remove()" aria-label="Close">&times;</button>`;
         stack.appendChild(toast);
 
-        setTimeout(() => {
+        globalToastTimer = setTimeout(() => {
             if (toast.parentElement) {
                 toast.style.opacity = '0';
                 toast.style.transform = 'translateX(20px)';
                 setTimeout(() => toast.remove(), 300);
             }
-        }, 4000);
+        }, 4500);
     };
 
     // ── SYSTEM-WIDE OVERRIDE OF NATIVE BROWSER ALERT & CONFIRM ─────────────────
@@ -6976,7 +6995,7 @@ require_once __DIR__ . '/rbac_menu.php';
     window.alert = function(msg) {
         if (msg === undefined || msg === null) return;
         const text = String(msg);
-        const isError = /error|failed|invalid|cannot|unable|wrong|denied|required|warning/i.test(text);
+        const isError = /error|failed|invalid|cannot|unable|wrong|denied|required|warning|greater than|less than/i.test(text);
         window.showGlobalToast(text, isError ? 'error' : 'success');
     };
 

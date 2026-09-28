@@ -2920,10 +2920,17 @@ function filterAdminMerchTable() {
 }
 
 // ── Professional Toast Banner ─────────────────────────────────────────────
+var adminToastDismissTimer = null;
+var adminToastRemoveTimer = null;
+
 function showCustomAlert(message, type, callback) {
     type = type || 'success';
     var isError = (type === 'error' || type === 'danger' || type === 'warning');
     var isWarning = (type === 'warning');
+
+    // Dismiss any existing global toasts from header
+    var globalStack = document.getElementById('globalToastStack');
+    if (globalStack) globalStack.innerHTML = '';
 
     var container = document.getElementById('adminToastContainer');
     if (!container) {
@@ -2935,6 +2942,11 @@ function showCustomAlert(message, type, callback) {
         container.style.top = '85px';
         container.style.zIndex = '2147483647';
     }
+
+    // Strictly ONE banner at a time: clear existing toasts and pending timers
+    if (adminToastDismissTimer) clearTimeout(adminToastDismissTimer);
+    if (adminToastRemoveTimer) clearTimeout(adminToastRemoveTimer);
+    container.innerHTML = '';
 
     var toast = document.createElement('div');
     var accentColor = isWarning ? '#d97706' : (isError ? '#dc2626' : '#16a34a');
@@ -2972,10 +2984,10 @@ function showCustomAlert(message, type, callback) {
     setTimeout(function() { toast.style.transform = 'translateX(0)'; toast.style.opacity = '1'; }, 20);
 
     var delay = (typeof callback === 'function') ? 1400 : (isError || isWarning ? 4000 : 3000);
-    setTimeout(function() {
+    adminToastDismissTimer = setTimeout(function() {
         toast.style.transform = 'translateX(120%)';
         toast.style.opacity = '0';
-        setTimeout(function() {
+        adminToastRemoveTimer = setTimeout(function() {
             if (toast.parentNode) toast.parentNode.removeChild(toast);
             if (typeof callback === 'function') callback();
         }, 350);
