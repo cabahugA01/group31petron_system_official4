@@ -214,7 +214,7 @@ if (!function_exists('enforce_server_security')) {
                 $stStmt->execute();
                 $stVal = $stStmt->fetchColumn();
                 if ($stVal !== false && is_numeric($stVal) && (int)$stVal > 0) {
-                    $timeout = max(300, (int)$stVal * 60); // minimum 5 mins
+                    $timeout = max(60, (int)$stVal * 60); // minimum 1 min (60s)
                 }
             }
         } catch (Exception $e) {}
@@ -231,7 +231,16 @@ if (!function_exists('enforce_server_security')) {
                 sec_reject_request(401, 'Session expired due to inactivity. Please log in again.');
             }
         }
-        $_SESSION['last_activity'] = time();
+
+        // Only update last activity timestamp on REAL user requests, NOT background polling/heartbeats
+        $is_background_poll = !empty($_SERVER['HTTP_X_PETRON_BACKGROUND']) 
+            || (!empty($_GET['ajax_sss'])) 
+            || (isset($_GET['poll']) && $_GET['poll'] == '1')
+            || (isset($_GET['action']) && in_array($_GET['action'], ['check_maintenance', 'unread_count', 'get_unread_count', 'ping', 'heartbeat'], true));
+
+        if (!$is_background_poll) {
+            $_SESSION['last_activity'] = time();
+        }
 
         // 2. Database Re-verification of User
         $user = validate_server_session_user($pdo);

@@ -189,7 +189,7 @@ function require_login(){
     $stmtTmt->execute();
     $storedTimeout = $stmtTmt->fetchColumn();
     if ($storedTimeout !== false && is_numeric($storedTimeout) && (int)$storedTimeout > 0) {
-      $timeoutMinutes = max(5, (int)$storedTimeout); // Enforce minimum 5 minutes to prevent accidental lockouts
+      $timeoutMinutes = max(1, (int)$storedTimeout); // Enforce whatever minutes are configured (min: 1 minute)
       $timeout = $timeoutMinutes * 60; // convert minutes to seconds
     }
   } catch (Exception $e) {
@@ -283,8 +283,16 @@ function require_login(){
         exit;
       }
     }
-    // Update last activity timestamp on any authenticated activity
-    $_SESSION['last_activity'] = time();
+
+    // Only update last activity timestamp on REAL user requests, NOT background polling/heartbeats
+    $is_background_poll = !empty($_SERVER['HTTP_X_PETRON_BACKGROUND']) 
+        || (!empty($_GET['ajax_sss'])) 
+        || (isset($_GET['poll']) && $_GET['poll'] == '1')
+        || (isset($_GET['action']) && in_array($_GET['action'], ['check_maintenance', 'unread_count', 'get_unread_count', 'ping', 'heartbeat'], true));
+
+    if (!$is_background_poll) {
+      $_SESSION['last_activity'] = time();
+    }
   }
 
   if(empty($_SESSION['user'])){

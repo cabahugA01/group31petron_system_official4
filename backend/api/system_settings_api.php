@@ -182,7 +182,16 @@ try {
                 if ($key === 'system_status' && $valStr !== 'Maintenance') {
                     $valStr = 'Online';
                 }
+                if ($key === 'session_timeout') {
+                    $valStr = (string)max(1, (int)$value);
+                }
                 upsertSetting($pdo, $key, $valStr, $category, $station_id, $me['id']);
+            }
+
+            // Sync global session_timeout across all stations so it is truly global
+            if ($station_id === 0 && isset($settings['session_timeout'])) {
+                $globalTimeout = (string)max(1, (int)$settings['session_timeout']);
+                $pdo->prepare("UPDATE system_settings SET setting_value = ?, updated_at = NOW(), updated_by = ? WHERE setting_key = 'session_timeout'")->execute([$globalTimeout, $me['id']]);
             }
 
             // Sync company_logo → 'logo' and 'system_logo' keys (read by partials/header.php and reports)

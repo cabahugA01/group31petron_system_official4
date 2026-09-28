@@ -143,8 +143,34 @@ if (isset($_GET['reset_success']) && $_GET['reset_success'] === '1') {
 
 // Check for session timeout due to inactivity
 $timeout_msg = '';
-if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
+if (isset($_GET['timeout'])) {
+    // Thoroughly destroy existing user session and clear auth cookies
+    $_SESSION = [];
+    if (ini_get('session.use_cookies') && !headers_sent()) {
+        $p = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_destroy();
+    }
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     $timeout_msg = 'Your session has expired due to inactivity. Please log in again.';
+}
+
+// Handle logout if requested
+if (isset($_GET['logout'])) {
+    $_SESSION = [];
+    if (ini_get('session.use_cookies') && !headers_sent()) {
+        $p = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_destroy();
+    }
+    header("Location: login.php");
+    exit;
 }
 
 // Check for login error from auth/login.php
@@ -153,8 +179,8 @@ if (isset($_SESSION['login_error'])) {
     unset($_SESSION['login_error']);
 }
 
-// 1. Check if already logged in (only on GET requests)
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_SESSION['user'])) {
+// 1. Check if already logged in (only on GET requests when not timed out or logging out)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_SESSION['user']) && !isset($_GET['timeout']) && !isset($_GET['logout'])) {
     $userRole = $_SESSION['user']['role'] ?? 'staff';
     $role = function_exists('role_key') ? role_key($userRole) : strtolower(trim($userRole));
     if ($role === 'superadmin') {
@@ -167,13 +193,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_SESSION['user'])) {
         $redirect_url = 'staff_dashboard.php';
     }
     header("Location: $redirect_url");
-    exit;
-}
-
-// Handle logout if requested
-if (isset($_GET['logout'])) {
-    session_destroy();
-    header("Location: login.php");
     exit;
 }
 // 2. Handle Login Logic

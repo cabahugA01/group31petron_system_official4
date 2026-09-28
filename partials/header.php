@@ -16,13 +16,13 @@ require_login();
 $user = $_SESSION['user'];
 
 // ── Load session_timeout from system_settings for client-side idle tracker ──
-$header_session_timeout_seconds = 300; // fallback 5 minutes
+$header_session_timeout_seconds = 1800; // fallback 30 minutes
 try {
     $hst_stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'session_timeout' AND station_id = 0 LIMIT 1");
     $hst_stmt->execute();
     $hst_val = $hst_stmt->fetchColumn();
     if ($hst_val !== false && is_numeric($hst_val) && (int)$hst_val > 0) {
-        $header_session_timeout_seconds = (int)$hst_val * 60; // convert minutes → seconds
+        $header_session_timeout_seconds = max(1, (int)$hst_val) * 60; // convert minutes → seconds
     }
 } catch (Exception $e) {
     // keep fallback
@@ -7138,19 +7138,44 @@ try {
 <?php endif; ?>
 
 <script>
-// ── Client-Side Session Idle Timeout Tracker ──
+// ── Client-Side Session Idle Timeout Tracker (Global Across All Roles & Tabs) ──
 (function initSessionIdleTracker() {
-    const TIMEOUT_MS   = <?= (int)$header_session_timeout_seconds * 1000 ?>;  // from DB setting
-    const WARNING_BEFORE_MS = 60000; // Show warning 60 seconds before timeout
-    const loginUrl     = '<?= htmlspecialchars($public_base_url) ?>/login.php?timeout=1';
+    const TIMEOUT_SEC       = <?= (int)$header_session_timeout_seconds ?>;  // from DB setting
+    const TIMEOUT_MS        = TIMEOUT_SEC * 1000;
+    // Show warning before timeout: 60s if >= 2 mins, or half of timeout if < 2 mins (e.g. 30s for 1 min)
+    const WARNING_BEFORE_MS = TIMEOUT_MS >= 120000 ? 60000 : Math.max(10000, Math.floor(TIMEOUT_MS / 2));
+    const loginUrl          = '<?= htmlspecialchars($public_base_url) ?>/login.php?timeout=1';
+    const keepaliveUrl      = '<?= htmlspecialchars($public_base_url) ?>/api_session_keepalive.php';
 
-    let idleTimer    = null;
-    let warnTimer    = null;
-    let warningShown = false;
+    let idleTimer         = null;
+    let warnTimer         = null;
+    let warningShown      = false;
+    let countdownInterval = null;
+    let lastActivityTime  = Date.now();
 
-    function resetTimers() {
+    function getStorageTime() {
+        try {
+            return parseInt(localStorage.getItem('petron_last_activity') || '0', 10);
+        } catch(e) {
+            return 0;
+        }
+    }
+
+    function setStorageTime(time) {
+        try {
+            localStorage.setItem('petron_last_activity', String(time));
+        } catch(e) {}
+    }
+
+    function resetTimers(syncStorage = true) {
+        lastActivityTime = Date.now();
+        if (syncStorage) {
+            setStorageTime(lastActivityTime);
+        }
+
         clearTimeout(idleTimer);
         clearTimeout(warnTimer);
+        if (countdownInterval) clearInterval(countdownInterval);
         warningShown = false;
 
         // Remove warning modal if user becomes active again
@@ -7165,7 +7190,16 @@ try {
 
         // Force redirect on actual timeout
         idleTimer = setTimeout(() => {
-            window.location.href = loginUrl;
+            // Check if user was active in another tab recently
+            const storageTime = getStorageTime();
+            const elapsed = Date.now() - Math.max(lastActivityTime, storageTime);
+            if (elapsed < TIMEOUT_MS) {
+                // User was active in another tab, reset timers
+                resetTimers(false);
+                return;
+            }
+            try { localStorage.removeItem('petron_last_activity'); } catch(e) {}
+            window.location.replace(loginUrl);
         }, TIMEOUT_MS);
     }
 
@@ -7176,20 +7210,26 @@ try {
         const remainSec = Math.ceil(WARNING_BEFORE_MS / 1000);
         const overlay = document.createElement('div');
         overlay.id = 'sessionTimeoutWarning';
-        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,10,40,0.72); z-index:9999998; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,10,40,0.78); z-index:99999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
         overlay.innerHTML = `
-            <div style="background:#ffffff; border-radius:16px; padding:28px 26px; max-width:400px; width:90%; text-align:center; box-shadow:0 16px 50px rgba(0,0,0,0.35); border:2px solid #f59e0b;">
-                <div style="background:#fef3c7; color:#d97706; width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 16px;">
+            <div style="background:#ffffff; border-radius:18px; padding:28px 26px; max-width:420px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.4); border:2px solid #f59e0b; animation:fadeInScale 0.25s ease-out;">
+                <div style="background:#fef3c7; color:#d97706; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:26px; margin:0 auto 16px; box-shadow:0 0 20px rgba(245,158,11,0.35);">
                     <i class="fas fa-clock"></i>
                 </div>
-                <h3 style="font-size:16px; font-weight:800; color:#002F6C; margin:0 0 8px; text-transform:uppercase;">Session Expiring Soon</h3>
-                <p style="font-size:13px; color:#475569; line-height:1.6; margin:0 0 16px;">
-                    Your session will expire in <span id="stCountdown" style="font-weight:800; color:#d97706;">${remainSec}</span> second(s) due to inactivity.
+                <h3 style="font-size:17px; font-weight:800; color:#002F6C; margin:0 0 8px; text-transform:uppercase; letter-spacing:0.5px;">Session Expiring Soon</h3>
+                <p style="font-size:13.5px; color:#475569; line-height:1.6; margin:0 0 18px;">
+                    Your session will expire in <span id="stCountdown" style="font-weight:800; color:#d97706; font-size:15px; font-family:monospace;">${remainSec}</span> second(s) due to inactivity.
                 </p>
-                <button onclick="document.getElementById('sessionTimeoutWarning').remove(); window.sessionIdleReset && window.sessionIdleReset();"
-                    style="background:linear-gradient(135deg,#002F6C,#0050b3); color:#fff; border:none; border-radius:10px; padding:10px 24px; font-size:13.5px; font-weight:700; cursor:pointer; width:100%;">
-                    <i class="fas fa-check-circle"></i> &nbsp;Stay Logged In
-                </button>
+                <div style="display:flex; gap:10px; justify-content:center;">
+                    <button type="button" onclick="window.stayLoggedIn && window.stayLoggedIn();"
+                        style="flex:1; background:linear-gradient(135deg,#002F6C,#0050b3); color:#fff; border:none; border-radius:10px; padding:11px 20px; font-size:14px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 14px rgba(0,47,108,0.35);">
+                        <i class="fas fa-check-circle"></i> Stay Logged In
+                    </button>
+                    <button type="button" onclick="window.location.replace('${loginUrl}');"
+                        style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:10px; padding:11px 16px; font-size:13.5px; font-weight:600; cursor:pointer;">
+                        Log Out Now
+                    </button>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -7197,23 +7237,56 @@ try {
         // Countdown inside warning
         let secs = remainSec;
         const countEl = overlay.querySelector('#stCountdown');
-        const tick = setInterval(() => {
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
             secs--;
-            if (countEl) countEl.textContent = secs;
-            if (secs <= 0) clearInterval(tick);
+            if (countEl) countEl.textContent = Math.max(0, secs);
+            if (secs <= 0) {
+                clearInterval(countdownInterval);
+                try { localStorage.removeItem('petron_last_activity'); } catch(e) {}
+                window.location.replace(loginUrl);
+            }
         }, 1000);
     }
 
-    // Expose reset function globally so the "Stay Logged In" button can call it
+    // Keepalive function when user clicks "Stay Logged In"
+    window.stayLoggedIn = function() {
+        const warnModal = document.getElementById('sessionTimeoutWarning');
+        if (warnModal) warnModal.remove();
+        if (countdownInterval) clearInterval(countdownInterval);
+        warningShown = false;
+        
+        // Ping keepalive endpoint to extend PHP session on server
+        fetch(keepaliveUrl, { method: 'GET', cache: 'no-store' }).catch(() => {});
+        resetTimers(true);
+    };
+
+    // Expose reset function globally
     window.sessionIdleReset = resetTimers;
 
-    // Track user activity events
+    // Cross-tab synchronization via localStorage
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'petron_last_activity') {
+            resetTimers(false);
+        }
+    });
+
+    // Track user activity events (throttled to avoid performance hits)
+    let lastThrottled = 0;
+    function onUserInteraction() {
+        const now = Date.now();
+        if (now - lastThrottled > 2000) { // update at most every 2 seconds
+            lastThrottled = now;
+            resetTimers(true);
+        }
+    }
+
     ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'pointerdown'].forEach(evt => {
-        document.addEventListener(evt, resetTimers, { passive: true });
+        document.addEventListener(evt, onUserInteraction, { passive: true });
     });
 
     // Initialize
-    resetTimers();
+    resetTimers(true);
 })();
 </script>
 
