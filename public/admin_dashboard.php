@@ -146,19 +146,37 @@ $fuel_volume_sold_today = (float) adm_value($pdo, "
       AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
 ", $date_params);
 
-// Shift 1 & Shift 2 Fuel Sales
+// Shift 1 & Shift 2 Fuel Sales (Comprehensive fetch from fuel_transactions + fuel_sales_closing)
 $shift1_fuel_sales = (float) adm_value($pdo, "
     SELECT COALESCE(SUM(total_amount), 0)
     FROM fuel_transactions
     WHERE {$st_sql}
       AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
       AND (
-        LOWER(COALESCE(shift_period, '')) IN ('shift 1', 'first shift', 'morning') 
+        LOWER(COALESCE(shift_period, '')) IN ('first', 'morning', '1', 'shift1', 'shift 1') 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%first%' 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%morning%' 
         OR LOWER(COALESCE(shift_name, '')) LIKE '%1%' 
         OR (TIME(COALESCE(transaction_date, created_at)) >= '06:00:00' AND TIME(COALESCE(transaction_date, created_at)) < '14:00:00')
       )
       AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
 ", $date_params);
+
+if ($shift1_fuel_sales <= 0 && adm_table_exists($pdo, 'fuel_sales_closing')) {
+    $shift1_fuel_sales = (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(COALESCE(total_fuel_sales, cash_shift1, 0)), 0)
+        FROM fuel_sales_closing
+        WHERE {$st_sql}
+          AND DATE(report_date) BETWEEN ? AND ?
+          AND (
+            LOWER(COALESCE(shift_period, '')) IN ('first', 'morning', '1', 'shift1', 'shift 1') 
+            OR LOWER(COALESCE(shift, '')) LIKE '%first%' 
+            OR LOWER(COALESCE(shift, '')) LIKE '%1%' 
+            OR LOWER(COALESCE(shift, '')) LIKE '%morning%'
+          )
+          AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+    ", $date_params);
+}
 
 $shift2_fuel_sales = (float) adm_value($pdo, "
     SELECT COALESCE(SUM(total_amount), 0)
@@ -166,12 +184,31 @@ $shift2_fuel_sales = (float) adm_value($pdo, "
     WHERE {$st_sql}
       AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
       AND (
-        LOWER(COALESCE(shift_period, '')) IN ('shift 2', 'second shift', 'afternoon') 
+        LOWER(COALESCE(shift_period, '')) IN ('second', 'afternoon', 'evening', '2', 'shift2', 'shift 2', 'night', 'midnight') 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%second%' 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%afternoon%' 
+        OR LOWER(COALESCE(shift_name, '')) LIKE '%evening%' 
         OR LOWER(COALESCE(shift_name, '')) LIKE '%2%' 
         OR (TIME(COALESCE(transaction_date, created_at)) >= '14:00:00' OR TIME(COALESCE(transaction_date, created_at)) < '06:00:00')
       )
       AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
 ", $date_params);
+
+if ($shift2_fuel_sales <= 0 && adm_table_exists($pdo, 'fuel_sales_closing')) {
+    $shift2_fuel_sales = (float) adm_value($pdo, "
+        SELECT COALESCE(SUM(COALESCE(total_fuel_sales, cash_shift2, 0)), 0)
+        FROM fuel_sales_closing
+        WHERE {$st_sql}
+          AND DATE(report_date) BETWEEN ? AND ?
+          AND (
+            LOWER(COALESCE(shift_period, '')) IN ('second', 'afternoon', 'evening', '2', 'shift2', 'shift 2', 'night', 'midnight') 
+            OR LOWER(COALESCE(shift, '')) LIKE '%second%' 
+            OR LOWER(COALESCE(shift, '')) LIKE '%2%' 
+            OR LOWER(COALESCE(shift, '')) LIKE '%afternoon%'
+          )
+          AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+    ", $date_params);
+}
 
 // Merchandise Sales (Filtered Date Range)
 $merch_today_sales = (float) adm_value($pdo, "
@@ -376,28 +413,130 @@ $submitted_meter_readings = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_tra
 $validated_meter_readings = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, ''))) IN ('completed', 'validated', 'verified')", $st_params);
 $rejected_meter_readings  = (int) adm_value($pdo, "SELECT COUNT(*) FROM fuel_transactions WHERE {$st_sql} AND LOWER(TRIM(COALESCE(status, ''))) IN ('rejected', 'for revision', 'for_revision', 'returned')", $st_params);
 
-// Fuel Sales Closing Statuses
-$shift1_status = 'Pending';
-$shift2_status = 'Pending';
+// Fuel Sales Closing Statuses — Dynamic & comprehensive status determination
+$shift1_status = null;
+$shift2_status = null;
+
+// A. Check fuel_sales_closing for this station and date range
 if (adm_table_exists($pdo, 'fuel_sales_closing')) {
-    $closings_today = adm_rows($pdo, "
+    $closings_list = adm_rows($pdo, "
         SELECT shift, shift_period, status
         FROM fuel_sales_closing
-        WHERE {$st_sql} AND DATE(report_date) = ?
-    ", array_merge($st_params, [$today_str]));
+        WHERE {$st_sql} AND DATE(report_date) BETWEEN ? AND ?
+        ORDER BY id DESC
+    ", $date_params);
 
-    foreach ($closings_today as $c) {
+    foreach ($closings_list as $c) {
         $shift_name = strtolower(trim($c['shift'] . ' ' . $c['shift_period']));
-        $c_status = strtolower(trim($c['status']));
-        $is_done = in_array($c_status, ['completed', 'approved', 'verified', 'checked', 'closing_completed']);
-        $is_ret  = in_array($c_status, ['returned', 'for_revision', 'rejected']);
+        $c_status   = strtolower(trim($c['status']));
+        $is_done    = in_array($c_status, ['completed', 'approved', 'verified', 'checked', 'closing_completed']);
+        $is_ret     = in_array($c_status, ['returned', 'for_revision', 'rejected']);
 
-        if (str_contains($shift_name, '1') || str_contains($shift_name, 'first') || str_contains($shift_name, 'morning')) {
+        if ($shift1_status === null && (str_contains($shift_name, '1') || str_contains($shift_name, 'first') || str_contains($shift_name, 'morning'))) {
             $shift1_status = $is_done ? 'Completed' : ($is_ret ? 'Returned for Correction' : 'Submitted');
-        } elseif (str_contains($shift_name, '2') || str_contains($shift_name, 'second') || str_contains($shift_name, 'afternoon')) {
+        } elseif ($shift2_status === null && (str_contains($shift_name, '2') || str_contains($shift_name, 'second') || str_contains($shift_name, 'afternoon') || str_contains($shift_name, 'evening'))) {
             $shift2_status = $is_done ? 'Completed' : ($is_ret ? 'Returned for Correction' : 'Submitted');
         }
     }
+}
+
+// B. Check fuel_transactions for readings status if closing not yet recorded
+if ($shift1_status === null) {
+    $f1_tx_statuses = adm_rows($pdo, "
+        SELECT LOWER(status) AS st
+        FROM fuel_transactions
+        WHERE {$st_sql}
+          AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+          AND (
+            LOWER(COALESCE(shift_period, '')) IN ('first', 'morning', '1', 'shift1', 'shift 1')
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%first%'
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%morning%'
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%1%'
+            OR (TIME(COALESCE(transaction_date, created_at)) >= '06:00:00' AND TIME(COALESCE(transaction_date, created_at)) < '14:00:00')
+          )
+          AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled')
+        GROUP BY status
+    ", $date_params);
+
+    if (!empty($f1_tx_statuses)) {
+        $st_list = array_column($f1_tx_statuses, 'st');
+        if (array_intersect($st_list, ['verified', 'completed', 'validated', 'approved'])) {
+            $shift1_status = 'Completed';
+        } elseif (array_intersect($st_list, ['returned', 'for revision', 'for_revision', 'rejected'])) {
+            $shift1_status = 'Returned for Correction';
+        } else {
+            $shift1_status = 'Submitted';
+        }
+    }
+}
+
+if ($shift2_status === null) {
+    $f2_tx_statuses = adm_rows($pdo, "
+        SELECT LOWER(status) AS st
+        FROM fuel_transactions
+        WHERE {$st_sql}
+          AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+          AND (
+            LOWER(COALESCE(shift_period, '')) IN ('second', 'afternoon', 'evening', '2', 'shift2', 'shift 2', 'night', 'midnight')
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%second%'
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%afternoon%'
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%evening%'
+            OR LOWER(COALESCE(shift_name, '')) LIKE '%2%'
+            OR (TIME(COALESCE(transaction_date, created_at)) >= '14:00:00' OR TIME(COALESCE(transaction_date, created_at)) < '06:00:00')
+          )
+          AND LOWER(COALESCE(status, '')) NOT IN ('voided','cancelled')
+        GROUP BY status
+    ", $date_params);
+
+    if (!empty($f2_tx_statuses)) {
+        $st_list = array_column($f2_tx_statuses, 'st');
+        if (array_intersect($st_list, ['verified', 'completed', 'validated', 'approved'])) {
+            $shift2_status = 'Completed';
+        } elseif (array_intersect($st_list, ['returned', 'for revision', 'for_revision', 'rejected'])) {
+            $shift2_status = 'Returned for Correction';
+        } else {
+            $shift2_status = 'Submitted';
+        }
+    }
+}
+
+// C. Dynamic Operational Context (eliminates hardcoded 'Pending' default)
+$cur_clock_hour = (int)date('H');
+if ($shift1_status === null) {
+    if ($is_today_filter) {
+        if ($cur_clock_hour < 6) {
+            $shift1_status = 'Upcoming';
+        } elseif ($cur_clock_hour >= 6 && $cur_clock_hour < 14) {
+            $shift1_status = 'In Progress';
+        } else {
+            $shift1_status = ($shift1_fuel_sales > 0) ? 'Pending Closing' : 'No Sales Logged';
+        }
+    } else {
+        $shift1_status = ($date_to < date('Y-m-d')) ? (($shift1_fuel_sales > 0) ? 'Pending Closing' : 'No Sales Logged') : 'Upcoming';
+    }
+}
+
+if ($shift2_status === null) {
+    if ($is_today_filter) {
+        if ($cur_clock_hour < 14) {
+            $shift2_status = 'Upcoming';
+        } elseif ($cur_clock_hour >= 14 && $cur_clock_hour < 24) {
+            $shift2_status = 'In Progress';
+        } else {
+            $shift2_status = ($shift2_fuel_sales > 0) ? 'Pending Closing' : 'No Sales Logged';
+        }
+    } else {
+        $shift2_status = ($date_to < date('Y-m-d')) ? (($shift2_fuel_sales > 0) ? 'Pending Closing' : 'No Sales Logged') : 'Upcoming';
+    }
+}
+
+function adm_shift_badge_class(string $status): string {
+    $s = strtolower(trim($status));
+    if (in_array($s, ['completed', 'approved', 'verified'])) return 'success';
+    if (in_array($s, ['in progress', 'active'])) return 'info';
+    if (in_array($s, ['returned for correction', 'rejected', 'returned'])) return 'danger';
+    if (in_array($s, ['submitted', 'pending closing', 'pending', 'pending validation'])) return 'warning';
+    return 'neutral';
 }
 
 // ── 4. MERCHANDISE INVENTORY (For this station) ─────────────────────────
@@ -1046,6 +1185,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             'payment_fleet'        => number_format($payment_map['Petron Fleet Card'] ?? 0, 2),
             'payment_credit_acct'  => number_format($payment_map['Credit Account'] ?? 0, 2),
             'active_staff_count'   => number_format($active_staff_count),
+            'shift1_status'        => $shift1_status,
+            'shift1_status_badge'  => adm_shift_badge_class($shift1_status),
+            'shift2_status'        => $shift2_status,
+            'shift2_status_badge'  => adm_shift_badge_class($shift2_status),
+            'shift1_fuel_sales'    => number_format($shift1_fuel_sales, 2),
+            'shift2_fuel_sales'    => number_format($shift2_fuel_sales, 2),
         ],
         'charts' => [
             'week_labels'          => $week_labels,
@@ -1660,14 +1805,14 @@ include __DIR__ . '/../partials/header.php';
                         <span class="adm-metric-label">Shift 1 Sales &amp; Closing Status</span>
                         <span class="adm-metric-value">
                             <span id="op_shift1_fuel"><?= adm_money($shift1_fuel_sales) ?></span> &bull; 
-                            <span class="adm-badge adm-badge-<?= $shift1_status === 'Completed' ? 'success' : ($shift1_status === 'Returned for Correction' ? 'danger' : 'warning') ?>" id="op_shift1"><?= adm_h($shift1_status) ?></span>
+                            <span class="adm-badge adm-badge-<?= adm_shift_badge_class($shift1_status) ?>" id="op_shift1"><?= adm_h($shift1_status) ?></span>
                         </span>
                     </div>
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Shift 2 Sales &amp; Closing Status</span>
                         <span class="adm-metric-value">
                             <span id="op_shift2_fuel"><?= adm_money($shift2_fuel_sales) ?></span> &bull; 
-                            <span class="adm-badge adm-badge-<?= $shift2_status === 'Completed' ? 'success' : ($shift2_status === 'Returned for Correction' ? 'danger' : 'warning') ?>" id="op_shift2"><?= adm_h($shift2_status) ?></span>
+                            <span class="adm-badge adm-badge-<?= adm_shift_badge_class($shift2_status) ?>" id="op_shift2"><?= adm_h($shift2_status) ?></span>
                         </span>
                     </div>
                     <div class="adm-metric-item">
@@ -2324,12 +2469,18 @@ include __DIR__ . '/../partials/header.php';
                         <span class="adm-metric-value" style="color:var(--petron-blue);"><?= adm_h($current_shift_name) ?></span>
                     </div>
                     <div class="adm-metric-item">
-                        <span class="adm-metric-label">Shift 1 Fuel Status</span>
-                        <span class="adm-badge adm-badge-<?= $shift1_status === 'Completed' ? 'success' : 'warning' ?>"><?= adm_h($shift1_status) ?></span>
+                        <span class="adm-metric-label">Shift 1 Fuel Sales</span>
+                        <span class="adm-metric-value">
+                            <span id="branch_shift1_fuel"><?= adm_money($shift1_fuel_sales) ?></span> &bull; 
+                            <span class="adm-badge adm-badge-<?= adm_shift_badge_class($shift1_status) ?>" id="branch_shift1_status"><?= adm_h($shift1_status) ?></span>
+                        </span>
                     </div>
                     <div class="adm-metric-item">
-                        <span class="adm-metric-label">Shift 2 Fuel Status</span>
-                        <span class="adm-badge adm-badge-<?= $shift2_status === 'Completed' ? 'success' : 'warning' ?>"><?= adm_h($shift2_status) ?></span>
+                        <span class="adm-metric-label">Shift 2 Fuel Sales</span>
+                        <span class="adm-metric-value">
+                            <span id="branch_shift2_fuel"><?= adm_money($shift2_fuel_sales) ?></span> &bull; 
+                            <span class="adm-badge adm-badge-<?= adm_shift_badge_class($shift2_status) ?>" id="branch_shift2_status"><?= adm_h($shift2_status) ?></span>
+                        </span>
                     </div>
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Pending Approval Requests</span>
@@ -2734,6 +2885,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (document.getElementById('pm_fleet')) document.getElementById('pm_fleet').innerHTML = '&#8369; ' + data.kpis.payment_fleet;
                 if (document.getElementById('pm_credit_acct')) document.getElementById('pm_credit_acct').innerHTML = '&#8369; ' + data.kpis.payment_credit_acct;
                 if (document.getElementById('op_active_staff') && data.kpis.active_staff_count !== undefined) document.getElementById('op_active_staff').textContent = data.kpis.active_staff_count + ' Active';
+
+                // Shift Fuel Sales & Status — Fuel Management Overview & Branch Operations Status
+                if (document.getElementById('op_shift1_fuel') && data.kpis.shift1_fuel_sales !== undefined) document.getElementById('op_shift1_fuel').innerHTML = '&#8369; ' + data.kpis.shift1_fuel_sales;
+                if (document.getElementById('op_shift2_fuel') && data.kpis.shift2_fuel_sales !== undefined) document.getElementById('op_shift2_fuel').innerHTML = '&#8369; ' + data.kpis.shift2_fuel_sales;
+                if (document.getElementById('branch_shift1_fuel') && data.kpis.shift1_fuel_sales !== undefined) document.getElementById('branch_shift1_fuel').innerHTML = '&#8369; ' + data.kpis.shift1_fuel_sales;
+                if (document.getElementById('branch_shift2_fuel') && data.kpis.shift2_fuel_sales !== undefined) document.getElementById('branch_shift2_fuel').innerHTML = '&#8369; ' + data.kpis.shift2_fuel_sales;
+
+                function applyShiftBadge(el, status, badgeClass) {
+                    if (!el) return;
+                    el.textContent = status;
+                    el.className = 'adm-badge adm-badge-' + (badgeClass || 'neutral');
+                }
+                // Fuel Mgmt Overview shift status badges
+                applyShiftBadge(document.getElementById('op_shift1'), data.kpis.shift1_status, data.kpis.shift1_status_badge);
+                applyShiftBadge(document.getElementById('op_shift2'), data.kpis.shift2_status, data.kpis.shift2_status_badge);
+                // Branch Operations Status widget shift status badges
+                applyShiftBadge(document.getElementById('branch_shift1_status'), data.kpis.shift1_status, data.kpis.shift1_status_badge);
+                applyShiftBadge(document.getElementById('branch_shift2_status'), data.kpis.shift2_status, data.kpis.shift2_status_badge);
             }
 
             if (data.charts) {
