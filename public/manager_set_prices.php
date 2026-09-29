@@ -140,8 +140,8 @@ try {
 
     $pending_approvals = [];
     try {
-        $s_pa = $pdo->prepare("SELECT id AS approval_id, product_id, fuel_type_id, product_name, COALESCE(new_price, new_value) AS new_value, old_price, new_price, status, reason, requested_by, created_at, station_id FROM pending_price_approvals WHERE status = 'pending' AND product_type IN ('fuel', 'fuel_inventory')");
-        $s_pa->execute();
+        $s_pa = $pdo->prepare("SELECT id AS approval_id, product_id, fuel_type_id, product_name, COALESCE(new_price, new_value) AS new_value, old_price, new_price, status, reason, requested_by, created_at, station_id FROM pending_price_approvals WHERE station_id = ? AND status = 'pending' AND product_type IN ('fuel', 'fuel_inventory')");
+        $s_pa->execute([$target_sid]);
         foreach ($s_pa->fetchAll(PDO::FETCH_ASSOC) as $p_row) {
             $pid = (int)($p_row['product_id'] ?? 0);
             $ftid = (int)($p_row['fuel_type_id'] ?? 0);
@@ -459,6 +459,7 @@ try {
         FROM job_order_service_types s
         LEFT JOIN pending_price_approvals p
                ON s.id = p.product_id
+              AND p.station_id = s.station_id
               AND p.product_type = 'service'
               AND p.status = 'pending'
         WHERE s.station_id = ?
@@ -1065,7 +1066,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
 
     <div class="card" style="padding:0;overflow:hidden;">
         <div class="table-wrap" style="overflow-x: hidden; width:100%;">
-            <table class="pricing-table" style="table-layout:fixed; width:100%;">
+            <table class="pricing-table" id="fuelPricingTable" style="table-layout:fixed; width:100%;">
                 <colgroup>
                     <col style="width: 9%;">  <!-- UGT No. -->
                     <col style="width: 18%;"> <!-- Fuel Type -->
@@ -1207,6 +1208,10 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <div id="fuelNoResults" style="display:none;padding:30px;text-align:center;color:#94a3b8;">
+            <i class="fas fa-search" style="font-size:28px;margin-bottom:8px;display:block;"></i>
+            No fuel products match your search/filter criteria.
         </div>
     </div>
     </div>
@@ -1416,6 +1421,10 @@ body, html { overflow-x: hidden; max-width: 100%; }
                 <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+        <div id="merchNoResults" style="display:none;padding:30px;text-align:center;color:#94a3b8;">
+            <i class="fas fa-search" style="font-size:28px;margin-bottom:8px;display:block;"></i>
+            No merchandise products match your search/filter criteria.
         </div>
     </div>
     <?php endif; ?>
@@ -1708,41 +1717,94 @@ function switchTab(name) {
     try {
         sessionStorage.setItem('petron_manager_active_tab', name);
     } catch (e) {}
+
+    // Immediately apply active filters for the selected tab
+    if (name === 'fuel' && typeof window.filterFuelTable === 'function') {
+        window.filterFuelTable();
+    } else if (name === 'merch' && typeof window.filterTable === 'function') {
+        window.filterTable();
+    } else if (name === 'services' && typeof window.filterServiceTable === 'function') {
+        window.filterServiceTable();
+    }
 }
 
 (function() {
     var urlParams = new URLSearchParams(window.location.search);
     var tabFromUrl = urlParams.get('tab');
+    var tabFromStorage = null;
+    try { tabFromStorage = sessionStorage.getItem('petron_manager_active_tab'); } catch (e) {}
 
-    // Only restore from URL param — never from sessionStorage.
-    // sessionStorage would cause the page to jump to the last-visited tab
-    // even when navigating fresh from the sidebar (where no ?tab= param exists).
-    if (tabFromUrl && ['fuel', 'merch', 'services'].indexOf(tabFromUrl) !== -1) {
-        switchTab(tabFromUrl);
-    } else {
-        // Fresh navigation (no ?tab= param) — always start on Fuel Products.
-        // Also clear any stale sessionStorage so future fresh navigations stay clean.
-        try { sessionStorage.removeItem('petron_manager_active_tab'); } catch (e) {}
-        switchTab('fuel');
-    }
+    var targetTab = (tabFromUrl && ['fuel', 'merch', 'services'].indexOf(tabFromUrl) !== -1)
+        ? tabFromUrl
+        : (tabFromStorage && ['fuel', 'merch', 'services'].indexOf(tabFromStorage) !== -1 ? tabFromStorage : 'fuel');
+
+    switchTab(targetTab);
 })();
+
+// ── Fuel Products Filter ────────────────────────────────────────────────────
+window.filterFuelTable = function filterFuelTable() {
+    var searchEl = document.getElementById('fuelSearchInput');
+    var q        = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+    var stFilter = document.getElementById('fuelStatusFilter') ? document.getElementById('fuelStatusFilter').value.trim() : '';
+
+    // Persist filter values
+    try {
+        sessionStorage.setItem('petron_mgr_fuel_q', q);
+        sessionStorage.setItem('petron_mgr_fuel_st', stFilter);
+    } catch(e) {}
+
+    var rows    = document.querySelectorAll('#fuelPricingTable tr.fuel-row, #tab-fuel tr.fuel-row');
+    var visible = 0;
+
+    rows.forEach(function(row) {
+        var ugt     = (row.getAttribute('data-ugt') || '').toLowerCase();
+        var name    = (row.getAttribute('data-name') || '').toLowerCase();
+        var status  = (row.getAttribute('data-status') || '').trim();
+        var active  = (row.getAttribute('data-active') || '').trim();
+        var rowText = (row.textContent || '').toLowerCase();
+
+        var matchQ  = !q || ugt.indexOf(q) !== -1 || name.indexOf(q) !== -1 || rowText.indexOf(q) !== -1;
+        var matchSt = true;
+        if (stFilter === 'Normal') matchSt = (status === 'Normal' && active !== 'inactive');
+        else if (stFilter === 'Low Stock') matchSt = (status === 'Low Stock' && active !== 'inactive');
+        else if (stFilter === 'Out of Stock') matchSt = (status === 'Out of Stock' && active !== 'inactive');
+        else if (stFilter === 'Deactivated') matchSt = (status === 'Deactivated' || active === 'inactive');
+
+        var show = matchQ && matchSt;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    var noRes = document.getElementById('fuelNoResults');
+    if (noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+};
 
 // ── Merchandise filter ───────────────────────────────────────────────────────
 window.filterTable = function filterTable() {
     var merchTab = document.getElementById('tab-merch');
     if (!merchTab) return;
     
-    var searchEl   = document.getElementById('merchSearchInput') || document.getElementById('searchInput');
-    var q          = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
-    var catFilter  = document.getElementById('catFilter') ? document.getElementById('catFilter').value : '';
-    var brandFilter = document.getElementById('brandFilter') ? document.getElementById('brandFilter').value : '';
-    var unitFilter = document.getElementById('unitFilter') ? document.getElementById('unitFilter').value : '';
+    var searchEl       = document.getElementById('merchSearchInput') || document.getElementById('searchInput');
+    var q              = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+    var catFilter      = document.getElementById('catFilter') ? document.getElementById('catFilter').value : '';
+    var brandFilter    = document.getElementById('brandFilter') ? document.getElementById('brandFilter').value : '';
+    var unitFilter     = document.getElementById('unitFilter') ? document.getElementById('unitFilter').value : '';
     var supplierFilter = document.getElementById('supplierFilter') ? document.getElementById('supplierFilter').value : '';
-    var stFilter   = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
+    var stFilter       = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
+
+    // Persist filter values
+    try {
+        sessionStorage.setItem('petron_mgr_merch_q', q);
+        sessionStorage.setItem('petron_mgr_merch_cat', catFilter);
+        sessionStorage.setItem('petron_mgr_merch_brand', brandFilter);
+        sessionStorage.setItem('petron_mgr_merch_unit', unitFilter);
+        sessionStorage.setItem('petron_mgr_merch_supplier', supplierFilter);
+        sessionStorage.setItem('petron_mgr_merch_st', stFilter);
+    } catch(e) {}
+
     var rows       = document.querySelectorAll('#merchBody .merch-row');
     var catHeaders = document.querySelectorAll('#merchBody .cat-row');
     var visible    = 0;
-
     var catVisibleCount = {};
 
     rows.forEach(function(row) {
@@ -1757,16 +1819,17 @@ window.filterTable = function filterTable() {
         var belowcost = row.getAttribute('data-belowcost') === '1';
         var rowText   = (row.textContent || '').toLowerCase();
 
-        var matchQ   = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || unit.indexOf(q) !== -1 || supplier.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1 || rowText.indexOf(q) !== -1;
-        var matchCat = !catFilter || cat === catFilter;
-        var matchBrand = !brandFilter || brand === brandFilter.toLowerCase();
-        var matchUnit = !unitFilter || unit === unitFilter.toLowerCase();
+        var matchQ        = !q || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1 || brand.indexOf(q) !== -1 || unit.indexOf(q) !== -1 || supplier.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1 || rowText.indexOf(q) !== -1;
+        var matchCat      = !catFilter || cat === catFilter;
+        var matchBrand    = !brandFilter || brand === brandFilter.toLowerCase();
+        var matchUnit     = !unitFilter || unit === unitFilter.toLowerCase();
         var matchSupplier = !supplierFilter || supplier === supplierFilter.toLowerCase();
-        var matchSt  = true;
-        if (stFilter === 'available')  matchSt = status === 'available';
-        else if (stFilter === 'low')   matchSt = status === 'low';
-        else if (stFilter === 'critical') matchSt = status === 'critical';
-        else if (stFilter === 'out')   matchSt = status === 'out';
+        var matchSt       = true;
+        if (stFilter === 'available')  matchSt = (status === 'available');
+        else if (stFilter === 'low')   matchSt = (status === 'low');
+        else if (stFilter === 'critical') matchSt = (status === 'critical');
+        else if (stFilter === 'out')   matchSt = (status === 'out');
+        else if (stFilter === 'inactive' || stFilter === 'deactivated') matchSt = (status === 'inactive' || status === 'deactivated');
         else if (stFilter === 'noprice')   matchSt = noprice;
         else if (stFilter === 'belowcost') matchSt = belowcost;
 
@@ -1789,9 +1852,111 @@ window.filterTable = function filterTable() {
             hdr.style.display = 'none';
         }
     });
+
+    var noRes = document.getElementById('merchNoResults');
+    if (noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+};
+
+// ── Service Types filter ────────────────────────────────────────────────────
+window.filterServiceTable = function filterServiceTable() {
+    var searchEl  = document.getElementById('svcSearchInput');
+    var q         = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+    var catFilter = document.getElementById('serviceCategoryFilter') ? document.getElementById('serviceCategoryFilter').value.trim() : '';
+    var stFilter  = document.getElementById('svcStatusFilter') ? document.getElementById('svcStatusFilter').value.trim() : '';
+
+    // Persist filter values
+    try {
+        sessionStorage.setItem('petron_mgr_svc_q', q);
+        sessionStorage.setItem('petron_mgr_svc_cat', catFilter);
+        sessionStorage.setItem('petron_mgr_svc_st', stFilter);
+    } catch(e) {}
+
+    var rows = document.querySelectorAll('#servicePricingTable tr.service-row, #serviceTableBody tr.service-row, #tab-services tr.service-row');
+    var visible = 0;
+
+    rows.forEach(function(row) {
+        var name    = (row.getAttribute('data-name') || '').toLowerCase();
+        var cat     = (row.getAttribute('data-category') || '').trim();
+        var active  = (row.getAttribute('data-active') || '').trim();
+        var rowText = (row.textContent || '').toLowerCase();
+
+        var matchQ   = !q || name.indexOf(q) !== -1 || cat.toLowerCase().indexOf(q) !== -1 || rowText.indexOf(q) !== -1;
+        var matchCat = !catFilter || cat.toLowerCase() === catFilter.toLowerCase();
+        var matchSt  = true;
+        if (stFilter === '1') matchSt = (active === '1');
+        else if (stFilter === '0') matchSt = (active === '0');
+
+        var show = matchQ && matchCat && matchSt;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    var noRes = document.getElementById('svcNoResults');
+    if (noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
 };
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 1. Restore Fuel Filters from sessionStorage
+    try {
+        var savedFuelQ  = sessionStorage.getItem('petron_mgr_fuel_q');
+        var savedFuelSt = sessionStorage.getItem('petron_mgr_fuel_st');
+        var fuelQEl = document.getElementById('fuelSearchInput');
+        var fuelStEl = document.getElementById('fuelStatusFilter');
+        if (fuelQEl && savedFuelQ !== null && savedFuelQ !== '') fuelQEl.value = savedFuelQ;
+        if (fuelStEl && savedFuelSt !== null && savedFuelSt !== '') fuelStEl.value = savedFuelSt;
+    } catch(e) {}
+
+    // 2. Restore Merchandise Filters from sessionStorage
+    try {
+        var savedMerchQ   = sessionStorage.getItem('petron_mgr_merch_q');
+        var savedMerchCat = sessionStorage.getItem('petron_mgr_merch_cat');
+        var savedMerchBrd = sessionStorage.getItem('petron_mgr_merch_brand');
+        var savedMerchUnt = sessionStorage.getItem('petron_mgr_merch_unit');
+        var savedMerchSup = sessionStorage.getItem('petron_mgr_merch_supplier');
+        var savedMerchSt  = sessionStorage.getItem('petron_mgr_merch_st');
+
+        var mQEl   = document.getElementById('merchSearchInput') || document.getElementById('searchInput');
+        var mCatEl = document.getElementById('catFilter');
+        var mBrdEl = document.getElementById('brandFilter');
+        var mUntEl = document.getElementById('unitFilter');
+        var mSupEl = document.getElementById('supplierFilter');
+        var mStEl  = document.getElementById('statusFilter');
+
+        if (mQEl   && savedMerchQ   !== null && savedMerchQ !== '')   mQEl.value   = savedMerchQ;
+        if (mCatEl && savedMerchCat !== null && savedMerchCat !== '') mCatEl.value = savedMerchCat;
+        if (mBrdEl && savedMerchBrd !== null && savedMerchBrd !== '') mBrdEl.value = savedMerchBrd;
+        if (mUntEl && savedMerchUnt !== null && savedMerchUnt !== '') mUntEl.value = savedMerchUnt;
+        if (mSupEl && savedMerchSup !== null && savedMerchSup !== '') mSupEl.value = savedMerchSup;
+        if (mStEl  && savedMerchSt  !== null && savedMerchSt !== '')  mStEl.value  = savedMerchSt;
+    } catch(e) {}
+
+    // 3. Restore Service Filters from sessionStorage
+    try {
+        var savedSvcQ   = sessionStorage.getItem('petron_mgr_svc_q');
+        var savedSvcCat = sessionStorage.getItem('petron_mgr_svc_cat');
+        var savedSvcSt  = sessionStorage.getItem('petron_mgr_svc_st');
+
+        var sQEl   = document.getElementById('svcSearchInput');
+        var sCatEl = document.getElementById('serviceCategoryFilter');
+        var sStEl  = document.getElementById('svcStatusFilter');
+
+        if (sQEl   && savedSvcQ   !== null && savedSvcQ !== '')   sQEl.value   = savedSvcQ;
+        if (sCatEl && savedSvcCat !== null && savedSvcCat !== '') sCatEl.value = savedSvcCat;
+        if (sStEl  && savedSvcSt  !== null && savedSvcSt !== '')  sStEl.value  = savedSvcSt;
+    } catch(e) {}
+
+    // 4. Attach Event Listeners
+    var fuelQInput = document.getElementById('fuelSearchInput');
+    if (fuelQInput) {
+        fuelQInput.addEventListener('input', window.filterFuelTable);
+        fuelQInput.addEventListener('keyup', window.filterFuelTable);
+        fuelQInput.addEventListener('change', window.filterFuelTable);
+    }
+    var fuelStSelect = document.getElementById('fuelStatusFilter');
+    if (fuelStSelect) {
+        fuelStSelect.addEventListener('change', window.filterFuelTable);
+    }
+
     ['merchSearchInput', 'searchInput'].forEach(function(id) {
         var input = document.getElementById(id);
         if (input) {
@@ -1806,6 +1971,24 @@ document.addEventListener('DOMContentLoaded', function() {
             sel.addEventListener('change', window.filterTable);
         }
     });
+
+    var svcQInput = document.getElementById('svcSearchInput');
+    if (svcQInput) {
+        svcQInput.addEventListener('input', window.filterServiceTable);
+        svcQInput.addEventListener('keyup', window.filterServiceTable);
+        svcQInput.addEventListener('change', window.filterServiceTable);
+    }
+    ['serviceCategoryFilter', 'svcStatusFilter'].forEach(function(id) {
+        var sel = document.getElementById(id);
+        if (sel) {
+            sel.addEventListener('change', window.filterServiceTable);
+        }
+    });
+
+    // 5. Initial filter execution to apply restored values
+    window.filterFuelTable();
+    window.filterTable();
+    window.filterServiceTable();
 });
 </script>
 

@@ -93,8 +93,8 @@ if ($action === 'register_station') {
         $has_address_col = ensure_address_column($pdo);
 
         if ($has_address_col) {
-            $ins = $pdo->prepare("INSERT INTO stations (name, location, address, status, created_at, updated_at) VALUES (?, ?, ?, 'active', NOW(), NOW())");
-            $ins->execute([$name, $location, $address]);
+            $ins = $pdo->prepare("INSERT INTO stations (name, location, address, barangay, city, province, region, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())");
+            $ins->execute([$name, $location, $address, $barangay, $city, $province, $region]);
         } else {
             $ins = $pdo->prepare("INSERT INTO stations (name, location, status, created_at, updated_at) VALUES (?, ?, 'active', NOW(), NOW())");
             $ins->execute([$name, $location]);
@@ -160,8 +160,8 @@ if ($action === 'edit_station') {
         $has_address_col = ensure_address_column($pdo);
 
         if ($has_address_col) {
-            $upd = $pdo->prepare("UPDATE stations SET name=?, location=?, address=?, status=?, updated_at=NOW() WHERE id=?");
-            $upd->execute([$name, $location, $address, $status, $station_id]);
+            $upd = $pdo->prepare("UPDATE stations SET name=?, location=?, address=?, barangay=?, city=?, province=?, region=?, status=?, updated_at=NOW() WHERE id=?");
+            $upd->execute([$name, $location, $address, $barangay, $city, $province, $region, $status, $station_id]);
         } else {
             $upd = $pdo->prepare("UPDATE stations SET name=?, location=?, status=?, updated_at=NOW() WHERE id=?");
             $upd->execute([$name, $location, $status, $station_id]);
@@ -313,7 +313,7 @@ if ($get_action === 'get_station_profile') {
     try {
         // Station base info
         $st = $pdo->prepare(
-            "SELECT s.id, s.name, s.location, s.status, s.created_at,
+            "SELECT s.id, s.name, s.location, s.address, s.barangay, s.city, s.province, s.region, s.status, s.created_at,
                     (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_name,
                     (SELECT COUNT(*) FROM users u WHERE u.station_id = s.id AND u.status = 'Active') AS active_users
              FROM stations s WHERE s.id = ? LIMIT 1"
@@ -322,9 +322,15 @@ if ($get_action === 'get_station_profile') {
         $station = $st->fetch(PDO::FETCH_ASSOC);
         if (!$station) { echo json_encode(['ok'=>false,'error'=>'Station not found.']); exit; }
 
-        // Parse location
-        $loc = ['region'=>'','province'=>'','city'=>'','barangay'=>'','street'=>''];
-        if (!empty($station['location'])) {
+        // Location info
+        $loc = [
+            'region'   => $station['region'] ?? '',
+            'province' => $station['province'] ?? '',
+            'city'     => $station['city'] ?? '',
+            'barangay' => $station['barangay'] ?? '',
+            'street'   => $station['address'] ?? ''
+        ];
+        if (empty($loc['region']) && !empty($station['location'])) {
             if (strpos($station['location'], '||') !== false) {
                 [$loc['region'], $loc['province'], $loc['city'], $loc['barangay'], $loc['street']] =
                     array_pad(explode('||', $station['location']), 5, '');

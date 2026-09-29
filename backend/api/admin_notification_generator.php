@@ -26,6 +26,9 @@ if ($role !== 'admin') {
 }
 
 $station_id = (int)(user_station_id() ?? 0);
+if ($station_id <= 0) {
+    echo json_encode(['ok' => true, 'generated' => 0, 'message' => 'No station assigned']); exit;
+}
 
 // ── Ensure notifications table exists ────────────────────────
 try {
@@ -121,9 +124,9 @@ function adm_count(PDO $pdo, string $sql, array $p = []): int {
     }
 }
 
-// Station clause helper for admin queries
-$stn_sql  = $station_id > 0 ? "station_id = ? AND " : "";
-$stn_p    = $station_id > 0 ? [$station_id] : [];
+// Station clause helper for admin queries (admin is strictly scoped to their assigned station)
+$stn_sql  = "station_id = ? AND ";
+$stn_p    = [$station_id];
 
 // ════════════════════════════════════════════════════════════
 // 1. FUEL ADJUSTMENTS REQUIRING ADMIN APPROVAL
@@ -141,6 +144,10 @@ if ($fuel_adj_pending > 0) {
         'source_key'  => "fuel_adj_pending_{$station_id}",
         'redirect_url'=> 'admin_fuel_transactions_oversight.php',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "fuel_adj_pending_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -177,6 +184,10 @@ if ($pending_admin_del > 0) {
         'source_key'  => "admin_del_oversight_{$station_id}",
         'redirect_url'=> 'admin_deliveries_oversight.php',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "admin_del_oversight_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ── 3b. Flagged Deliveries ────────────────────────────────
@@ -193,6 +204,10 @@ if ($flagged_del > 0) {
         'source_key'  => "flagged_del_{$station_id}",
         'redirect_url'=> 'admin_deliveries_oversight.php',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "flagged_del_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -211,6 +226,10 @@ if ($pending_po > 0) {
         'source_key'  => "pending_po_{$station_id}",
         'redirect_url'=> 'admin_procurement_reports.php?section=po',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "pending_po_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -235,6 +254,10 @@ if ($variance_open > 0) {
         'source_key'  => "variance_open_{$station_id}",
         'redirect_url'=> 'admin_reports.php?tab=variance',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "variance_open_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -259,13 +282,18 @@ if ($ar_overdue > 0) {
         'source_key'  => "ar_overdue_{$station_id}",
         'redirect_url'=> 'admin_reports.php?tab=receivable',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")->execute([$user_id, "ar_overdue_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════
 // 6b. PENDING PRICE CHANGE APPROVALS
 // ════════════════════════════════════════════════════════════
 $pending_prices = adm_count($pdo,
-    "SELECT COUNT(*) FROM pending_price_approvals WHERE status = 'pending'");
+    "SELECT COUNT(*) FROM pending_price_approvals WHERE station_id = ? AND status = 'pending'",
+    [$station_id]);
 if ($pending_prices > 0) {
     $generated += upsert_notif($pdo, $user_id, [
         'type'        => 'warning',
@@ -276,6 +304,11 @@ if ($pending_prices > 0) {
         'source_key'  => "pending_price_appr_{$station_id}",
         'redirect_url'=> 'admin_set_prices.php',
     ]);
+} else {
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND source_key=?")
+            ->execute([$user_id, "pending_price_appr_{$station_id}"]);
+    } catch (Exception $e) {}
 }
 
 // ════════════════════════════════════════════════════════════

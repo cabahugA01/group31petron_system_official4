@@ -762,11 +762,12 @@ try {
                     FROM pending_price_approvals p
                     LEFT JOIN users u ON p.requested_by = u.id
                     WHERE p.product_type IN ('fuel','fuel_inventory')
+                      AND p.station_id = ?
                       AND p.product_id IN ($in_clause)
                       AND p.status='pending'
                     ORDER BY p.id DESC LIMIT 1
                 ");
-                $p_stmt->execute($matching_ids);
+                $p_stmt->execute(array_merge([$fuel_station_id], $matching_ids));
                 $pending_req = $p_stmt->fetch(PDO::FETCH_ASSOC);
 
                 // Fallback: search by station + fuel type name
@@ -1441,10 +1442,10 @@ try {
                            (SELECT username FROM users WHERE id=reviewed_by) as approved_by_name,
                            status, created_at, 'approval' as source
                     FROM pending_price_approvals
-                    WHERE (product_id IN ($in_clause) OR LOWER(product_name) = LOWER(?)) AND product_type IN ('merchandise','product')
+                    WHERE station_id = ? AND (product_id IN ($in_clause) OR LOWER(product_name) = LOWER(?)) AND product_type IN ('merchandise','product')
                     ORDER BY created_at DESC
                 ");
-                $a_params = array_merge($matching_ids, [$pname]);
+                $a_params = array_merge([$station_id], $matching_ids, [$pname]);
                 $a_stmt->execute($a_params);
                 $price_history = array_merge($price_history, $a_stmt->fetchAll(PDO::FETCH_ASSOC));
             } catch (Exception $e) {}
@@ -1589,6 +1590,11 @@ try {
 
             if (!$req) { echo json_encode(['success' => false, 'message' => 'Price request not found']); exit; }
 
+            if ($role !== 'superadmin' && (int)($req['station_id'] ?? 0) !== (int)$station_id) {
+                echo json_encode(['success' => false, 'message' => 'Unauthorized: This price approval request belongs to another station.']);
+                exit;
+            }
+
             // Get product name if missing
             if (empty($req['product_name'])) {
                 $pid = (int)$req['product_id'];
@@ -1612,6 +1618,11 @@ try {
 
             if (!$pending) {
                 echo json_encode(['success' => false, 'message' => 'Price request not found or already processed']);
+                exit;
+            }
+
+            if ($role !== 'superadmin' && (int)($pending['station_id'] ?? 0) !== (int)$station_id) {
+                echo json_encode(['success' => false, 'message' => 'Unauthorized: You cannot approve price requests for another station.']);
                 exit;
             }
 
@@ -1831,6 +1842,11 @@ try {
 
             if (!$pending) {
                 echo json_encode(['success' => false, 'message' => 'Price request not found or already processed']);
+                exit;
+            }
+
+            if ($role !== 'superadmin' && (int)($pending['station_id'] ?? 0) !== (int)$station_id) {
+                echo json_encode(['success' => false, 'message' => 'Unauthorized: You cannot reject price requests for another station.']);
                 exit;
             }
 

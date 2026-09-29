@@ -163,6 +163,14 @@ try {
                     s.id,
                     s.name,
                     s.location,
+                    s.address,
+                    s.barangay,
+                    s.city,
+                    s.province,
+                    s.region,
+                    s.contact_number,
+                    s.latitude,
+                    s.longitude,
                     s.status,
                     COALESCE(u.id, 0) AS admin_id,
                     COALESCE(CONCAT(u.first_name, ' ', u.last_name), '') AS admin_name,
@@ -194,12 +202,22 @@ try {
                 throw new Exception('Station ID is required.');
             }
 
-            $stmt = $pdo->prepare("SELECT id, name, location, address FROM stations WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT id, name, location, address, latitude, longitude FROM stations WHERE id = ?");
             $stmt->execute([$station_id]);
             $station = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$station) {
                 throw new Exception('Station not found.');
+            }
+
+            if (!empty($station['latitude']) && !empty($station['longitude']) && (float)$station['latitude'] != 0.0 && (float)$station['longitude'] != 0.0) {
+                echo json_encode([
+                    'ok' => true,
+                    'latitude' => (float)$station['latitude'],
+                    'longitude' => (float)$station['longitude'],
+                    'source' => 'database'
+                ]);
+                break;
             }
 
             // Determine address to geocode

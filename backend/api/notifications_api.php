@@ -176,11 +176,11 @@ function get_category_unread_counts(PDO $pdo, int $user_id, string $role = '', i
         $counts['mgr_customers'] = $counts['customers'];
 
     } elseif (in_array($role, ['admin'])) {
-        // ADMIN — scope to station_id
-        $stn_where  = $station_id > 0 ? "si.station_id = ? AND " : "";
-        $stn_param  = $station_id > 0 ? [$station_id] : [];
-        $stn_where2 = $station_id > 0 ? "station_id = ? AND " : "";
-        $stn_param2 = $station_id > 0 ? [$station_id] : [];
+        // ADMIN — strictly scope to station_id
+        $stn_where  = "si.station_id = ? AND ";
+        $stn_param  = [$station_id];
+        $stn_where2 = "station_id = ? AND ";
+        $stn_param2 = [$station_id];
 
         $admin_crit_stock = $safe_count(
             "SELECT COUNT(*) FROM station_inventory si LEFT JOIN inventory_products ip ON ip.id = si.product_id WHERE {$stn_where}(LOWER(COALESCE(ip.category,'')) NOT IN ('fuel','fuels') OR ip.category IS NULL) AND si.stock_level <= COALESCE(NULLIF(si.critical_level, 0), NULLIF(ip.critical_level, 0), NULLIF(si.reorder_level, 0), NULLIF(ip.min_stock, 0), 10)",
@@ -424,9 +424,14 @@ try {
                 exit;
 
             case 'unread_count':
-                $myStationId  = (int)($me['station_id'] ?? 0);
-                $station_param = $myStationId ? [$myStationId] : [];
-                $station_where = $myStationId ? "station_id = ? AND " : "";
+                $myStationId  = (int)(user_station_id() ?? 0);
+                if (!in_array($role, ['superadmin', 'developer'])) {
+                    $station_param = [$myStationId];
+                    $station_where = "station_id = ? AND ";
+                } else {
+                    $station_param = $myStationId ? [$myStationId] : [];
+                    $station_where = $myStationId ? "station_id = ? AND " : "";
+                }
 
                 // Helper for safe count
                 $safe_count = function(string $sql, array $params = []) use ($pdo) {

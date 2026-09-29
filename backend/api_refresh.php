@@ -36,6 +36,13 @@ $user_id    = (int)($user['id'] ?? $_SESSION['user_id'] ?? 0);
 $role       = function_exists('role_key') ? role_key($user['role'] ?? '') : strtolower(trim($user['role'] ?? 'staff'));
 $station_id = (int)(function_exists('user_station_id') ? user_station_id() : ($user['station_id'] ?? 0));
 
+// Strict station isolation guard for non-superadmin users
+if ($role !== 'superadmin' && $station_id <= 0) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'No station assigned. Access denied.']);
+    exit;
+}
+
 $action = trim($_GET['action'] ?? $_POST['action'] ?? 'notifications');
 
 // ── Helper: safe integer ─────────────────────────────────────────────────────
@@ -45,7 +52,8 @@ function _int($v, int $default = 0): int {
 
 // ── Helper: station WHERE clause ────────────────────────────────────────────
 function station_where(string $col, int $sid, string $role): string {
-    if ($role === 'superadmin' || $sid === 0) return '1=1';
+    if ($role === 'superadmin') return '1=1';
+    if ($sid <= 0) return '1=0';
     return "$col = $sid";
 }
 

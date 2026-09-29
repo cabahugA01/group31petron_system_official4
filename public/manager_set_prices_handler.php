@@ -667,10 +667,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
                        (SELECT username FROM users WHERE id=reviewed_by) as approved_by_name,
                        status, created_at, 'approval' as source
                 FROM pending_price_approvals
-                WHERE (product_id IN ($in_clause) OR LOWER(product_name) = LOWER(?)) AND product_type IN ('merchandise','product')
+                WHERE station_id = ? AND (product_id IN ($in_clause) OR LOWER(product_name) = LOWER(?)) AND product_type IN ('merchandise','product')
                 ORDER BY created_at DESC
             ");
-            $a_params = array_merge($matching_ids, [$pname]);
+            $a_params = array_merge([$station_id], $matching_ids, [$pname]);
             $a_stmt->execute($a_params);
             $price_history = array_merge($price_history, $a_stmt->fetchAll(PDO::FETCH_ASSOC));
         } catch (Exception $e) {}

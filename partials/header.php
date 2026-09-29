@@ -137,33 +137,65 @@ if(in_array($role, ['superadmin','admin','manager'])){
     }
     // 2. Password Expirations
     try {
-        $expiring_passwords = $pdo->query("SELECT username FROM users WHERE password_expires_at < NOW() AND status = 'Active' LIMIT 5")->fetchAll();
+        if ($role === 'superadmin') {
+            $expiring_passwords = $pdo->query("SELECT username FROM users WHERE password_expires_at < NOW() AND status = 'Active' LIMIT 5")->fetchAll();
+        } else {
+            $ep_stmt = $pdo->prepare("SELECT username FROM users WHERE station_id = ? AND password_expires_at < NOW() AND status = 'Active' LIMIT 5");
+            $ep_stmt->execute([(int)$myStationId]);
+            $expiring_passwords = $ep_stmt->fetchAll();
+        }
         foreach($expiring_passwords as $ep) $header_alerts[] = ['msg'=>"Password Expired: {$ep['username']}", 'time'=>'Now', 'link'=>'users.php'];
     } catch(Exception $e){}
     // 3. Reconciliation Delays (Super Admin only)
     // 4. Anomalies Detected
     $sales_data = read_json('sales.json', []);
     foreach($sales_data as $s){
+        if ($role !== 'superadmin' && ((int)($s['station_id'] ?? 0) !== (int)$myStationId)) continue;
         if(($s['total'] > 10000 || $s['total'] == 0)) $header_alerts[] = ['msg'=>"Anomaly Detected: ₱".number_format($s['total']), 'time'=>$s['date']??'', 'link'=>'transactions.php'];
     }
-    // 5. Inventory (keep existing)
+    // 5. Inventory
     try {
-        $inv = $pdo->query("SELECT product_name FROM inventory WHERE stock_level <= 20 LIMIT 5")->fetchAll();
+        if ($role === 'superadmin') {
+            $inv = $pdo->query("SELECT ip.product_name FROM station_inventory si JOIN inventory_products ip ON ip.id = si.product_id WHERE si.stock_level <= 20 LIMIT 5")->fetchAll();
+        } else {
+            $inv_stmt = $pdo->prepare("SELECT ip.product_name FROM station_inventory si JOIN inventory_products ip ON ip.id = si.product_id WHERE si.station_id = ? AND si.stock_level <= 20 LIMIT 5");
+            $inv_stmt->execute([(int)$myStationId]);
+            $inv = $inv_stmt->fetchAll();
+        }
         foreach($inv as $i) $header_alerts[] = ['msg'=>"Low Stock: {$i['product_name']}", 'time'=>'Now', 'link'=>'oversight.php'];
     } catch(Exception $e){}
-    // 6. Pending Jobs (keep existing)
+    // 6. Pending Jobs
     try {
-        $pjobs = $pdo->query("SELECT id FROM job_orders WHERE status='Pending' LIMIT 5")->fetchAll();
+        if ($role === 'superadmin') {
+            $pjobs = $pdo->query("SELECT id FROM job_orders WHERE status='Pending' LIMIT 5")->fetchAll();
+        } else {
+            $pj_stmt = $pdo->prepare("SELECT id FROM job_orders WHERE station_id = ? AND status='Pending' LIMIT 5");
+            $pj_stmt->execute([(int)$myStationId]);
+            $pjobs = $pj_stmt->fetchAll();
+        }
         foreach($pjobs as $j) $header_alerts[] = ['msg'=>"Pending Job #{$j['id']}", 'time'=>'Now', 'link'=>'joborder_stats.php'];
     } catch(Exception $e){}
     // 8. Pending Deliveries
     try {
-        $pending_deliveries = $pdo->query("SELECT id FROM receiving WHERE status = 'pending' LIMIT 5")->fetchAll();
-        foreach($pending_deliveries as $d) $header_alerts[] = ['msg'=>"Pending Delivery #{$d['id']}", 'time'=>'Now', 'link'=>'supplier_confirmation.php'];
+        if ($role === 'superadmin') {
+            $pending_deliveries = $pdo->query("SELECT id FROM deliveries_oversight WHERE status IN ('Pending','Pending Validation','Pending Manager Approval') LIMIT 5")->fetchAll();
+        } else {
+            $pd_stmt = $pdo->prepare("SELECT id FROM deliveries_oversight WHERE station_id = ? AND status IN ('Pending','Pending Validation','Pending Manager Approval') LIMIT 5");
+            $pd_stmt->execute([(int)$myStationId]);
+            $pending_deliveries = $pd_stmt->fetchAll();
+        }
+        $del_link = ($role === 'admin') ? 'admin_deliveries_oversight.php' : 'manager_merchandise_deliveries.php';
+        foreach($pending_deliveries as $d) $header_alerts[] = ['msg'=>"Pending Delivery #{$d['id']}", 'time'=>'Now', 'link'=>$del_link];
     } catch(Exception $e){}
     // 9. Credit Warnings
     try {
-        $credit_warnings = $pdo->query("SELECT name FROM customers WHERE credit_balance > 0 LIMIT 5")->fetchAll();
+        if ($role === 'superadmin') {
+            $credit_warnings = $pdo->query("SELECT name FROM customers WHERE (COALESCE(current_balance, balance, 0) > 0 OR credit_balance > 0) LIMIT 5")->fetchAll();
+        } else {
+            $cw_stmt = $pdo->prepare("SELECT name FROM customers WHERE station_id = ? AND (COALESCE(current_balance, balance, 0) > 0 OR credit_balance > 0) LIMIT 5");
+            $cw_stmt->execute([(int)$myStationId]);
+            $credit_warnings = $cw_stmt->fetchAll();
+        }
         foreach($credit_warnings as $cw) $header_alerts[] = ['msg'=>"Credit Warning: {$cw['name']}", 'time'=>'Now', 'link'=>'customer_credit.php'];
     } catch(Exception $e){}
     // 10. Fuel Variance (keep existing)

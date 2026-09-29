@@ -27,7 +27,7 @@ $stations = [];
 try {
     $stmt = $pdo->query("
         SELECT 
-            s.id, s.name, s.location, s.address, s.region, s.contact_number,
+            s.id, s.name, s.location, s.address, s.barangay, s.city, s.province, s.region, s.contact_number,
             s.latitude, s.longitude, s.status,
             COALESCE(u.id, 0) AS admin_id,
             COALESCE(CONCAT(u.first_name, ' ', u.last_name), '') AS admin_name,
@@ -44,6 +44,9 @@ try {
     foreach ($stations as &$station) {
         $station['location']       = $station['location']       ?? '';
         $station['address']        = $station['address']        ?? $station['location'] ?? '';
+        $station['barangay']       = $station['barangay']       ?? '';
+        $station['city']           = $station['city']           ?? '';
+        $station['province']       = $station['province']       ?? '';
         $station['status']         = $station['status']         ?? 'Active';
         $station['latitude']       = $station['latitude']       ?? null;
         $station['longitude']      = $station['longitude']      ?? null;
@@ -572,8 +575,24 @@ include __DIR__ . '/../partials/header.php';
           <span class="info-value" id="modalAddress">—</span>
         </div>
         <div class="info-row">
+          <span class="info-label">Barangay:</span>
+          <span class="info-value" id="modalBarangay">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">City/Municipality:</span>
+          <span class="info-value" id="modalCity">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Province:</span>
+          <span class="info-value" id="modalProvince">—</span>
+        </div>
+        <div class="info-row">
           <span class="info-label">Region:</span>
           <span class="info-value" id="modalRegion">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">GPS Coordinates:</span>
+          <span class="info-value" id="modalCoordinates" style="font-family:monospace;font-size:12px;color:#00264D;font-weight:600;">—</span>
         </div>
         <div class="info-row">
           <span class="info-label">Contact:</span>
@@ -651,7 +670,7 @@ const stationCoordinates = {
 // Generate coordinates based on region or use random coordinates around Philippines
 function getCoordinates(station) {
     // If station has explicit coordinates in DB, use them
-    if (station.latitude && station.longitude) {
+    if (station.latitude && station.longitude && parseFloat(station.latitude) !== 0 && parseFloat(station.longitude) !== 0) {
         return { 
             lat: parseFloat(station.latitude), 
             lng: parseFloat(station.longitude) 
@@ -862,21 +881,20 @@ function createPopupContent(station) {
         : '<span class="badge-inactive"><i class="fas fa-circle" style="font-size:7px;"></i> No Admin</span>';
     
     const coords = getCoordinates(station);
-    const coordText = station.latitude && station.longitude 
-        ? `<div style="font-size:10px;color:#999;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</div>`
-        : `<div style="font-size:10px;color:#ff9800;margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> Using estimated coordinates</div>`;
+    const coordText = `<div style="font-size:11px;color:#28a745;font-weight:600;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> Verified GPS: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</div>`;
 
     // Google Maps directions URL — opens with station as destination
-    const directionsUrl = (coords.lat && coords.lng)
-        ? `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`
-        : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((station.location || station.name) + ', Philippines')}&travelmode=driving`;
+    const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`;
 
     // Google Maps view URL
-    const gmapsUrl = (coords.lat && coords.lng)
-        ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=19`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(station.name + ', Philippines')}`;
+    const gmapsUrl = `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=19`;
 
-    const addressLine = station.address || station.location || '';
+    const addressParts = [];
+    if (station.address) addressParts.push(station.address);
+    if (station.barangay) addressParts.push('Brgy. ' + station.barangay);
+    if (station.city) addressParts.push(station.city);
+    if (station.province) addressParts.push(station.province);
+    const fullLocationLine = addressParts.join(', ') || station.location || '';
 
     return `
         <div style="padding:10px;font-family:inherit;">
@@ -895,10 +913,10 @@ function createPopupContent(station) {
             </div>
 
             <!-- Address -->
-            ${addressLine ? `
-            <div style="font-size:12px;color:#444;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;">
+            ${fullLocationLine ? `
+            <div style="font-size:12px;color:#333;margin-bottom:6px;display:flex;gap:6px;align-items:flex-start;line-height:1.4;">
                 <i class="fas fa-map-marker-alt" style="color:#cc0000;margin-top:2px;flex-shrink:0;"></i>
-                <span>${escapeHtml(addressLine)}</span>
+                <span>${escapeHtml(fullLocationLine)}</span>
             </div>` : ''}
 
             <!-- Admin -->
@@ -973,10 +991,24 @@ function filterStations() {
         const status = marker.stationStatus;
 
         // Search filter
+        const sName = (station.name || '').toLowerCase();
+        const sAddress = (station.address || '').toLowerCase();
+        const sBarangay = (station.barangay || '').toLowerCase();
+        const sCity = (station.city || '').toLowerCase();
+        const sProvince = (station.province || '').toLowerCase();
+        const sRegion = (station.region || '').toLowerCase();
+        const sLocation = (station.location || '').toLowerCase();
+        const sAdmin = (station.admin_name || '').toLowerCase();
+
         const matchesSearch = !searchTerm || 
-            (station.name && station.name.toLowerCase().includes(searchTerm)) ||
-            (station.location && station.location.toLowerCase().includes(searchTerm)) ||
-            (station.admin_name && station.admin_name.toLowerCase().includes(searchTerm));
+            sName.includes(searchTerm) ||
+            sAddress.includes(searchTerm) ||
+            sBarangay.includes(searchTerm) ||
+            sCity.includes(searchTerm) ||
+            sProvince.includes(searchTerm) ||
+            sRegion.includes(searchTerm) ||
+            sLocation.includes(searchTerm) ||
+            sAdmin.includes(searchTerm);
 
         // Region filter
         const matchesRegion = !regionFilter || 
@@ -1105,8 +1137,22 @@ function openStationModal(stationId) {
     // Populate station details
     document.getElementById('modalStationName').textContent = station.name;
     document.getElementById('modalAddress').textContent = station.address || station.location || '—';
+    if (document.getElementById('modalBarangay')) {
+        document.getElementById('modalBarangay').textContent = station.barangay || '—';
+    }
+    if (document.getElementById('modalCity')) {
+        document.getElementById('modalCity').textContent = station.city || '—';
+    }
+    if (document.getElementById('modalProvince')) {
+        document.getElementById('modalProvince').textContent = station.province || '—';
+    }
     document.getElementById('modalRegion').textContent = station.region || '—';
-    document.getElementById('modalContact').textContent = station.admin_phone || '—';
+    if (document.getElementById('modalCoordinates')) {
+        document.getElementById('modalCoordinates').textContent = (station.latitude && station.longitude) 
+            ? parseFloat(station.latitude).toFixed(6) + ', ' + parseFloat(station.longitude).toFixed(6)
+            : '—';
+    }
+    document.getElementById('modalContact').textContent = station.contact_number || station.admin_phone || '—';
     document.getElementById('modalCurrentAdmin').textContent = station.admin_name || 'None';
     document.getElementById('modalAdminEmail').textContent = station.admin_email || '—';
     
@@ -1235,6 +1281,12 @@ async function unassignAdmin() {
 async function geocodeStationOnDemand(stationId) {
     const station = stations.find(s => s.id == stationId);
     if (!station) return;
+
+    // Do not re-geocode if station already has verified physical coordinates in database
+    if (station.latitude && station.longitude && parseFloat(station.latitude) !== 0 && parseFloat(station.longitude) !== 0) {
+        station.isGeocodedReal = true;
+        return;
+    }
 
     if (station.isGeocodedReal) return;
 

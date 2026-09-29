@@ -33,7 +33,12 @@ if (!$me || !in_array($role, ['manager', 'admin', 'superadmin'])) {
     exit;
 }
 
-$station_id = user_station_id();
+$station_id = (int)(user_station_id() ?? 0);
+if ($station_id <= 0 && $role !== 'superadmin') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'No station assigned.']);
+    exit;
+}
 $action     = $_GET['action'] ?? $_POST['action'] ?? '';
 
 // ── Bootstrap deliveries_oversight table ─────────────────────────────────────

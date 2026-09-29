@@ -214,6 +214,22 @@ try {
     error_log("fuel_sales_closing shift_period self-healing error: " . $e->getMessage());
 }
 
+// ── Self-healing Database schema for stations location columns ───────────────
+try {
+    $st_cols = $pdo->query("SHOW COLUMNS FROM stations")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('barangay', $st_cols)) {
+        $pdo->exec("ALTER TABLE stations ADD COLUMN barangay VARCHAR(150) NULL AFTER address");
+    }
+    if (!in_array('city', $st_cols)) {
+        $pdo->exec("ALTER TABLE stations ADD COLUMN city VARCHAR(150) NULL AFTER barangay");
+    }
+    if (!in_array('province', $st_cols)) {
+        $pdo->exec("ALTER TABLE stations ADD COLUMN province VARCHAR(150) NULL AFTER city");
+    }
+} catch (Exception $e) {
+    error_log("stations location columns self-healing error: " . $e->getMessage());
+}
+
 // ── Self-healing phpMyAdmin Designer Layout & Coordinates Persistence ────────
 try {
     static $pma_layout_checked = false;

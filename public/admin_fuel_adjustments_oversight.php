@@ -36,6 +36,9 @@ if (isset($_GET['ajax_action'])) {
             $stmt->execute([$adj_id]);
             $adj = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($adj) {
+                if ($role !== 'superadmin' && (int)$adj['station_id'] !== (int)$station_id) {
+                    json_response(['success' => false, 'message' => 'Unauthorized: This adjustment record belongs to another station.']);
+                }
                 json_response(['success' => true, 'data' => $adj]);
             } else {
                 json_response(['success' => false, 'message' => 'Adjustment record not found.']);
@@ -77,6 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if (!$adj) {
                 throw new Exception("Adjustment record not found.");
+            }
+
+            if ($role !== 'superadmin' && (int)$adj['station_id'] !== (int)$station_id) {
+                throw new Exception("Unauthorized: This adjustment record belongs to another station.");
             }
 
             if ($action === 'approve_override') {
@@ -152,9 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 // â”€â”€ Station Filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$filter_station = isset($_GET['station']) ? (int)$_GET['station'] : $station_id;
-if ($role === 'superadmin' && !isset($_GET['station'])) {
-    $filter_station = 0; // Default to all stations for superadmin
+if ($role !== 'superadmin') {
+    $filter_station = $station_id;
+} else {
+    $filter_station = isset($_GET['station']) ? (int)$_GET['station'] : 0;
 }
 
 // â”€â”€ Filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -181,6 +189,10 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
         $stmt->execute([$single_id]);
         $adj = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($adj) {
+            if ($role !== 'superadmin' && (int)$adj['station_id'] !== (int)$station_id) {
+                echo "Unauthorized: This adjustment record belongs to another station.";
+                exit;
+            }
             $status_color = (strtolower($adj['status']) === 'approved') ? '#16a34a' : ((strtolower($adj['status']) === 'rejected') ? '#dc2626' : '#d97706');
             ?>
             <!DOCTYPE html>

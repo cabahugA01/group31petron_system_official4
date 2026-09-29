@@ -26,7 +26,7 @@ $csrf = $_SESSION['csrf_token'];
 $stations = [];
 try {
     $stations = $pdo->query(
-        "SELECT id, name, address, location, region, contact_number, status 
+        "SELECT id, name, address, barangay, city, province, location, region, contact_number, latitude, longitude, status 
          FROM stations 
          ORDER BY name"
     )->fetchAll(PDO::FETCH_ASSOC);

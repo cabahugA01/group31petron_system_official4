@@ -253,17 +253,38 @@
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
 
+            let anyTableUpdated = false;
             existingElements.forEach(({ selector, element }) => {
                 if (isContainerBeingEdited(element)) return;
 
                 const newElement = element.id ? doc.getElementById(element.id) : doc.querySelector(selector);
                 if (newElement && element.innerHTML !== newElement.innerHTML) {
                     element.innerHTML = newElement.innerHTML;
+                    anyTableUpdated = true;
                 }
             });
 
             // 5. Re-intercept any newly rendered refresh buttons
             interceptRefreshButtons();
+
+            // 6. Re-apply active filters so auto-load never wipes out filter selections
+            if (anyTableUpdated) {
+                if (typeof window.filterTable === 'function') {
+                    try { window.filterTable(); } catch(e) {}
+                }
+                if (typeof window.filterFuelTable === 'function') {
+                    try { window.filterFuelTable(); } catch(e) {}
+                }
+                if (typeof window.filterServiceTable === 'function') {
+                    try { window.filterServiceTable(); } catch(e) {}
+                }
+                if (typeof window.filterAdminMerchTable === 'function') {
+                    try { window.filterAdminMerchTable(); } catch(e) {}
+                }
+                if (typeof window.filterAdminFuelTable === 'function') {
+                    try { window.filterAdminFuelTable(); } catch(e) {}
+                }
+            }
 
         } catch (e) {
             // silent fail

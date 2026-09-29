@@ -36,7 +36,10 @@ if (!in_array($role, $allowed_roles)) {
     echo json_encode(['ok' => false, 'error' => 'Unauthorized']); exit;
 }
 
-$station_id = (int)($me['station_id'] ?? 0);
+$station_id = (int)(user_station_id() ?? 0);
+if ($station_id <= 0) {
+    echo json_encode(['ok' => true, 'generated' => 0, 'message' => 'No station assigned']); exit;
+}
 $sw = $station_id ? $station_id : 0;
 
 // ── Ensure notifications table exists ────────────────────────

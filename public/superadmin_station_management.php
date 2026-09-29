@@ -82,7 +82,7 @@ try {
 $stations = [];
 try {
     $stations = $pdo->query(
-        "SELECT s.id, s.name, s.address, s.location, s.region, s.outlet_type, s.status, s.created_at,
+        "SELECT s.id, s.name, s.address, s.barangay, s.city, s.province, s.region, s.outlet_type, s.latitude, s.longitude, s.status, s.created_at,
                 (SELECT u.name  FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_name,
                 (SELECT u.id    FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_id,
                 (SELECT u.email FROM users u WHERE u.station_id = s.id AND LOWER(u.role) IN ('admin','station admin','station_admin') AND u.status = 'Active' LIMIT 1) AS admin_email,
@@ -125,11 +125,15 @@ function parse_location(string $loc): array {
 
 // ── Helper: extract display parts from raw station name ───────
 function extract_station_display($raw_name, $location = '', $row = []): array {
-    if (!empty($row['address']) || !empty($row['region'])) {
+    if (!empty($row['barangay']) || !empty($row['city']) || !empty($row['province']) || !empty($row['region']) || !empty($row['address'])) {
+        $cityProvParts = array_filter([$row['city'] ?? '', $row['province'] ?? '']);
+        $cityProv = implode(', ', $cityProvParts);
+        $streetParts = array_filter([$row['address'] ?? '', !empty($row['barangay']) ? 'Brgy. ' . $row['barangay'] : '']);
+        $street = implode(', ', $streetParts);
         return [
             'name'       => $row['name'] ?? $raw_name,
-            'street'     => $row['address'] ?? '',
-            'city_prov'  => $row['location'] ?? '',
+            'street'     => $street ?: ($row['address'] ?? ''),
+            'city_prov'  => $cityProv ?: ($row['location'] ?? ''),
             'region'     => $row['region'] ?? '',
         ];
     }

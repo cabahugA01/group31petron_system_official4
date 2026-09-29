@@ -458,7 +458,7 @@ function filter_menu_by_permissions($menu_items, $user_role) {
                     'id' => 'mgr_product_pricing',
                     'label' => 'Product & Pricing Management',
                     'ico' => 'fas fa-tags',
-                    'href' => 'manager_set_prices.php',
+                    'href' => 'manager_set_prices.php?tab=fuel',
                     'permissions' => ['manage_inventory', 'view_inventory'],
                     'station_specific' => true,
                     'desc' => 'View consolidated product list, current prices, and inventory snapshot.'

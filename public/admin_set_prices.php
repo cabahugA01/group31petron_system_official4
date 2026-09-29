@@ -120,9 +120,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pending = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($pending) {
+            if ($role !== 'superadmin' && (int)($pending['station_id'] ?? 0) !== (int)$station_id) {
+                $_SESSION['error'] = "Unauthorized: You cannot approve price requests for another station.";
+                header("Location: admin_set_prices.php?tab={$redirect_tab}");
+                exit;
+            }
             $ptype = $pending['product_type'] ?? '';
             // Support both new_price (new schema) and new_value (legacy schema)
             $new_price_val = $pending['new_price'] ?? $pending['new_value'] ?? 0;
+            $old_price_val = $pending['old_price'] ?? $pending['old_value'] ?? 0;
             $new_cost_val  = $pending['new_cost']  ?? $pending['new_value'] ?? 0;
             $pid           = (int)($pending['product_id'] ?? 0);
 
@@ -211,6 +217,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_p = $pdo->prepare("SELECT * FROM pending_price_approvals WHERE id=? LIMIT 1");
         $stmt_p->execute([$approval_id]);
         $pending = $stmt_p->fetch(PDO::FETCH_ASSOC);
+
+        if ($pending && $role !== 'superadmin' && (int)($pending['station_id'] ?? 0) !== (int)$station_id) {
+            $_SESSION['error'] = "Unauthorized: You cannot reject price requests for another station.";
+            header("Location: admin_set_prices.php?tab={$redirect_tab}");
+            exit;
+        }
 
         $stmt = $pdo->prepare("UPDATE pending_price_approvals SET status='rejected', rejection_reason=?, reviewer_notes=?, admin_id=?, reviewed_by=?, reviewed_at=NOW(), updated_at=NOW() WHERE id=? AND status='pending'");
         $stmt->execute([$remarks, $remarks, $me['id'], $me['id'], $approval_id]);
@@ -621,8 +633,8 @@ try {
 
     $pending_approvals = [];
     try {
-        $s_pa = $pdo->prepare("SELECT id AS approval_id, product_id, fuel_type_id, product_name, COALESCE(new_price, new_value) AS new_value, old_price, new_price, status, reason, requested_by, created_at, station_id FROM pending_price_approvals WHERE status = 'pending' AND product_type IN ('fuel', 'fuel_inventory')");
-        $s_pa->execute();
+        $s_pa = $pdo->prepare("SELECT id AS approval_id, product_id, fuel_type_id, product_name, COALESCE(new_price, new_value) AS new_value, old_price, new_price, status, reason, requested_by, created_at, station_id FROM pending_price_approvals WHERE station_id = ? AND status = 'pending' AND product_type IN ('fuel', 'fuel_inventory')");
+        $s_pa->execute([$target_sid]);
         foreach ($s_pa->fetchAll(PDO::FETCH_ASSOC) as $p_row) {
             $pid = (int)($p_row['product_id'] ?? 0);
             $ftid = (int)($p_row['fuel_type_id'] ?? 0);
@@ -875,15 +887,19 @@ try {
 $approved_today_count = 0;
 $pending_requests_count = 0;
 try {
-    $approved_today_count = (int)$pdo->query("
+    $stmt_ap = $pdo->prepare("
         SELECT COUNT(*) FROM pending_price_approvals
-        WHERE status = 'approved' AND (DATE(reviewed_at) = CURDATE() OR DATE(updated_at) = CURDATE())
-    ")->fetchColumn();
+        WHERE station_id = ? AND status = 'approved' AND (DATE(reviewed_at) = CURDATE() OR DATE(updated_at) = CURDATE())
+    ");
+    $stmt_ap->execute([(int)$target_sid]);
+    $approved_today_count = (int)$stmt_ap->fetchColumn();
 
-    $pending_requests_count = (int)$pdo->query("
+    $stmt_pr = $pdo->prepare("
         SELECT COUNT(*) FROM pending_price_approvals
-        WHERE status = 'pending' AND product_type = 'merchandise'
-    ")->fetchColumn();
+        WHERE station_id = ? AND status = 'pending' AND product_type = 'merchandise'
+    ");
+    $stmt_pr->execute([(int)$target_sid]);
+    $pending_requests_count = (int)$stmt_pr->fetchColumn();
 } catch (Exception $e) {}
 
 
@@ -937,6 +953,7 @@ try {
         FROM job_order_service_types s
         LEFT JOIN pending_price_approvals p
                ON s.id = p.product_id
+              AND p.station_id = s.station_id
               AND p.product_type IN ('service', 'service_type')
               AND p.status = 'pending'
         WHERE s.station_id = ?
@@ -2236,6 +2253,10 @@ table.pricing-table tbody tr:hover {
                 </tbody>
             </table>
         </div>
+        <div id="adminMerchNoResults" style="display:none;padding:30px;text-align:center;color:#94a3b8;">
+            <i class="fas fa-search" style="font-size:28px;margin-bottom:8px;display:block;"></i>
+            No merchandise products match your search/filter criteria.
+        </div>
     </div>
     <?php endif; ?>
 </div>
@@ -2878,16 +2899,17 @@ function sanitizeIntegerInput(el) {
 }
 // ── Admin Merchandise Filter Function ──────────────────────────────────────
 function filterAdminMerchTable() {
-    var q          = (document.getElementById('adminSearchInput').value || '').toLowerCase().trim();
-    var catFilter  = document.getElementById('adminCatFilter').value;
-    var brandFilter= (document.getElementById('adminBrandFilter').value || '').toLowerCase();
-    var unitFilter = (document.getElementById('adminUnitFilter').value || '').toLowerCase();
-    var pStFilter  = document.getElementById('adminProdStatusFilter').value;
-    var rStFilter  = document.getElementById('adminReqStatusFilter').value;
+    var q          = (document.getElementById('adminSearchInput') ? document.getElementById('adminSearchInput').value : '').toLowerCase().trim();
+    var catFilter  = document.getElementById('adminCatFilter') ? document.getElementById('adminCatFilter').value : '';
+    var brandFilter= (document.getElementById('adminBrandFilter') ? document.getElementById('adminBrandFilter').value : '').toLowerCase();
+    var unitFilter = (document.getElementById('adminUnitFilter') ? document.getElementById('adminUnitFilter').value : '').toLowerCase();
+    var pStFilter  = document.getElementById('adminProdStatusFilter') ? document.getElementById('adminProdStatusFilter').value : '';
+    var rStFilter  = document.getElementById('adminReqStatusFilter') ? document.getElementById('adminReqStatusFilter').value : '';
 
     var rows       = document.querySelectorAll('#adminMerchBody .admin-merch-row');
     var catHeaders = document.querySelectorAll('#adminMerchBody .cat-row');
     var catVisibleCount = {};
+    var visible    = 0;
 
     rows.forEach(function(row) {
         var name     = row.getAttribute('data-name') || '';
@@ -2902,12 +2924,13 @@ function filterAdminMerchTable() {
         var matchCat    = !catFilter || cat === catFilter;
         var matchBrand  = !brandFilter || brand === brandFilter;
         var matchUnit   = !unitFilter || unit === unitFilter;
-        var matchPStatus= !pStFilter || pStatus === pStFilter;
+        var matchPStatus= !pStFilter || pStatus === pStFilter || (pStFilter === 'inactive' && (pStatus === 'disabled' || pStatus === 'deactivated'));
         var matchRStatus= !rStFilter || rStatus === rStFilter;
 
         var show = matchQ && matchCat && matchBrand && matchUnit && matchPStatus && matchRStatus;
         row.style.display = show ? '' : 'none';
         if (show) {
+            visible++;
             catVisibleCount[cat] = (catVisibleCount[cat] || 0) + 1;
         }
     });
@@ -2917,7 +2940,11 @@ function filterAdminMerchTable() {
         var count = catVisibleCount[cat] || 0;
         hdr.style.display = count > 0 ? '' : 'none';
     });
+
+    var noRes = document.getElementById('adminMerchNoResults');
+    if (noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
 }
+window.filterAdminMerchTable = filterAdminMerchTable;
 
 // ── Professional Toast Banner ─────────────────────────────────────────────
 var adminToastDismissTimer = null;
@@ -3721,6 +3748,7 @@ function filterAdminFuelTable() {
         }
     });
 }
+window.filterAdminFuelTable = filterAdminFuelTable;
 
 function filterAdminFuelByCard(type) {
     var searchEl = document.getElementById('adminFuelSearch');
