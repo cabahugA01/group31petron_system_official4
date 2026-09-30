@@ -3513,7 +3513,7 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
             'admin'    => "admin_approve_stock_requests.php{$id}",
         ],
         'master_data_request' => [
-            'staff'    => "staff_requests.php{$id}",
+            'staff'    => "staff_transactions_hub.php?section=merchandise",
             'manager'  => "manager_review_stock_requests.php{$id}",
             'admin'    => "admin_stock_requests_monitor.php{$id}",
         ],
@@ -3567,7 +3567,7 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
             'admin'      => "superadmin_admin_management.php{$id}",
         ],
         'customer_request' => [
-            'staff'      => "staff_requests.php{$id}",
+            'staff'      => "staff_transactions_hub.php?section=merchandise",
             'manager'    => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),
             'admin'      => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),
             'superadmin' => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),

@@ -45,6 +45,15 @@ $sw = $station_id ? $station_id : 0;
 // ── Ensure notifications table exists ────────────────────────
 try { ensure_notifications_table($pdo); } catch (Exception $e) {}
 
+// Auto-cleanup legacy staff_requests.php file and redirect URLs
+try {
+    $stale_file = __DIR__ . '/../../public/staff_requests.php';
+    if (file_exists($stale_file)) {
+        @unlink($stale_file);
+    }
+    $pdo->exec("UPDATE notifications SET redirect_url = 'staff_transactions_hub.php?section=merchandise' WHERE redirect_url LIKE '%staff_requests.php%'");
+} catch (Exception $e) {}
+
 $generated = 0;
 
 /**
@@ -303,7 +312,7 @@ try {
                     "Customer Registration Request Approved",
                     "Customer registration request {$req_num} for {$cust_name} has been approved.",
                     $key,
-                    "staff_requests.php?id={$cr['id']}"
+                    "staff_transactions_hub.php?section=merchandise"
                 );
             } elseif (strtolower($cr['status']) === 'rejected') {
                 $key = "cust_req_rej_{$cr['id']}_s{$user_id}";
@@ -313,7 +322,7 @@ try {
                     "Customer Registration Request Rejected",
                     "Customer registration request {$req_num} was rejected.{$reason}",
                     $key,
-                    "staff_requests.php?id={$cr['id']}"
+                    "staff_transactions_hub.php?section=merchandise"
                 );
             }
         }

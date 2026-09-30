@@ -6673,9 +6673,12 @@ require_once __DIR__ . '/rbac_menu.php';
                             const unread = n.status === 'unread';
                             const bg     = unread ? 'rgba(0,47,108,0.04)' : 'transparent';
                             const rawUrl = n.redirect_url || '';
-                            const targetUrl = (rawUrl && rawUrl !== '#' && rawUrl !== 'null') 
+                            let targetUrl = (rawUrl && rawUrl !== '#' && rawUrl !== 'null') 
                                 ? (window.resolveRedirectUrl ? window.resolveRedirectUrl(rawUrl) : rawUrl)
                                 : 'javascript:void(0)';
+                            if (targetUrl.indexOf('staff_requests.php') !== -1) {
+                                targetUrl = 'staff_transactions_hub.php?section=merchandise';
+                            }
                             const title  = escapeHtml(cleanMojibake(n.title || 'Notification'));
                             const msg    = escapeHtml(cleanMojibake(n.message || ''));
                             const ago    = escapeHtml(n.time_ago || timeAgo(n.created_at));

@@ -1251,7 +1251,7 @@ function manager_approve_customer_request(): void {
                 "Customer Registration Request Approved",
                 "Customer registration request {$reqCode} for {$fullName} has been approved.",
                 "cust_req_app_{$requestId}_s{$staffId}",
-                "staff_requests.php?id={$requestId}",
+                "staff_transactions_hub.php?section=merchandise",
                 'customer_request',
                 $requestId
             );
@@ -1312,7 +1312,7 @@ function manager_reject_customer_request(): void {
             "Customer Registration Request Rejected",
             "Customer registration request {$reqCode} was rejected.{$reasonText}",
             "cust_req_rej_{$requestId}_s{$staffId}",
-            "staff_requests.php?id={$requestId}",
+            "staff_transactions_hub.php?section=merchandise",
             'customer_request',
             $requestId
         );
