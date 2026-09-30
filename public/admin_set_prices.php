@@ -488,12 +488,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Admin Action', ?, ?, NOW())")
                 ->execute([$station_id, $id, $old_fuel['fuel_type'], $old_st_text, $new_st_text, $status_label, $me['id'], $user_name]);
 
-            $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_fuel['fuel_type']);
-            $in_clause = implode(',', array_fill(0, count($matching_ids), '?'));
-            $upd_params = array_merge([$new_status, $me['id']], $matching_ids);
-            $pdo->prepare("UPDATE fuel_inventory SET status=?, updated_by=?, last_updated=NOW() WHERE id IN ($in_clause)")
-                ->execute($upd_params);
-            log_activity($pdo, $me['id'], 'Toggle Fuel Status', "Admin set status of {$old_fuel['fuel_type']} to {$new_status}");
+            $pdo->prepare("UPDATE fuel_inventory SET status=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?")
+                ->execute([$new_status, $me['id'], $id, $station_id]);
+            log_activity($pdo, $me['id'], 'Toggle Fuel Status', "Admin set status of {$old_fuel['fuel_type']} ({$old_fuel['ugt_no']}) to {$new_status}");
             $_SESSION['success'] = "Fuel status updated to " . ucfirst($new_status) . ".";
         }
         header("Location: admin_set_prices.php?tab=fuel");
@@ -563,8 +560,15 @@ try {
             $fi_lookup[$ugt_val] = $row;
             $u_num = preg_replace('/[^0-9]/', '', $ugt_val);
             if ($u_num) {
-                $fi_lookup['ugt_' . (int)$u_num] = $row;
-                $fi_lookup['ugt #' . (int)$u_num] = $row;
+                $u_int = (int)$u_num;
+                $fi_lookup['ugt_' . $u_int] = $row;
+                $fi_lookup['ugt #' . $u_int] = $row;
+                $fi_lookup['ugt-' . $u_int] = $row;
+                $fi_lookup['ugt-' . sprintf('%02d', $u_int)] = $row;
+                $fi_lookup['ugt #' . sprintf('%02d', $u_int)] = $row;
+                $fi_lookup['ugt ' . $u_int] = $row;
+                $fi_lookup['ugt' . $u_int] = $row;
+                $fi_lookup[(string)$u_int] = $row;
             }
         }
 
@@ -1742,27 +1746,7 @@ table.pricing-table tbody tr:hover {
     natsort($station_ugts);
     ?>
 
-    <!-- ── 1. Admin Fuel Summary Metric Cards ────────────────────────────── -->
-    <div class="summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:14px;margin-bottom:16px;">
-        <div class="summary-card s-total" onclick="filterAdminFuelByCard('all')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-            <div class="s-num"><?php echo $total_fuel_count; ?></div>
-            <div class="s-lbl"><i class="fas fa-gas-pump"></i> Total Fuel Products</div>
-        </div>
-        <div class="summary-card" onclick="filterAdminFuelByCard('pending')" style="cursor:pointer;background:#fffbeb;border:1.5px solid #fde68a;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-            <div class="s-num" style="color:#d97706;"><?php echo $pending_req_count; ?></div>
-            <div class="s-lbl" style="color:#b45309;font-weight:700;"><i class="fas fa-clock"></i> Pending Price Requests</div>
-        </div>
-        <div class="summary-card s-valid" onclick="filterAdminFuelByCard('active')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-            <div class="s-num" style="color:#16a34a;"><?php echo $active_fuel_count; ?></div>
-            <div class="s-lbl"><i class="fas fa-check-circle"></i> Active Products</div>
-        </div>
-        <div class="summary-card s-below" onclick="filterAdminFuelByCard('inactive')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-            <div class="s-num" style="color:#dc2626;"><?php echo $inactive_fuel_count; ?></div>
-            <div class="s-lbl"><i class="fas fa-ban"></i> Inactive Products</div>
-        </div>
-    </div>
-
-    <!-- ── 2. Admin Filters Bar ───────────────────────────────────────────── -->
+    <!-- ── 1. Admin Filters Bar (Positioned at top so select dropdowns open downwards, matching Manager) ── -->
     <div class="toolbar" style="margin-bottom:16px;background:#f8fafc;padding:12px 16px;border-radius:10px;border:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
         <input type="text" id="adminFuelSearch" placeholder="Search UGT or Fuel Name..." oninput="filterAdminFuelTable()" style="min-width:200px;flex:1;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:15.5px;">
         
@@ -1792,6 +1776,26 @@ table.pricing-table tbody tr:hover {
             <option value="active">Active Only</option>
             <option value="inactive">Inactive Only</option>
         </select>
+    </div>
+
+    <!-- ── 2. Admin Fuel Summary Metric Cards ────────────────────────────── -->
+    <div class="summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:14px;margin-bottom:16px;">
+        <div class="summary-card s-total" onclick="filterAdminFuelByCard('all')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num"><?php echo $total_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-gas-pump"></i> Total Fuel Products</div>
+        </div>
+        <div class="summary-card" onclick="filterAdminFuelByCard('pending')" style="cursor:pointer;background:#fffbeb;border:1.5px solid #fde68a;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#d97706;"><?php echo $pending_req_count; ?></div>
+            <div class="s-lbl" style="color:#b45309;font-weight:700;"><i class="fas fa-clock"></i> Pending Price Requests</div>
+        </div>
+        <div class="summary-card s-valid" onclick="filterAdminFuelByCard('active')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#16a34a;"><?php echo $active_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-check-circle"></i> Active Products</div>
+        </div>
+        <div class="summary-card s-below" onclick="filterAdminFuelByCard('inactive')" style="cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <div class="s-num" style="color:#dc2626;"><?php echo $inactive_fuel_count; ?></div>
+            <div class="s-lbl"><i class="fas fa-ban"></i> Inactive Products</div>
+        </div>
     </div>
 
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
@@ -1982,11 +1986,11 @@ table.pricing-table tbody tr:hover {
 
                                     <!-- Deactivate / Activate Button -->
                                     <?php if ($fuel_active_status !== 'inactive'): ?>
-                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate">
+                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($full_fuel_name . ' (' . $ugt_str . ')')); ?>')" class="act-btn act-btn-deactivate">
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate">
+                                        <button type="button" onclick="openToggleFuelStatusModal(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($full_fuel_name . ' (' . $ugt_str . ')')); ?>')" class="act-btn act-btn-activate">
                                             <i class="fas fa-check-circle"></i> Activate
                                         </button>
                                     <?php endif; ?>
@@ -2009,31 +2013,7 @@ table.pricing-table tbody tr:hover {
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="tab-merch" class="tab-panel <?php echo $active_tab === 'merch' ? 'active' : ''; ?>">
 
-    <!-- ── 1. Summary Cards ────────────────────────────────────────────────── -->
-    <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 18px;">
-        <div class="summary-card s-total">
-            <i class="fas fa-box" style="font-size:22px;color:#002F6C;margin-bottom:4px;display:block;"></i>
-            <div class="s-num"><?php echo count($merch_all); ?></div>
-            <div class="s-lbl">Total Products</div>
-        </div>
-        <div class="summary-card s-valid">
-            <i class="fas fa-tags" style="font-size:22px;color:#16a34a;margin-bottom:4px;display:block;"></i>
-            <div class="s-num"><?php echo $merch_stats['valid_price']; ?></div>
-            <div class="s-lbl">Current Active Prices</div>
-        </div>
-        <div class="summary-card s-unpriced">
-            <i class="fas fa-hourglass-half" style="font-size:22px;color:#d97706;margin-bottom:4px;display:block;"></i>
-            <div class="s-num"><?php echo $pending_requests_count; ?></div>
-            <div class="s-lbl">Pending Price Requests</div>
-        </div>
-        <div class="summary-card s-total">
-            <i class="fas fa-check-double" style="font-size:22px;color:#16a34a;margin-bottom:4px;display:block;"></i>
-            <div class="s-num"><?php echo $approved_today_count; ?></div>
-            <div class="s-lbl">Approved Today</div>
-        </div>
-    </div>
-
-    <!-- ── 2. Filters Toolbar ─────────────────────────────────────────────── -->
+    <!-- ── 1. Filters Toolbar (Positioned at top so select dropdowns open downwards, matching Manager) ── -->
     <div class="toolbar" style="margin-bottom: 16px;">
         <input type="text" id="adminSearchInput" placeholder="&#128269; Search Product / SKU&hellip;" oninput="filterAdminMerchTable()" style="min-width: 220px;">
         
@@ -2071,6 +2051,30 @@ table.pricing-table tbody tr:hover {
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
         </select>
+    </div>
+
+    <!-- ── 2. Summary Cards ────────────────────────────────────────────────── -->
+    <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 18px;">
+        <div class="summary-card s-total">
+            <i class="fas fa-box" style="font-size:22px;color:#002F6C;margin-bottom:4px;display:block;"></i>
+            <div class="s-num"><?php echo count($merch_all); ?></div>
+            <div class="s-lbl">Total Products</div>
+        </div>
+        <div class="summary-card s-valid">
+            <i class="fas fa-tags" style="font-size:22px;color:#16a34a;margin-bottom:4px;display:block;"></i>
+            <div class="s-num"><?php echo $merch_stats['valid_price']; ?></div>
+            <div class="s-lbl">Current Active Prices</div>
+        </div>
+        <div class="summary-card s-unpriced">
+            <i class="fas fa-hourglass-half" style="font-size:22px;color:#d97706;margin-bottom:4px;display:block;"></i>
+            <div class="s-num"><?php echo $pending_requests_count; ?></div>
+            <div class="s-lbl">Pending Price Requests</div>
+        </div>
+        <div class="summary-card s-total">
+            <i class="fas fa-check-double" style="font-size:22px;color:#16a34a;margin-bottom:4px;display:block;"></i>
+            <div class="s-num"><?php echo $approved_today_count; ?></div>
+            <div class="s-lbl">Approved Today</div>
+        </div>
     </div>
 
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">

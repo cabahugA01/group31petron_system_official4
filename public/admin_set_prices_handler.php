@@ -1236,14 +1236,10 @@ try {
                         ->execute([$station_id, $id, $old_fuel['fuel_type'], $old_st_text, $new_st_text, $status_label, $me['id'], $user_name]);
                 } catch (Exception $e) {}
 
-                $matching_ids = get_matching_fuel_ids($pdo, $station_id, $id, $old_fuel['fuel_type']);
-                if (!empty($matching_ids)) {
-                    $in_clause = implode(',', array_fill(0, count($matching_ids), '?'));
-                    $params = array_merge([$new_status], $matching_ids);
-                    $pdo->prepare("UPDATE fuel_inventory SET status = ?, last_updated = NOW() WHERE id IN ($in_clause)")
-                        ->execute($params);
-                }
-                log_activity($pdo, $me['id'], 'Update Fuel Status', "Fuel {$old_fuel['fuel_type']} marked {$new_status}");
+                $pdo->prepare("UPDATE fuel_inventory SET status = ?, updated_by = ?, last_updated = NOW() WHERE id = ? AND station_id = ?")
+                    ->execute([$new_status, $me['id'], $id, $station_id]);
+
+                log_activity($pdo, $me['id'], 'Update Fuel Status', "Fuel {$old_fuel['fuel_type']} ({$old_fuel['ugt_no']}) marked {$new_status}");
                 echo json_encode(['success' => true, 'message' => "Fuel product {$status_label} successfully."]);
                 exit;
             }

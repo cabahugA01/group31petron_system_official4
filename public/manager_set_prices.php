@@ -74,8 +74,15 @@ try {
             $fi_lookup[$ugt_val] = $row;
             $u_num = preg_replace('/[^0-9]/', '', $ugt_val);
             if ($u_num) {
-                $fi_lookup['ugt_' . (int)$u_num] = $row;
-                $fi_lookup['ugt #' . (int)$u_num] = $row;
+                $u_int = (int)$u_num;
+                $fi_lookup['ugt_' . $u_int] = $row;
+                $fi_lookup['ugt #' . $u_int] = $row;
+                $fi_lookup['ugt-' . $u_int] = $row;
+                $fi_lookup['ugt-' . sprintf('%02d', $u_int)] = $row;
+                $fi_lookup['ugt #' . sprintf('%02d', $u_int)] = $row;
+                $fi_lookup['ugt ' . $u_int] = $row;
+                $fi_lookup['ugt' . $u_int] = $row;
+                $fi_lookup[(string)$u_int] = $row;
             }
         }
 
@@ -1190,11 +1197,11 @@ body, html { overflow-x: hidden; max-width: 100%; }
                                         <i class="fas fa-edit"></i> Edit
                                     </button>
                                     <?php if (!$is_deactivated): ?>
-                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-deactivate" style="color:#dc2626 !important;border-color:#fca5a5 !important;background:#fef2f2 !important;">
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'inactive', '<?php echo htmlspecialchars(addslashes($full_fuel_name . ' (' . $ugt_str . ')')); ?>')" class="act-btn act-btn-deactivate" style="color:#dc2626 !important;border-color:#fca5a5 !important;background:#fef2f2 !important;">
                                             <i class="fas fa-ban"></i> Deactivate
                                         </button>
                                     <?php else: ?>
-                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($canonical_type)); ?>')" class="act-btn act-btn-activate" style="color:#16a34a !important;border-color:#86efac !important;background:#f0fdf4 !important;">
+                                        <button onclick="toggleFuelStatus(<?php echo $f['id']; ?>, 'active', '<?php echo htmlspecialchars(addslashes($full_fuel_name . ' (' . $ugt_str . ')')); ?>')" class="act-btn act-btn-activate" style="color:#16a34a !important;border-color:#86efac !important;background:#f0fdf4 !important;">
                                             <i class="fas fa-check-circle"></i> Activate
                                         </button>
                                     <?php endif; ?>

@@ -1109,6 +1109,7 @@ try {
             break;
             
         // ══════════════════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════════════════
         // DEACTIVATE FUEL
         case 'deactivate_fuel':
             $id = (int)($_POST['id'] ?? 0);
@@ -1120,7 +1121,7 @@ try {
             
             // Verify fuel belongs to manager's station
             $stmt = $pdo->prepare("
-                SELECT fuel_type 
+                SELECT id, fuel_type, ugt_no, status 
                 FROM fuel_inventory 
                 WHERE id = ? AND station_id = ?
                 LIMIT 1
@@ -1142,12 +1143,68 @@ try {
                 WHERE id = ? AND station_id = ?
             ");
             $stmt->execute([$me['id'], $id, $station_id]);
+
+            // Log in fuel_status_history
+            try {
+                $user_name = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+                $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, 'Active', 'Inactive', 'Deactivated', 'Deactivated by Manager', ?, ?, NOW())")
+                    ->execute([$station_id, $id, $fuel['fuel_type'], $me['id'], $user_name]);
+            } catch (Exception $e) {}
             
             // Log activity
             log_activity($pdo, $me['id'], 'Deactivate Fuel Product',
-                "Manager deactivated fuel product: {$fuel['fuel_type']}");
+                "Manager deactivated fuel product: {$fuel['fuel_type']} ({$fuel['ugt_no']})");
             
             echo json_encode(['success' => true, 'message' => 'Fuel product deactivated successfully']);
+            break;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ACTIVATE FUEL
+        case 'activate_fuel':
+            $id = (int)($_POST['id'] ?? 0);
+            
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+                exit;
+            }
+            
+            // Verify fuel belongs to manager's station
+            $stmt = $pdo->prepare("
+                SELECT id, fuel_type, ugt_no, status 
+                FROM fuel_inventory 
+                WHERE id = ? AND station_id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$id, $station_id]);
+            $fuel = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$fuel) {
+                echo json_encode(['success' => false, 'message' => 'Fuel product not found']);
+                exit;
+            }
+            
+            // Update status to active
+            $stmt = $pdo->prepare("
+                UPDATE fuel_inventory 
+                SET status = 'active',
+                    updated_by = ?,
+                    last_updated = NOW()
+                WHERE id = ? AND station_id = ?
+            ");
+            $stmt->execute([$me['id'], $id, $station_id]);
+
+            // Log in fuel_status_history
+            try {
+                $user_name = $me['username'] ?? ($me['first_name'] ?? 'Manager');
+                $pdo->prepare("INSERT INTO fuel_status_history (station_id, fuel_inventory_id, fuel_type, old_status, new_status, status, reason, changed_by, changed_by_name, created_at) VALUES (?, ?, ?, 'Inactive', 'Active', 'Activated', 'Activated by Manager', ?, ?, NOW())")
+                    ->execute([$station_id, $id, $fuel['fuel_type'], $me['id'], $user_name]);
+            } catch (Exception $e) {}
+            
+            // Log activity
+            log_activity($pdo, $me['id'], 'Activate Fuel Product',
+                "Manager activated fuel product: {$fuel['fuel_type']} ({$fuel['ugt_no']})");
+            
+            echo json_encode(['success' => true, 'message' => 'Fuel product activated successfully']);
             break;
             
         // ══════════════════════════════════════════════════════════════════════
