@@ -2027,22 +2027,39 @@ function get_role_notification_types($role) {
 // ── Audit Trail Helper ────────────────────────────────────────────────────────
 // Call this from any page/action to write a row into audit_logs.
 // $pdo must be available in the calling scope (global or passed in).
-function write_audit_log($pdo, $action_type, $action_details, $entity_type = null, $entity_id = null, $log_type = 'system', $status = 'Success') {
+function write_audit_log($pdo, $action_type, $action_details, $entity_type = null, $entity_id = null, $log_type = 'system', $status = 'Success', $station_id = null) {
     try {
         if (!$pdo) return;
         $user_id = null;
         if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['user']['id'])) {
             $user_id = (int)$_SESSION['user']['id'];
         }
+        if ($station_id === null && function_exists('user_station_id')) {
+            $station_id = user_station_id();
+        }
         $ip = $_SERVER['HTTP_CLIENT_IP']
            ?? $_SERVER['HTTP_X_FORWARDED_FOR']
            ?? $_SERVER['REMOTE_ADDR']
            ?? '0.0.0.0';
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
-        $pdo->prepare("INSERT INTO audit_logs
-            (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())")
-            ->execute([$user_id, $log_type, $action_type, $action_details, $entity_type, $entity_id, $status, $ip, $ua]);
+
+        $has_al_st = false;
+        try {
+            $c_stmt = $pdo->query("SHOW COLUMNS FROM audit_logs LIKE 'station_id'");
+            $has_al_st = (bool)($c_stmt ? $c_stmt->fetch() : false);
+        } catch (Exception $e) {}
+
+        if ($has_al_st) {
+            $pdo->prepare("INSERT INTO audit_logs
+                (user_id, station_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())")
+                ->execute([$user_id, $station_id ?: null, $log_type, $action_type, $action_details, $entity_type, $entity_id, $status, $ip, $ua]);
+        } else {
+            $pdo->prepare("INSERT INTO audit_logs
+                (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())")
+                ->execute([$user_id, $log_type, $action_type, $action_details, $entity_type, $entity_id, $status, $ip, $ua]);
+        }
     } catch (Exception $e) { /* silent — never block the main action */ }
 }
 

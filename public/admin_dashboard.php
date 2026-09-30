@@ -115,15 +115,24 @@ if ($display_name === '') {
 }
 
 $station_label = $me['station_name'] ?? '';
-if ($station_label === '' && $station_id) {
+if ($station_label === '' && $station_id > 0) {
     $station_label = (string) adm_value($pdo, 'SELECT name FROM stations WHERE id = ?', [$station_id], 'Station #' . $station_id);
 }
 if ($station_label === '') {
-    $station_label = 'Vamenta Blvd., Carmen, City Of Cagayan De Oro , Misamis Oriental';
+    $station_label = $station_id > 0 ? ('Station #' . $station_id) : 'Unassigned Station';
 }
 
-$st_sql      = $station_id ? "station_id = ?" : "1=1";
-$st_params   = $station_id ? [$station_id] : [];
+if ($station_id > 0) {
+    $st_sql    = "station_id = ?";
+    $st_params = [$station_id];
+} elseif (in_array($role, ['superadmin', 'developer'], true)) {
+    $st_sql    = "1=1";
+    $st_params = [];
+} else {
+    // Branch roles without a valid station MUST return zero/empty records, never all-station data
+    $st_sql    = "station_id = -1";
+    $st_params = [];
+}
 $date_params = array_merge($st_params, [$date_from, $date_to]);
 $today_str   = date('Y-m-d');
 
@@ -1091,18 +1100,55 @@ $recent_inventory_movements = array_slice($recent_inventory_movements, 0, 6);
 // ── 12. BRANCH ACTIVITY OVERVIEW & NOTIFICATIONS ─────────────────────────────
 $notifications_list = [];
 if (adm_table_exists($pdo, 'notifications')) {
-    $notifications_list = adm_rows($pdo, "
-        SELECT id, title, message, redirect_url, status, created_at
-        FROM notifications
-        WHERE (user_id = ? OR recipient_role IN ('admin', 'owner', 'all'))
-        ORDER BY created_at DESC
-        LIMIT 5
-    ", [$user_id]);
+    $has_notif_st = false;
+    try {
+        $c_stmt = $pdo->query("SHOW COLUMNS FROM notifications LIKE 'station_id'");
+        $has_notif_st = (bool)($c_stmt ? $c_stmt->fetch() : false);
+    } catch (Exception $e) {}
+
+    if ($has_notif_st && $station_id > 0) {
+        $notifications_list = adm_rows($pdo, "
+            SELECT id, title, message, redirect_url, status, created_at
+            FROM notifications
+            WHERE (user_id = ? OR (recipient_role IN ('admin', 'owner', 'all') AND (station_id = ? OR station_id = 0 OR station_id IS NULL)))
+            ORDER BY created_at DESC
+            LIMIT 5
+        ", [$user_id, $station_id]);
+    } else {
+        $notifications_list = adm_rows($pdo, "
+            SELECT id, title, message, redirect_url, status, created_at
+            FROM notifications
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 5
+        ", [$user_id]);
+    }
 }
 
 // Branch Activity — Login History from audit_logs (matches admin_reports.php?cat=audit&tab=login_history)
 $branch_activity_logs = [];
 if (adm_table_exists($pdo, 'audit_logs')) {
+    $has_al_st = false;
+    try {
+        $c_stmt = $pdo->query("SHOW COLUMNS FROM audit_logs LIKE 'station_id'");
+        $has_al_st = (bool)($c_stmt ? $c_stmt->fetch() : false);
+    } catch (Exception $e) {}
+
+    $al_st_where = "";
+    $al_st_params = [];
+    if ($station_id > 0) {
+        if ($has_al_st) {
+            $al_st_where = "AND (al.station_id = ? OR u.station_id = ?)";
+            $al_st_params = [$station_id, $station_id];
+        } else {
+            $al_st_where = "AND u.station_id = ?";
+            $al_st_params = [$station_id];
+        }
+    } elseif (!in_array($role, ['superadmin', 'developer'], true)) {
+        $al_st_where = "AND u.station_id = -1";
+        $al_st_params = [];
+    }
+
     $branch_activity_logs = adm_rows($pdo, "
         SELECT al.id,
                al.action_type                                              AS action,
@@ -1126,9 +1172,10 @@ if (adm_table_exists($pdo, 'audit_logs')) {
               'password_reset_otp_verified', 'password_reset_completed',
               'password_reset_otp_failed'
           )
+          {$al_st_where}
         ORDER BY al.id DESC
         LIMIT 6
-    ");
+    ", $al_st_params);
 }
 
 // Operational User / Shift / Branch Status

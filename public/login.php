@@ -443,14 +443,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $tables = $pdo->query("SHOW TABLES LIKE 'audit_logs'")->fetchAll();
                     if (!empty($tables)) {
-                        $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
-                        $auditStmt->execute([
-                            $user['user_id'],
-                            $login_detail,
-                            $user['user_id'],
-                            $_SERVER['REMOTE_ADDR'] ?? null,
-                            $_SERVER['HTTP_USER_AGENT'] ?? null,
-                        ]);
+                        $user_st_id = (int)($user['station_id'] ?? 0);
+                        $has_al_st = false;
+                        try {
+                            $c_stmt = $pdo->query("SHOW COLUMNS FROM audit_logs LIKE 'station_id'");
+                            $has_al_st = (bool)($c_stmt ? $c_stmt->fetch() : false);
+                        } catch (Exception $e) {}
+
+                        if ($has_al_st) {
+                            $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, station_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, ?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
+                            $auditStmt->execute([
+                                $user['user_id'],
+                                $user_st_id ?: null,
+                                $login_detail,
+                                $user['user_id'],
+                                $_SERVER['REMOTE_ADDR'] ?? null,
+                                $_SERVER['HTTP_USER_AGENT'] ?? null,
+                            ]);
+                        } else {
+                            $auditStmt = $pdo->prepare("INSERT INTO audit_logs (user_id, log_type, action_type, action_details, entity_type, entity_id, status, ip_address, user_agent, created_at) VALUES (?, 'user', 'Login', ?, 'users', ?, 'Success', ?, ?, NOW())");
+                            $auditStmt->execute([
+                                $user['user_id'],
+                                $login_detail,
+                                $user['user_id'],
+                                $_SERVER['REMOTE_ADDR'] ?? null,
+                                $_SERVER['HTTP_USER_AGENT'] ?? null,
+                            ]);
+                        }
                     }
                 } catch (Exception $e) { /* Fail silently if logs table missing */ }
 
