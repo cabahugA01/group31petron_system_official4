@@ -11,9 +11,13 @@ $me         = current_user();
 $role       = role_key($me['role'] ?? '');
 $station_id = user_station_id();
 
-$req_station_id = (int)($_POST['station_id'] ?? ($_GET['station_id'] ?? 0));
-if ($req_station_id > 0 && ($role === 'superadmin' || (int)$station_id <= 0 || (int)$station_id === $req_station_id)) {
-    $station_id = $req_station_id;
+if ($role === 'superadmin') {
+    $req_station_id = (int)($_POST['station_id'] ?? ($_GET['station_id'] ?? 0));
+    if ($req_station_id > 0) {
+        $station_id = $req_station_id;
+    }
+} else {
+    $station_id = (int)user_station_id();
 }
 
 if (!in_array($role, ['admin', 'superadmin'])) {
@@ -113,17 +117,19 @@ if (!function_exists('fetch_pumps_for_fuel_product')) {
             $prefix = 'KEROSENE - %';
         }
 
+        $inv_id = (int)($fuel['id'] ?? 0);
         try {
             $sql = "SELECT id, pump_number, pump_name, nozzle_number, status 
                     FROM fuel_pumps 
                     WHERE station_id = ? 
                       AND (
-                        (? > 0 AND fuel_type_id = ?)
+                        (? > 0 AND tank_id = ?)
+                        OR (? > 0 AND fuel_type_id = ?)
                         " . (!empty($ugt_list) ? " OR ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
                         " . ($prefix !== '' ? " OR UPPER(pump_number) LIKE ?" : "") . "
                       )
                     ORDER BY id ASC";
-            $params = [$station_id, $ft_id, $ft_id];
+            $params = [$station_id, $inv_id, $inv_id, $ft_id, $ft_id];
             if (!empty($ugt_list)) {
                 $params = array_merge($params, array_values($ugt_list));
             }
@@ -144,12 +150,13 @@ if (!function_exists('fetch_pumps_for_fuel_product')) {
                           LEFT JOIN fuel_pumps fp ON fp.id = n.pump_id
                           WHERE n.station_id = ?
                             AND (
-                              (? > 0 AND n.fuel_type_id = ?)
+                              (? > 0 AND fp.tank_id = ?)
+                              OR (? > 0 AND n.fuel_type_id = ?)
                               " . (!empty($ugt_list) ? " OR n.ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
                               " . ($prefix !== '' ? " OR UPPER(fp.pump_number) LIKE ?" : "") . "
                             )
                           ORDER BY n.id ASC";
-                $n_params = [$station_id, $ft_id, $ft_id];
+                $n_params = [$station_id, $inv_id, $inv_id, $ft_id, $ft_id];
                 if (!empty($ugt_list)) {
                     $n_params = array_merge($n_params, array_values($ugt_list));
                 }
@@ -187,9 +194,9 @@ try {
             $fuel_type      = trim($_POST['fuel_type'] ?? '');
             $ugt_no         = trim($_POST['ugt_no'] ?? '');
             if (preg_match('/^\d+$/', $ugt_no)) {
-                $ugt_no = 'UGT #' . $ugt_no;
-            } elseif (preg_match('/^ugt\s*#?\s*(\d+)$/i', $ugt_no, $m)) {
-                $ugt_no = 'UGT #' . $m[1];
+                $ugt_no = sprintf('UGT-%02d', (int)$ugt_no);
+            } elseif (preg_match('/^ugt\s*[-#]?\s*(\d+)$/i', $ugt_no, $m)) {
+                $ugt_no = sprintf('UGT-%02d', (int)$m[1]);
             }
             $price          = (float)($_POST['price'] ?? 0);
             $capacity       = (float)($_POST['capacity'] ?? 0);
@@ -235,46 +242,59 @@ try {
                 exit;
             }
 
-            // 1. Check if Fuel Name already exists for this station
-            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(fuel_type) = LOWER(?) LIMIT 1");
-            $stmt->execute([$station_id, $fuel_type]);
-            if ($stmt->fetch()) {
-                echo json_encode(['success' => false, 'message' => 'Fuel Name already exists for this station.']);
+            $num_pumps_raw = $_POST['num_pumps'] ?? null;
+            if ($num_pumps_raw === null || $num_pumps_raw === '') {
+                echo json_encode(['success' => false, 'message' => 'Please enter the Number of Pumps.']);
                 exit;
             }
+            $num_pumps = max(0, (int)$num_pumps_raw);
 
-            // 2. Check if selected UGT is already assigned for this station
-            $stmt = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND LOWER(ugt_no) = LOWER(?) LIMIT 1");
-            $stmt->execute([$station_id, $ugt_no]);
-            if ($stmt->fetch()) {
-                echo json_encode(['success' => false, 'message' => 'Selected UGT is already assigned.']);
+            // Server-side duplicate-submit debounce protection
+            $sub_key = 'last_add_fuel_' . md5($station_id . '|' . strtolower($fuel_type) . '|' . strtolower($ugt_no));
+            $last_sub_time = (float)($_SESSION[$sub_key] ?? 0);
+            if (microtime(true) - $last_sub_time < 3.0) {
+                echo json_encode(['success' => false, 'message' => 'This fuel product already exists for this station.']);
                 exit;
             }
+            $_SESSION[$sub_key] = microtime(true);
 
-            // Resolve fuel_type_id from fuel_types table
-            $fuel_type_id = 0;
-            $ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(name) = LOWER(?) LIMIT 1");
-            $ft->execute([$fuel_type]);
-            $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
-            if ($ft_row) {
-                $fuel_type_id = (int)$ft_row['id'];
-                try {
-                    $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")->execute([$price, $fuel_type_id]);
-                } catch (Exception $e_ft_up) {}
-            } else {
-                try {
-                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)");
-                    $ins_ft->execute([$fuel_type, $price]);
-                    $fuel_type_id = (int)$pdo->lastInsertId();
-                } catch (Exception $e_ft_ins) {
-                    $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
-                    $ins_ft->execute([$fuel_type]);
-                    $fuel_type_id = (int)$pdo->lastInsertId();
-                }
-            }
-
-            // Direct Save to fuel_inventory
+            // Transactional duplicate validation & atomic single-record creation
             try {
+                $pdo->beginTransaction();
+
+                // Re-check with row-level lock: ensure no fuel product or UGT exists for this station
+                $chk_dup = $pdo->prepare("SELECT id, fuel_type, ugt_no FROM fuel_inventory WHERE station_id = ? AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(ugt_no)) = LOWER(TRIM(?))) LIMIT 1 FOR UPDATE");
+                $chk_dup->execute([$station_id, $fuel_type, $ugt_no]);
+                $existing_row = $chk_dup->fetch(PDO::FETCH_ASSOC);
+                if ($existing_row) {
+                    $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'This fuel product already exists for this station.']);
+                    exit;
+                }
+
+                // Resolve fuel_type_id from fuel_types table
+                $fuel_type_id = 0;
+                $ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(name) = LOWER(?) LIMIT 1");
+                $ft->execute([$fuel_type]);
+                $ft_row = $ft->fetch(PDO::FETCH_ASSOC);
+                if ($ft_row) {
+                    $fuel_type_id = (int)$ft_row['id'];
+                    try {
+                        $pdo->prepare("UPDATE fuel_types SET price_per_liter = ? WHERE id = ?")->execute([$price, $fuel_type_id]);
+                    } catch (Exception $e_ft_up) {}
+                } else {
+                    try {
+                        $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)");
+                        $ins_ft->execute([$fuel_type, $price]);
+                        $fuel_type_id = (int)$pdo->lastInsertId();
+                    } catch (Exception $e_ft_ins) {
+                        $ins_ft = $pdo->prepare("INSERT INTO fuel_types (name) VALUES (?)");
+                        $ins_ft->execute([$fuel_type]);
+                        $fuel_type_id = (int)$pdo->lastInsertId();
+                    }
+                }
+
+                // Insert EXACTLY ONE master fuel product record into fuel_inventory
                 $stmt = $pdo->prepare("
                     INSERT INTO fuel_inventory
                     (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level,
@@ -294,16 +314,12 @@ try {
                     $me['id']
                 ]);
                 $new_fuel_id = (int)$pdo->lastInsertId();
-                if (function_exists('ensure_fuel_inventory_synced')) {
-                    ensure_fuel_inventory_synced($pdo, (int)$station_id);
-                }
 
-                // ── Station-Specific Pump & Nozzle Creation ───────────────────
-                $num_pumps = max(0, (int)($_POST['num_pumps'] ?? 0));
+                // ── Station-Specific Child Pump & Nozzle Creation (ONLY child records, never new product records) ──
                 $pump_configs_raw = $_POST['pump_configs'] ?? '[]';
                 $pump_configs = json_decode($pump_configs_raw, true) ?: [];
 
-                if ($num_pumps > 0 && $station_id > 0 && $fuel_type_id > 0) {
+                if ($num_pumps > 0 && $station_id > 0) {
                     $clean_fuel_tag = strtoupper(trim($fuel_type));
                     for ($pi = 1; $pi <= $num_pumps; $pi++) {
                         $p_cfg = $pump_configs[$pi - 1] ?? [];
@@ -315,21 +331,21 @@ try {
                         $pump_name = "Pump {$pi}";
                         $nozzle_num = "Nozzle {$pi}";
                         
-                        // Check if pump exists for this station
-                        $chk_pump = $pdo->prepare("SELECT id FROM fuel_pumps WHERE station_id = ? AND pump_number = ? LIMIT 1");
-                        $chk_pump->execute([$station_id, $pump_num]);
+                        // Check if pump exists for this station and tank
+                        $chk_pump = $pdo->prepare("SELECT id FROM fuel_pumps WHERE station_id = ? AND (tank_id = ? OR pump_number = ?) LIMIT 1");
+                        $chk_pump->execute([$station_id, $new_fuel_id, $pump_num]);
                         $existing_pump_id = (int)$chk_pump->fetchColumn();
                         
                         if (!$existing_pump_id) {
                             $ins_pump = $pdo->prepare("
-                                INSERT INTO fuel_pumps (station_id, pump_number, pump_name, nozzle_number, fuel_type_id, ugt_no, capacity, status, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                                INSERT INTO fuel_pumps (station_id, tank_id, pump_number, pump_name, nozzle_number, fuel_type_id, ugt_no, capacity, status, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                             ");
-                            $ins_pump->execute([$station_id, $pump_num, $pump_name, $nozzle_num, $fuel_type_id, $ugt_no, $capacity, $p_status]);
+                            $ins_pump->execute([$station_id, $new_fuel_id, $pump_num, $pump_name, $nozzle_num, $fuel_type_id, $ugt_no, $capacity, $p_status]);
                             $existing_pump_id = (int)$pdo->lastInsertId();
                         } else {
-                            $pdo->prepare("UPDATE fuel_pumps SET pump_name = ?, nozzle_number = ?, ugt_no = ?, status = ? WHERE id = ?")
-                                ->execute([$pump_name, $nozzle_num, $ugt_no, $p_status, $existing_pump_id]);
+                            $pdo->prepare("UPDATE fuel_pumps SET tank_id = ?, pump_name = ?, nozzle_number = ?, ugt_no = ?, status = ? WHERE id = ?")
+                                ->execute([$new_fuel_id, $pump_name, $nozzle_num, $ugt_no, $p_status, $existing_pump_id]);
                         }
 
                         // Sync into nozzles table
@@ -349,58 +365,68 @@ try {
                         } catch (Exception $e) {}
                     }
                 }
+
+                // Sync to inventory_products for POS/Inventory
+                try {
+                    $chk_ip = $pdo->prepare("SELECT id FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') LIMIT 1");
+                    $chk_ip->execute([$station_id, $fuel_type]);
+                    $ip_id = $chk_ip->fetchColumn();
+                    if (!$ip_id) {
+                        $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, stock, status, created_at) VALUES (?, ?, 'Fuel', ?, ?, 0, 'active', NOW())")
+                            ->execute([$station_id, $fuel_type, $price, $price]);
+                    } else {
+                        $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?")
+                            ->execute([$price, $price, $ip_id]);
+                    }
+                } catch (Exception $e_ip) {}
+
+                // Sync to fuel_pricing so station has an active price row
+                if ($station_id > 0 && $fuel_type_id > 0) {
+                    try {
+                        $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
+                        $fp_stmt->execute([$station_id, $fuel_type_id]);
+                        $fp_id = $fp_stmt->fetchColumn();
+                        if ($fp_id) {
+                            $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
+                                ->execute([$price, $fp_id]);
+                        } else {
+                            $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
+                                ->execute([$station_id, $fuel_type_id, $price, $me['id']]);
+                        }
+                    } catch (Exception $e_fp) {}
+                }
+
+                // Sync to fuel_price_history
+                if ($station_id > 0 && !empty($new_fuel_id)) {
+                    try {
+                        $pdo->prepare("INSERT INTO fuel_price_history (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at) VALUES (?, ?, ?, 0, ?, ?, 'Initial Product Creation', ?, ?, 'Approved', NOW())")
+                            ->execute([$station_id, $new_fuel_id, $fuel_type, $price, $price, $me['id'], $me['id']]);
+                    } catch (Exception $e_fph) {}
+                }
+
+                // Log Audit Trail
+                log_activity($pdo, $me['id'], 'Add Fuel Product',
+                    "Admin added new fuel product: {$fuel_type} ({$ugt_no}) with {$num_pumps} pumps at ₱{$price}/L. Status: {$status}. Remarks: {$remarks}");
+
+                $pdo->commit();
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Fuel product added successfully.',
+                    'fuel_product_id' => $new_fuel_id,
+                    'pump_count' => $num_pumps
+                ]);
             } catch (PDOException $pdoe) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                if ($pdoe->getCode() == 23000 || strpos($pdoe->getMessage(), 'Duplicate entry') !== false) {
+                    echo json_encode(['success' => false, 'message' => 'This fuel product already exists for this station.']);
+                    exit;
+                }
                 echo json_encode(['success' => false, 'message' => 'Database error: ' . $pdoe->getMessage()]);
                 exit;
             }
-
-            // Ensure table fuel_config_history exists
-            try {
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `fuel_config_history` (
-                  `id` INT AUTO_INCREMENT PRIMARY KEY,
-                  `station_id` INT NOT NULL,
-                  `fuel_inventory_id` INT NOT NULL,
-                  `fuel_type` VARCHAR(100) NOT NULL,
-                  `field_name` VARCHAR(100) NOT NULL,
-                  `old_value` VARCHAR(255) NULL,
-                  `new_value` VARCHAR(255) NULL,
-                  `updated_by` INT NULL,
-                  `updated_by_name` VARCHAR(255) NULL,
-                  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  INDEX (`station_id`),
-                  INDEX (`fuel_inventory_id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            } catch (Exception $e) {}
-
-            // Sync to fuel_pricing so station has an active price row
-            if ($station_id > 0 && $fuel_type_id > 0) {
-                try {
-                    $fp_stmt = $pdo->prepare("SELECT id FROM fuel_pricing WHERE station_id = ? AND fuel_type_id = ? AND is_active = 1 LIMIT 1");
-                    $fp_stmt->execute([$station_id, $fuel_type_id]);
-                    $fp_id = $fp_stmt->fetchColumn();
-                    if ($fp_id) {
-                        $pdo->prepare("UPDATE fuel_pricing SET price_per_liter = ?, updated_at = NOW() WHERE id = ?")
-                            ->execute([$price, $fp_id]);
-                    } else {
-                        $pdo->prepare("INSERT INTO fuel_pricing (station_id, fuel_type_id, price_per_liter, effective_date, is_active, created_by, created_at, updated_at) VALUES (?, ?, ?, NOW(), 1, ?, NOW(), NOW())")
-                            ->execute([$station_id, $fuel_type_id, $price, $me['id']]);
-                    }
-                } catch (Exception $e_fp) {}
-            }
-
-            // Sync to fuel_price_history
-            if ($station_id > 0 && !empty($new_fuel_id)) {
-                try {
-                    $pdo->prepare("INSERT INTO fuel_price_history (station_id, fuel_id, fuel_type, old_price, new_price, difference, reason, requested_by, approved_by, status, created_at) VALUES (?, ?, ?, 0, ?, ?, 'Initial Product Creation', ?, ?, 'Approved', NOW())")
-                        ->execute([$station_id, $new_fuel_id, $fuel_type, $price, $price, $me['id'], $me['id']]);
-                } catch (Exception $e_fph) {}
-            }
-
-            // Log Audit Trail
-            log_activity($pdo, $me['id'], 'Add Fuel Product',
-                "Admin added new fuel product: {$fuel_type} ({$ugt_no}) at ₱{$price}/L. Status: {$status}. Remarks: {$remarks}");
-
-            echo json_encode(['success' => true, 'message' => 'Fuel product added successfully.']);
             break;
 
         // ══════════════════════════════════════════════════════════════════════
@@ -1164,7 +1190,17 @@ try {
                     ->execute([$station_id, $id]);
             } catch (Exception $e) {}
 
-            // Admin always updates everything including price immediately
+            // Check if renamed fuel product or UGT conflicts with another tank for this station
+            if (!empty($new_fuel_name) || !empty($new_ugt_no)) {
+                $chk_dup = $pdo->prepare("SELECT id FROM fuel_inventory WHERE station_id = ? AND id != ? AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR LOWER(TRIM(ugt_no)) = LOWER(TRIM(?))) LIMIT 1");
+                $chk_dup->execute([$station_id, $id, $target_fuel_name, $target_ugt_no]);
+                if ($chk_dup->fetch()) {
+                    echo json_encode(['success' => false, 'message' => 'This fuel product already exists for this station.']);
+                    exit;
+                }
+            }
+
+            // Admin always updates everything including price immediately (updates existing record, keeping ID)
             $stmt = $pdo->prepare("UPDATE fuel_inventory SET fuel_type=?, ugt_no=?, price_per_liter=?, capacity=?, critical_level=?, reorder_level=?, updated_by=?, last_updated=NOW() WHERE id=? AND station_id=?");
             $stmt->execute([$target_fuel_name, $target_ugt_no, $new_price, $capacity, $critical_level, $reorder_level, $me['id'], $id, $station_id]);
 

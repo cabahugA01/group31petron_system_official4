@@ -2358,7 +2358,7 @@ function clean_fuel_display_name($fuel_type) {
     if (strpos($normalized, 'XTRA') !== false && strpos($normalized, 'UNL') !== false) return 'Xtra UNL';
     if (strpos($normalized, 'DIESEL 2') !== false || strpos($normalized, 'DIESEL - 2') !== false) return 'Diesel 2';
     if (strpos($normalized, 'DIESEL 1') !== false || strpos($normalized, 'DIESEL - 1') !== false) return 'Diesel 1';
-    if (strpos($normalized, 'DIESEL') !== false) return 'Diesel 1'; // generic Diesel → Diesel 1 (UGT-01)
+    if (strpos($normalized, 'DIESEL') !== false) return 'Diesel';
     return $name !== '' ? $name : 'Fuel';
 }
 }
@@ -2547,27 +2547,27 @@ function ensure_station_inventory_synced(PDO $pdo, int $station_id): void {
 }
 
 // ── Ensure fuel products from Product & Pricing/Inventory/Fuel Types are synced ──
+// ── Ensure fuel products from Product & Pricing/Inventory/Fuel Types are synced ──
 if (!function_exists('ensure_fuel_inventory_synced')) {
 function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
     if ($station_id <= 0) return;
     try {
-        // ── NATIONWIDE RULE: Only sync stations that have already been configured ──
         // If this station has NO fuel_inventory rows with a real price set,
         // it is an unconfigured station — do NOT auto-create records.
-        // Each station admin must configure their own fuel setup from scratch.
         $has_setup_stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND price_per_liter > 0"
         );
         $has_setup_stmt->execute([$station_id]);
         if ((int)$has_setup_stmt->fetchColumn() === 0) {
-            return; // Station not configured yet — leave it empty
+            return;
         }
 
-        // A. If fuel exists in fuel_inventory, ensure it exists in fuel_types and inventory_products
+        // A. If fuel exists in fuel_inventory, ensure corresponding entries in fuel_types and inventory_products
         $fi_types = $pdo->prepare("SELECT DISTINCT fuel_type, price_per_liter FROM fuel_inventory WHERE station_id = ? AND fuel_type IS NOT NULL AND fuel_type != ''");
         $fi_types->execute([$station_id]);
         foreach ($fi_types->fetchAll(PDO::FETCH_ASSOC) as $fi) {
             $fname = trim($fi['fuel_type']);
+            if ($fname === '') continue;
             $fprice = (float)($fi['price_per_liter'] ?? 0);
 
             // Ensure in fuel_types
@@ -2577,62 +2577,20 @@ function ensure_fuel_inventory_synced(PDO $pdo, int $station_id): void {
                 $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$fname, $fprice]);
             }
 
-            // Ensure in inventory_products as canonical Fuel (5 fuel types: Diesel, Turbo Diesel, XCS Plus, Xtra UNL, Kerosene)
-            $canonical_name = function_exists('clean_fuel_display_name') ? clean_fuel_display_name($fname) : $fname;
+            // Ensure in inventory_products using exact product name (never clone or auto-create duplicate tanks)
             $chk_ip = $pdo->prepare("SELECT id, unit_price FROM inventory_products WHERE station_id = ? AND LOWER(TRIM(product_name)) = LOWER(TRIM(?)) AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') LIMIT 1");
-            $chk_ip->execute([$station_id, $canonical_name]);
+            $chk_ip->execute([$station_id, $fname]);
             $existing_ip = $chk_ip->fetch(PDO::FETCH_ASSOC);
             if (!$existing_ip) {
                 $pdo->prepare("INSERT INTO inventory_products (station_id, product_name, category, unit_cost, unit_price, stock, status, created_at) VALUES (?, ?, 'Fuel', ?, ?, 0, 'active', NOW())")
-                    ->execute([$station_id, $canonical_name, $fprice, $fprice]);
+                    ->execute([$station_id, $fname, $fprice, $fprice]);
             } elseif ((float)$existing_ip['unit_price'] <= 0 && $fprice > 0) {
                 $pdo->prepare("UPDATE inventory_products SET unit_cost = ?, unit_price = ? WHERE id = ?")
                     ->execute([$fprice, $fprice, $existing_ip['id']]);
             }
         }
-
-        // B. If fuel was added in inventory_products (category Fuel) with this specific station_id,
-        //    ensure it exists in fuel_types and fuel_inventory.
-        //    NOTE: Do NOT use (station_id = ? OR station_id IS NULL) — the OR NULL clause
-        //    causes global/shared templates to seed tanks into every unconfigured station.
-        $ip_fuels = $pdo->prepare("SELECT id, product_name, unit_cost, unit_price, stock FROM inventory_products WHERE station_id = ? AND LOWER(COALESCE(category,'')) IN ('fuel', 'fuel products') AND LOWER(COALESCE(status,'active')) NOT IN ('deleted', 'archived')");
-        $ip_fuels->execute([$station_id]);
-        foreach ($ip_fuels->fetchAll(PDO::FETCH_ASSOC) as $ip) {
-            $fname = trim($ip['product_name']);
-            if (empty($fname)) continue;
-            $fprice = (float)($ip['unit_price'] ?: $ip['unit_cost'] ?: 0);
-
-            // Ensure in fuel_types
-            $chk_ft = $pdo->prepare("SELECT id FROM fuel_types WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
-            $chk_ft->execute([$fname]);
-            $ft_id = $chk_ft->fetchColumn();
-            if (!$ft_id) {
-                $pdo->prepare("INSERT INTO fuel_types (name, price_per_liter) VALUES (?, ?)")->execute([$fname, $fprice]);
-                $ft_id = (int)$pdo->lastInsertId();
-            }
-
-            // Ensure in fuel_inventory (skip archived/deleted rows — they should stay archived)
-            // Use canonical matching so 'Xtra UNL' matches 'Xtra UNL 1' / 'Xtra UNL 2', etc.
-            $fname_lower = strtolower(trim($fname));
-            $chk_fi = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted') AND (LOWER(TRIM(fuel_type)) = LOWER(TRIM(?)) OR (LOWER(TRIM(?)) = 'xtra unl' AND LOWER(fuel_type) LIKE 'xtra unl%') OR (LOWER(TRIM(?)) = 'diesel' AND LOWER(fuel_type) LIKE 'diesel%'))");
-            $chk_fi->execute([$station_id, $fname, $fname_lower, $fname_lower]);
-            $existing_count = (int)$chk_fi->fetchColumn();
-
-            // Hard cap: never exceed 7 tanks per station
-            $tank_total = $pdo->prepare("SELECT COUNT(*) FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) NOT IN ('archived','deleted')");
-            $tank_total->execute([$station_id]);
-            $current_tank_count = (int)$tank_total->fetchColumn();
-
-            if ($existing_count === 0 && $current_tank_count < 7) {
-                $ugt_no = 'UGT-' . str_pad($current_tank_count + 1, 2, '0', STR_PAD_LEFT);
-
-                $pdo->prepare("
-                    INSERT INTO fuel_inventory 
-                    (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level, current_level, current_stock, status, last_updated)
-                    VALUES (?, ?, ?, ?, ?, 14000, 2100, 2800, ?, ?, 'Normal', NOW())
-                ")->execute([$station_id, $ft_id, $fname, $ugt_no, $fprice, (float)($ip['stock'] ?? 0), (float)($ip['stock'] ?? 0)]);
-            }
-        }
+        // Part B deliberately removed: NEVER auto-insert extra tanks/products into fuel_inventory.
+        // Exactly ONE fuel product is created per user action.
     } catch (Exception $e) {
         error_log('ensure_fuel_inventory_synced error: ' . $e->getMessage());
     }
@@ -2738,11 +2696,6 @@ function get_tank_config(int $station_id = null): array {
                 }
             }
         } catch (Throwable $e) {}
-
-        // Fallback to PETRON_7_UGT_CONFIG only if database query fails or returns empty
-        if ($station_id === 1253) {
-            return array_map('_normalize_tank_row', PETRON_7_UGT_CONFIG);
-        }
 
         return [];
     }

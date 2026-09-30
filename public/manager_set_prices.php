@@ -168,187 +168,117 @@ try {
         }
     } catch (Exception $e) {}
 
-    foreach ($TANK_CONFIG_17 as $tc) {
-        $ft_key = strtolower(trim($tc['fuel_type']));
-        $tank_num = $tc['tanker_num'];
-
-        $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
-        $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
-        $inv = null;
-        if (!empty($tc['id']) && isset($fi_lookup_by_id[(int)$tc['id']])) {
-            $inv = $fi_lookup_by_id[(int)$tc['id']];
-        } elseif ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
-            $inv = $fi_lookup[$tank_ugt_raw];
-        } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
-            $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
-        } elseif ($tank_ugt_num && isset($fi_lookup['ugt #' . (int)$tank_ugt_num])) {
-            $inv = $fi_lookup['ugt #' . (int)$tank_ugt_num];
-        } elseif (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
-            $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-        } elseif (isset($fi_lookup[$ft_key . '_' . $tank_ugt_raw])) {
-            $inv = $fi_lookup[$ft_key . '_' . $tank_ugt_raw];
-        } elseif (isset($fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))])) {
-            $inv = $fi_lookup[$ft_key . '_' . strtolower(trim($tc['label']))];
-        } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
-            $cand = '';
-            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'xtra unl 1'; }
-            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'xtra unl 2'; }
-            if ($cand && isset($fi_lookup[$cand])) { $inv = $fi_lookup[$cand]; }
-            else { $inv = $fi_lookup['xtra unl'] ?? null; }
-        } elseif ($ft_key === 'diesel') {
-            $cand = '';
-            if (strpos(strtolower($tc['label']), '1') !== false) { $cand = 'diesel 1'; }
-            elseif (strpos(strtolower($tc['label']), '2') !== false) { $cand = 'diesel 2'; }
-            if ($cand && isset($fi_lookup[$cand])) { $inv = $fi_lookup[$cand]; }
-            else { $inv = $fi_lookup['diesel'] ?? null; }
-        } else {
-            $inv = $fi_lookup[$ft_key] ?? null;
-        }
-
-        $tank_key = strtolower(trim($tc['tank']));
-        $capacity  = (float)$tc['capacity'];
-        $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
-
-        $same_type_count = count(array_filter($TANK_CONFIG_17, function($t) use ($ft_key, $fi_lookup) {
-            $k = strtolower(trim($t['fuel_type']));
-            if ($k === 'xtra unl' || $k === 'xtr advance') {
-                $cand = '';
-                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'xtra unl 1'; }
-                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'xtra unl 2'; }
-                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
-                else { $k = 'xtra unl'; }
-            } elseif ($k === 'diesel') {
-                $cand = '';
-                if (strpos(strtolower($t['label']), '1') !== false) { $cand = 'diesel 1'; }
-                elseif (strpos(strtolower($t['label']), '2') !== false) { $cand = 'diesel 2'; }
-                if ($cand && isset($fi_lookup[$cand])) { $k = $cand; }
-                else { $k = 'diesel'; }
+    // Preload pumps for each tank and UGT to compute pump counts
+    $pumps_by_tank = [];
+    $pumps_by_ugt = [];
+    try {
+        $p_stmt = $pdo->prepare("SELECT id, tank_id, ugt_no, fuel_type_id FROM fuel_pumps WHERE station_id = ?");
+        $p_stmt->execute([$target_sid]);
+        foreach ($p_stmt->fetchAll(PDO::FETCH_ASSOC) as $pr) {
+            if (!empty($pr['tank_id'])) {
+                $pumps_by_tank[(int)$pr['tank_id']][] = $pr;
             }
-            return $k === $ft_key;
-        }));
-        $purchases = $del_lookup[$tank_key] ?? 0;
+            $u_clean = strtolower(trim($pr['ugt_no'] ?? ''));
+            if ($u_clean) {
+                $pumps_by_ugt[$u_clean][] = $pr;
+                $u_num = preg_replace('/[^0-9]/', '', $u_clean);
+                if ($u_num) {
+                    $pumps_by_ugt['ugt_' . (int)$u_num][] = $pr;
+                    $pumps_by_ugt['ugt #' . (int)$u_num][] = $pr;
+                    $pumps_by_ugt['ugt-' . (int)$u_num][] = $pr;
+                    $pumps_by_ugt['ugt-' . sprintf('%02d', (int)$u_num)][] = $pr;
+                }
+            }
+        }
+    } catch (Exception $e) {}
 
+    // Exactly 1:1 representation of fuel_inventory records for this station (No phantom or duplicated records)
+    $fuel_products = [];
+    foreach ($fi_raw as $row) {
+        $r_id = (int)$row['id'];
+        $ft_name = trim($row['fuel_type'] ?? '');
+        $ft_key = strtolower($ft_name);
+        $ugt_val = trim($row['ugt_no'] ?? '');
+        $ugt_key = strtolower($ugt_val);
+        $cap = (float)($row['capacity'] ?? 14000);
+        if ($cap <= 0) $cap = 14000;
+
+        $cur_level = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+        $tank_key = $ugt_key;
+        $purchases = $del_lookup[$tank_key] ?? 0;
         $sales_total = $sales_lookup[$ft_key] ?? 0;
         $adj_total   = $adj_lookup[$ft_key] ?? 0;
-        $sales       = $same_type_count > 0 ? round($sales_total / $same_type_count, 2) : 0;
-        $calibration = $same_type_count > 0 ? round($adj_total / $same_type_count, 2) : 0;
 
-        $beginning = $same_type_count > 0 ? round($cur_level / $same_type_count, 2) : 0;
+        $beginning = $cur_level;
         $total_available = $beginning + $purchases;
-        $ending_system   = min(max(0, $total_available - $sales - $calibration), $capacity);
+        $ending_system   = min(max(0, $total_available - $sales_total - $adj_total), $cap);
 
-        if ($capacity == 14000) {
-            $critical_lvl = 2500; $low_lvl = 5000;
-        } elseif ($capacity == 7000) {
-            $critical_lvl = 1000; $low_lvl = 2000;
-        } else {
-            $critical_lvl = $capacity * 0.10; $low_lvl = $capacity * 0.20;
+        $crit = (float)($row['critical_level'] ?? 0);
+        if ($crit <= 0) {
+            $crit = ($cap == 14000) ? 2500 : (($cap == 7000) ? 1000 : $cap * 0.10);
+        }
+        $reord = (float)($row['reorder_level'] ?? 0);
+        if ($reord <= 0) {
+            $reord = ($cap == 14000) ? 5000 : (($cap == 7000) ? 2000 : $cap * 0.20);
         }
 
+        $status = 'Normal';
         if ($ending_system <= 0) {
             $status = 'Out of Stock';
-        } elseif ($ending_system <= $critical_lvl) {
+        } elseif ($ending_system <= $crit) {
             $status = 'Critical';
-        } elseif ($ending_system <= $low_lvl) {
+        } elseif ($ending_system <= $reord) {
             $status = 'Low';
-        } else {
-            $status = 'Normal';
         }
 
-        $price = ($inv && (float)($inv['price_per_liter'] ?? 0) > 0) ? (float)$inv['price_per_liter'] : ($price_lookup[$ft_key] ?? 0);
-        $timestamp = $inv['last_updated'] ?? null;
-        
-        $critical_level = $inv ? (float)($inv['critical_level'] ?? 0) : 0;
-        if ($critical_level <= 0) {
-            $critical_level = ($capacity == 14000) ? 2500 : (($capacity == 7000) ? 1000 : $capacity * 0.10);
-        }
-        $reorder_level = $inv ? (float)($inv['reorder_level'] ?? 0) : 0;
-        if ($reorder_level <= 0) {
-            $reorder_level = ($capacity == 14000) ? 5000 : (($capacity == 7000) ? 2000 : $capacity * 0.20);
+        $price = (float)($row['price_per_liter'] ?? 0);
+        if ($price <= 0 && isset($price_lookup[$ft_key])) {
+            $price = (float)$price_lookup[$ft_key];
         }
 
-        $inv_id = $inv['id'] ?? null;
-        $inv_name = strtolower(trim($inv['fuel_type'] ?? $tc['fuel_type'] ?? ''));
-        $inv_canonical = strtolower(get_canonical_fuel_name($inv_name));
-        $ugt_name = strtolower(trim($tc['tank'] ?? ''));
+        // Pump count computation
+        $p_count = 0;
+        if (isset($pumps_by_tank[$r_id])) {
+            $p_count = count($pumps_by_tank[$r_id]);
+        } elseif ($ugt_key && isset($pumps_by_ugt[$ugt_key])) {
+            $p_count = count($pumps_by_ugt[$ugt_key]);
+        }
 
+        // Pending approval check
         $app = null;
-        if ($inv_id && isset($pending_approvals['id_' . (int)$inv_id])) {
-            $app = $pending_approvals['id_' . (int)$inv_id];
-        } elseif ($inv_name && isset($pending_approvals['name_' . $inv_name])) {
-            $app = $pending_approvals['name_' . $inv_name];
-        } elseif ($inv_canonical && isset($pending_approvals['canon_' . $inv_canonical])) {
+        $inv_canonical = strtolower(get_canonical_fuel_name($ft_name));
+        if (isset($pending_approvals['id_' . $r_id])) {
+            $app = $pending_approvals['id_' . $r_id];
+        } elseif (isset($pending_approvals['name_' . $ft_key])) {
+            $app = $pending_approvals['name_' . $ft_key];
+        } elseif (isset($pending_approvals['canon_' . $inv_canonical])) {
             $app = $pending_approvals['canon_' . $inv_canonical];
-        } elseif ($ugt_name && isset($pending_approvals['name_' . $ugt_name])) {
-            $app = $pending_approvals['name_' . $ugt_name];
+        } elseif ($ugt_key && isset($pending_approvals['name_' . $ugt_key])) {
+            $app = $pending_approvals['name_' . $ugt_key];
         }
+
+        $numOnly = (int)preg_replace('/[^0-9]/', '', $ugt_val) ?: (count($fuel_products) + 1);
 
         $fuel_products[] = [
-            'id'             => $inv_id,
-            'pump_id'        => $tc['tanker_num'],
-            'ugt_no'         => !empty($inv['ugt_no']) ? $inv['ugt_no'] : $tc['tank'],
-            'tank_label'     => $tc['label'],
-            'fuel_type'      => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
-            'raw_fuel_type'  => !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'],
-            'capacity'       => $capacity,
+            'id'             => $r_id,
+            'pump_id'        => $numOnly,
+            'ugt_no'         => $ugt_val ?: ('UGT #' . $numOnly),
+            'tank_label'     => $ugt_val ?: ('Tank #' . $numOnly),
+            'fuel_type'      => $ft_name,
+            'raw_fuel_type'  => $ft_name,
+            'capacity'       => $cap,
             'current_stock'  => $ending_system,
-            'critical_level' => $critical_level,
-            'reorder_level'  => $reorder_level,
+            'critical_level' => $crit,
+            'reorder_level'  => $reord,
             'status'         => $status,
-            'inv_status'     => $inv_id ? ($fi_status_by_id[(int)$inv_id] ?? 'active') : 'active',
-            'last_updated'   => $timestamp,
+            'inv_status'     => $fi_status_by_id[$r_id] ?? (strtolower($row['status'] ?? 'active')),
+            'last_updated'   => $row['last_updated'] ?? null,
             'price_per_liter'=> $price,
             'pending_price'  => $app ? (float)$app['new_value'] : null,
             'approval_status'=> $app ? $app['status'] : null,
-            'approval_id'    => $app ? $app['approval_id'] : null
+            'approval_id'    => $app ? $app['approval_id'] : null,
+            'pump_count'     => $p_count
         ];
-    }
-
-    // Append any additional fuel products from fuel_inventory not covered by TANK_CONFIG_17
-    $seen_inv_ids = array_filter(array_column($fuel_products, 'id'));
-    if (!empty($fi_raw) && is_array($fi_raw)) {
-        foreach ($fi_raw as $row) {
-            $r_id = (int)$row['id'];
-            if (!in_array($r_id, $seen_inv_ids, true)) {
-                $cap = (float)($row['capacity'] ?? 14000);
-                $cur_stock = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
-                $crit = (float)($row['critical_level'] ?? ($cap * 0.10));
-                $reord = (float)($row['reorder_level'] ?? ($cap * 0.20));
-
-                $st = 'Normal';
-                if ($cur_stock <= 0) $st = 'Out of Stock';
-                elseif ($cur_stock <= $crit) $st = 'Critical';
-                elseif ($cur_stock <= $reord) $st = 'Low';
-
-                $numOnly = (int)preg_replace('/[^0-9]/', '', $row['ugt_no'] ?? '') ?: (count($fuel_products) + 1);
-
-                $app = null;
-                if (isset($pending_approvals['id_' . $r_id])) {
-                    $app = $pending_approvals['id_' . $r_id];
-                }
-
-                $fuel_products[] = [
-                    'id'             => $r_id,
-                    'pump_id'        => $numOnly,
-                    'ugt_no'         => !empty($row['ugt_no']) ? $row['ugt_no'] : ('UGT #' . $numOnly),
-                    'tank_label'     => !empty($row['ugt_no']) ? $row['ugt_no'] : ('Tank #' . $numOnly),
-                    'fuel_type'      => $row['fuel_type'],
-                    'raw_fuel_type'  => $row['fuel_type'],
-                    'capacity'       => $cap,
-                    'current_stock'  => $cur_stock,
-                    'critical_level' => $crit,
-                    'reorder_level'  => $reord,
-                    'status'         => $st,
-                    'inv_status'     => $fi_status_by_id[$r_id] ?? 'active',
-                    'last_updated'   => $row['last_updated'] ?? null,
-                    'price_per_liter'=> (float)($row['price_per_liter'] ?? 0),
-                    'pending_price'  => $app ? (float)$app['new_value'] : null,
-                    'approval_status'=> $app ? $app['status'] : null,
-                    'approval_id'    => $app ? $app['approval_id'] : null
-                ];
-                $seen_inv_ids[] = $r_id;
-            }
-        }
     }
 
     // Calculate stats
@@ -1151,7 +1081,14 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             <strong style="font-family:monospace;color:#002F6C;font-size:13px;letter-spacing:0.2px;"><?php echo htmlspecialchars($ugt_str); ?></strong>
                         </td>
                         <td style="word-break:break-word;line-height:1.25;">
-                            <strong style="<?php echo $is_deactivated ? 'color:#64748b;' : 'color:#0f172a;'; ?>font-size:13px;"><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <strong style="<?php echo $is_deactivated ? 'color:#64748b;' : 'color:#0f172a;'; ?>font-size:13px;"><?php echo htmlspecialchars($full_fuel_name); ?></strong>
+                                <?php if (!empty($f['pump_count']) && (int)$f['pump_count'] > 0): ?>
+                                    <span class="badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;">
+                                        <i class="fas fa-gas-pump" style="font-size:10px;"></i> <?php echo (int)$f['pump_count']; ?> <?php echo ((int)$f['pump_count'] === 1) ? 'Pump' : 'Pumps'; ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                             <?php if ($is_deactivated): ?>
                                 <div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;">
                                     <i class="fas fa-ban"></i> Deactivated (Disabled)
@@ -1687,10 +1624,56 @@ function exportPricing(format) {
         st  = encodeURIComponent(document.getElementById('svcStatusFilter')?.value || '');
         cat = encodeURIComponent(document.getElementById('serviceCategoryFilter')?.value || '');
     }
-    const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&q=${q}&status=${st}&category=${cat}&brand=${brd}`;
-    if (format === 'print' || format === 'pdf') {
-        window.open(url, '_blank');
+    const url = `export_pricing_products.php?tab=${activeTab}&format=${format}&station_id=<?php echo (int)$station_id; ?>&q=${q}&status=${st}&category=${cat}&brand=${brd}&_ts=${Date.now()}`;
+
+    if (format === 'print') {
+        // Direct print on current page — no new tab or popup
+        var printUrl = 'export_pricing_products.php?tab=' + activeTab + '&format=print&station_id=<?php echo (int)$station_id; ?>&q=' + q + '&status=' + st + '&category=' + cat + '&brand=' + brd + '&_ts=' + Date.now();
+        fetch(printUrl, { credentials: 'same-origin' })
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                doc.querySelectorAll('script').forEach(function(s) { s.remove(); });
+
+                var existing = document.getElementById('report-print-root');
+                if (existing) existing.remove();
+                var existingPs = document.getElementById('pricing-print-styles');
+                if (existingPs) existingPs.remove();
+
+                var printRoot = document.createElement('div');
+                printRoot.id = 'report-print-root';
+                printRoot.innerHTML = doc.body ? doc.body.innerHTML : html;
+                document.body.appendChild(printRoot);
+
+                var styleContent = '';
+                doc.querySelectorAll('style').forEach(function(s) { styleContent += s.textContent; });
+                if (styleContent) {
+                    var styleEl = document.createElement('style');
+                    styleEl.id = 'pricing-print-styles';
+                    styleEl.textContent = styleContent;
+                    document.head.appendChild(styleEl);
+                }
+
+                document.body.classList.add('report-printing');
+                var cleanup = function() {
+                    document.body.classList.remove('report-printing');
+                    var n = document.getElementById('report-print-root');
+                    if (n) n.remove();
+                    var ps = document.getElementById('pricing-print-styles');
+                    if (ps) ps.remove();
+                    window.removeEventListener('afterprint', cleanup);
+                };
+                window.addEventListener('afterprint', cleanup);
+                window.print();
+                setTimeout(cleanup, 1500);
+            })
+            .catch(function() {
+                // Fallback: open in new tab if fetch fails
+                window.open('export_pricing_products.php?tab=' + activeTab + '&format=print&station_id=<?php echo (int)$station_id; ?>&q=' + q + '&status=' + st + '&category=' + cat + '&brand=' + brd, '_blank');
+            });
     } else {
+        // PDF, Excel, CSV — direct download via location.href (no new tab)
         window.location.href = url;
     }
 }
@@ -3543,9 +3526,14 @@ safeAddListener('newUgtNo', 'blur', function() {
 });
 
 // ── Add Fuel Product Form Handler ───────────────────────────────────────────
+var isSubmittingFuelProduct = false;
 safeAddListener('addProductForm', 'submit', function(e) {
     e.preventDefault();
+    if (isSubmittingFuelProduct) {
+        return false;
+    }
 
+    var form = e.target;
     var fuelName = (document.getElementById('newFuelName') || {}).value || '';
     fuelName = fuelName.trim();
     var ugtNo    = (document.getElementById('newUgtNo') || {}).value || '';
@@ -3593,7 +3581,7 @@ safeAddListener('addProductForm', 'submit', function(e) {
         showCustomAlert('Tank Capacity must be greater than Reorder Level.', 'error');
         return;
     }
-    if (false) {
+    if (reorder <= critical && critical > 0) {
         showCustomAlert('Reorder Level must be greater than Critical Level.', 'error');
         return;
     }
@@ -3608,6 +3596,19 @@ safeAddListener('addProductForm', 'submit', function(e) {
         showCustomAlert('Please enter a valid Number of Pumps (0 or more).', 'error');
         return;
     }
+
+    // Lock submission flag immediately to prevent double submission
+    isSubmittingFuelProduct = true;
+
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+        btn.style.cursor = 'not-allowed';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding Fuel Product...';
+    }
+    var formInputs = form.querySelectorAll('input, select, textarea, button');
+    formInputs.forEach(function(el) { if (el !== btn) el.disabled = true; });
 
     var fd = new FormData();
     fd.append('action',         'add_fuel_product');
@@ -3632,10 +3633,26 @@ safeAddListener('addProductForm', 'submit', function(e) {
                 });
             } else {
                 showCustomAlert(data.message || 'Failed to add fuel product.', 'error');
+                isSubmittingFuelProduct = false;
+                formInputs.forEach(function(el) { el.disabled = false; });
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                    btn.innerHTML = '<i class="fas fa-check"></i> Add Fuel Product';
+                }
             }
         })
         .catch(function() {
             showCustomAlert('Network error. Please try again.', 'error');
+            isSubmittingFuelProduct = false;
+            formInputs.forEach(function(el) { el.disabled = false; });
+            if (btn) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.innerHTML = '<i class="fas fa-check"></i> Add Fuel Product';
+            }
         });
 });
 

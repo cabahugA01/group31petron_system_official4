@@ -34,13 +34,32 @@ $today          = date('Y-m-d');
 $now_formatted  = date('F j, Y h:i A');
 $admin_name     = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')) ?: $me['username'];
 
-// Fetch Station Name
-$station_name = 'Petron Carmen';
-$target_sid   = $my_station_id ?: 1;
+// Fetch Station Name with Strict Station Isolation
+$target_sid = 0;
+if ($my_role === 'superadmin') {
+    if (!empty($_GET['station_id']) && (int)$_GET['station_id'] > 0) {
+        $target_sid = (int)$_GET['station_id'];
+    } elseif ($my_station_id && (int)$my_station_id > 0) {
+        $target_sid = (int)$my_station_id;
+    } elseif (!empty($_SESSION['active_station_id']) && (int)$_SESSION['active_station_id'] > 0) {
+        $target_sid = (int)$_SESSION['active_station_id'];
+    } elseif (!empty($_SESSION['station_id']) && (int)$_SESSION['station_id'] > 0) {
+        $target_sid = (int)$_SESSION['station_id'];
+    }
+} else {
+    // Non-superadmin users are strictly restricted to their authenticated user's assigned station
+    $target_sid = (int)$my_station_id;
+    if ($target_sid <= 0 && !empty($_SESSION['user']['station_id'])) {
+        $target_sid = (int)$_SESSION['user']['station_id'];
+    } elseif ($target_sid <= 0 && !empty($_SESSION['station_id'])) {
+        $target_sid = (int)$_SESSION['station_id'];
+    }
+}
 
-if ($my_station_id) {
-    $stn_stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ?");
-    $stn_stmt->execute([$my_station_id]);
+$station_name = 'Unknown Station';
+if ($target_sid > 0) {
+    $stn_stmt = $pdo->prepare("SELECT name FROM stations WHERE id = ? LIMIT 1");
+    $stn_stmt->execute([$target_sid]);
     $stn_row = $stn_stmt->fetch(PDO::FETCH_ASSOC);
     if ($stn_row && !empty($stn_row['name'])) {
         $station_name = $stn_row['name'];
@@ -89,174 +108,121 @@ if ($tab === 'fuel') {
         ['label' => 'STATUS', 'width' => '15%', 'align' => 'center']
     ];
 
-    $TANK_CONFIG_17 = get_tank_config((int)$target_sid);
-    $fi_lookup = [];
-    $fi_status_by_id = [];
+    if ($target_sid > 0) {
+        $del_lookup = [];
+        $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
+        $s->execute([$target_sid]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
+        }
 
-    $s = $pdo->prepare("SELECT id, fuel_type, ugt_no, current_level, current_stock, capacity, price_per_liter, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ?");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $fuel_key = strtolower(trim($row['fuel_type']));
-        $ugt_val  = strtolower(trim($row['ugt_no'] ?? ''));
+        $sales_lookup = [];
+        $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = CURDATE() AND status = 'Verified' GROUP BY fuel_type");
+        $s->execute([$target_sid]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
+        }
 
-        if (!isset($fi_lookup[$fuel_key])) $fi_lookup[$fuel_key] = $row;
-        if ($ugt_val) {
-            $fi_lookup[$ugt_val] = $row;
-            $u_num = preg_replace('/[^0-9]/', '', $ugt_val);
-            if ($u_num) {
-                $fi_lookup['ugt_' . (int)$u_num] = $row;
-                $fi_lookup['ugt #' . (int)$u_num] = $row;
+        $adj_lookup = [];
+        $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id = fi.fuel_type_id AND fi.station_id = fa.station_id WHERE fa.station_id = ? AND DATE(fa.adjustment_date) = CURDATE() GROUP BY fi.fuel_type");
+        $s->execute([$target_sid]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
+        }
+
+        $price_lookup = [];
+        $s = $pdo->prepare("SELECT ft.name AS fuel_type, fp.price_per_liter FROM fuel_pricing fp JOIN fuel_types ft ON fp.fuel_type_id = ft.id WHERE fp.station_id = ? AND fp.is_active = 1 ORDER BY fp.effective_date DESC");
+        $s->execute([$target_sid]);
+        foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = strtolower(trim($row['fuel_type']));
+            if (!isset($price_lookup[$key])) $price_lookup[$key] = (float)$row['price_per_liter'];
+        }
+
+        // Fetch fuel inventory strictly for this station (1:1 with database, no phantom tanks)
+        $s = $pdo->prepare("SELECT id, fuel_type, ugt_no, current_level, current_stock, capacity, price_per_liter, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ? ORDER BY CAST(REGEXP_REPLACE(COALESCE(ugt_no,'0'), '[^0-9]', '') AS UNSIGNED) ASC, id ASC");
+        $s->execute([$target_sid]);
+        $fi_rows = $s->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($fi_rows as $row) {
+            $r_id      = (int)$row['id'];
+            $ft_name   = trim($row['fuel_type'] ?? '');
+            $ft_key    = strtolower($ft_name);
+            $ugt_val   = trim($row['ugt_no'] ?? '');
+            $ugt_key   = strtolower($ugt_val);
+            $cap       = (float)($row['capacity'] ?? 14000);
+            if ($cap <= 0) $cap = 14000;
+
+            $cur_level = (float)($row['current_level'] ?? $row['current_stock'] ?? 0);
+            $tank_key  = $ugt_key;
+            $purchases = $del_lookup[$tank_key] ?? ($del_lookup[$ft_key] ?? 0);
+            $sales_total = $sales_lookup[$tank_key] ?? ($sales_lookup[$ft_key] ?? 0);
+            $adj_total   = $adj_lookup[$tank_key] ?? ($adj_lookup[$ft_key] ?? 0);
+
+            $beginning       = $cur_level;
+            $total_available = $beginning + $purchases;
+            $ending_system   = min(max(0, $total_available - $sales_total - $adj_total), $cap);
+
+            $crit = (float)($row['critical_level'] ?? 0);
+            if ($crit <= 0) {
+                $crit = ($cap == 14000) ? 2500 : (($cap == 7000) ? 1000 : $cap * 0.10);
             }
-        }
-        if (preg_match('/diesel\s*(\d)/i', $fuel_key, $m)) {
-            $k = 'diesel ' . $m[1];
-            if (!isset($fi_lookup[$k])) $fi_lookup[$k] = $row;
-        }
-        if (strpos($fuel_key, 'diesel') !== false && strpos($fuel_key, 'turbo') === false) {
-            if (!isset($fi_lookup['diesel'])) $fi_lookup['diesel'] = $row;
-        }
-        if (preg_match('/(xtra unl|xtra unl)\s*(\d)/i', $fuel_key, $m)) {
-            $k = 'xtra unl ' . $m[2];
-            if (!isset($fi_lookup[$k])) $fi_lookup[$k] = $row;
-            if (!isset($fi_lookup['xtra unl'])) $fi_lookup['xtra unl'] = $row;
-        }
-        if (strpos($fuel_key, 'xtra') !== false || strpos($fuel_key, 'unl') !== false) {
-            if (!isset($fi_lookup['xtra unl'])) $fi_lookup['xtra unl'] = $row;
-        }
-        if (strpos($fuel_key, 'xcs') !== false) {
-            if (!isset($fi_lookup['xcs plus'])) $fi_lookup['xcs plus'] = $row;
-        }
-        if (strpos($fuel_key, 'kerosene') !== false) {
-            if (!isset($fi_lookup['kerosene'])) $fi_lookup['kerosene'] = $row;
-        }
-        if (strpos($fuel_key, 'turbo') !== false) {
-            if (!isset($fi_lookup['turbo diesel'])) $fi_lookup['turbo diesel'] = $row;
-        }
-
-        $st_lower = strtolower(trim($row['status'] ?? ''));
-        $fi_status_by_id[(int)$row['id']] = in_array($st_lower, ['inactive', 'disabled', 'deactivated'], true) ? 'inactive' : 'active';
-    }
-
-    $del_lookup = [];
-    $s = $pdo->prepare("SELECT tank_assigned, fuel_type, SUM(delivery_liters) AS total_del FROM fuel_deliveries WHERE station_id = ? AND DATE(delivery_date) = CURDATE() AND status = 'Verified' GROUP BY tank_assigned, fuel_type");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $del_lookup[strtolower(trim($row['tank_assigned']))] = (float)$row['total_del'];
-    }
-
-    $sales_lookup = [];
-    $s = $pdo->prepare("SELECT fuel_type, SUM(liters_sold) AS total_sales FROM fuel_transactions WHERE station_id = ? AND DATE(transaction_date) = CURDATE() AND status = 'Verified' GROUP BY fuel_type");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $sales_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_sales'];
-    }
-
-    $adj_lookup = [];
-    $s = $pdo->prepare("SELECT fi.fuel_type, COALESCE(SUM(fa.liters),0) AS total_adj FROM fuel_adjustments fa JOIN fuel_inventory fi ON fa.fuel_type_id = fi.fuel_type_id AND fi.station_id = fa.station_id WHERE fa.station_id = ? AND DATE(fa.adjustment_date) = CURDATE() GROUP BY fi.fuel_type");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $adj_lookup[strtolower(trim($row['fuel_type']))] = (float)$row['total_adj'];
-    }
-
-    $price_lookup = [];
-    $s = $pdo->prepare("SELECT ft.name AS fuel_type, fp.price_per_liter FROM fuel_pricing fp JOIN fuel_types ft ON fp.fuel_type_id = ft.id WHERE fp.station_id = ? AND fp.is_active = 1 ORDER BY fp.effective_date DESC");
-    $s->execute([$target_sid]);
-    foreach ($s->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $key = strtolower(trim($row['fuel_type']));
-        if (!isset($price_lookup[$key])) $price_lookup[$key] = (float)$row['price_per_liter'];
-    }
-
-    foreach ($TANK_CONFIG_17 as $tc) {
-        $ft_key = strtolower(trim($tc['fuel_type']));
-        $tank_num = $tc['tanker_num'];
-        $tank_ugt_raw = strtolower(trim($tc['tank'] ?? ''));
-        $tank_ugt_num = preg_replace('/[^0-9]/', '', $tank_ugt_raw);
-
-        $inv = null;
-        if ($tank_ugt_raw && isset($fi_lookup[$tank_ugt_raw])) {
-            $inv = $fi_lookup[$tank_ugt_raw];
-        } elseif ($tank_ugt_num && isset($fi_lookup['ugt_' . (int)$tank_ugt_num])) {
-            $inv = $fi_lookup['ugt_' . (int)$tank_ugt_num];
-        } elseif ($tank_ugt_num && isset($fi_lookup['ugt #' . (int)$tank_ugt_num])) {
-            $inv = $fi_lookup['ugt #' . (int)$tank_ugt_num];
-        } elseif (isset($fi_lookup[$ft_key . '_tank_' . $tank_num])) {
-            $inv = $fi_lookup[$ft_key . '_tank_' . $tank_num];
-        } elseif (isset($fi_lookup[$ft_key . '_' . $tank_ugt_raw])) {
-            $inv = $fi_lookup[$ft_key . '_' . $tank_ugt_raw];
-        } elseif ($ft_key === 'xtra unl' || $ft_key === 'xtr advance') {
-            $cand = (strpos(strtolower($tc['label']), '1') !== false) ? 'xtra unl 1' : 'xtra unl 2';
-            $inv = $fi_lookup[$cand] ?? ($fi_lookup['xtra unl'] ?? null);
-        } elseif ($ft_key === 'diesel') {
-            $cand = (strpos(strtolower($tc['label']), '1') !== false) ? 'diesel 1' : 'diesel 2';
-            $inv = $fi_lookup[$cand] ?? ($fi_lookup['diesel'] ?? null);
-        } else {
-            $inv = $fi_lookup[$ft_key] ?? null;
-        }
-
-        $capacity  = (float)$tc['capacity'];
-        $cur_level = $inv ? (float)($inv['current_level'] ?? $inv['current_stock'] ?? 0) : 0;
-        $tank_key  = strtolower(trim($tc['tank']));
-
-        $deliv = $del_lookup[$tank_key] ?? ($del_lookup[$ft_key] ?? 0);
-        $sales = $sales_lookup[$tank_key] ?? ($sales_lookup[$ft_key] ?? 0);
-        $adj   = $adj_lookup[$tank_key] ?? ($adj_lookup[$ft_key] ?? 0);
-        $ending_system = max(0, $cur_level + $deliv - $sales + $adj);
-
-        $reorder_level = $inv ? (float)($inv['reorder_level'] ?? 0) : 0;
-        if ($reorder_level <= 0) {
-            $reorder_level = ($capacity == 14000) ? 5000 : (($capacity == 7000) ? 2000 : $capacity * 0.20);
-        }
-
-        $inv_id = $inv['id'] ?? null;
-        $inv_status = $inv_id ? ($fi_status_by_id[(int)$inv_id] ?? 'active') : 'active';
-        $is_deactivated = in_array($inv_status, ['inactive', 'disabled', 'deactivated'], true);
-
-        if ($is_deactivated) {
-            $status_str = 'Deactivated';
-        } elseif ($ending_system <= 0) {
-            $status_str = 'Out of Stock';
-        } elseif ($reorder_level > 0 && $ending_system <= $reorder_level) {
-            $status_str = 'Low Stock';
-        } else {
-            $status_str = 'Normal';
-        }
-
-        $price = ($inv && (float)($inv['price_per_liter'] ?? 0) > 0) ? (float)$inv['price_per_liter'] : ($price_lookup[$ft_key] ?? 0);
-        $ugt_name = !empty($inv['ugt_no']) ? $inv['ugt_no'] : $tc['tank'];
-        $fuel_name = !empty($inv['fuel_type']) ? $inv['fuel_type'] : $tc['fuel_type'];
-
-        // Apply filters
-        if ($filter_status !== '') {
-            $st_norm = strtolower($status_str);
-            if ($filter_status === 'active' && $is_deactivated) continue;
-            if ($filter_status === 'inactive' && !$is_deactivated) continue;
-            if ($filter_status === 'normal' && $st_norm !== 'normal') continue;
-            if ($filter_status === 'low' || $filter_status === 'low stock') {
-                if ($st_norm !== 'low stock' && $st_norm !== 'low') continue;
+            $reord = (float)($row['reorder_level'] ?? 0);
+            if ($reord <= 0) {
+                $reord = ($cap == 14000) ? 5000 : (($cap == 7000) ? 2000 : $cap * 0.20);
             }
-            if ($filter_status === 'out' || $filter_status === 'out of stock') {
-                if ($st_norm !== 'out of stock' && $st_norm !== 'out') continue;
+
+            $inv_status = strtolower(trim($row['status'] ?? 'active'));
+            $is_deactivated = in_array($inv_status, ['inactive', 'disabled', 'deactivated'], true);
+
+            if ($is_deactivated) {
+                $status_str = 'Deactivated';
+            } elseif ($ending_system <= 0) {
+                $status_str = 'Out of Stock';
+            } elseif ($ending_system <= $crit) {
+                $status_str = 'Critical';
+            } elseif ($ending_system <= $reord) {
+                $status_str = 'Low Stock';
+            } else {
+                $status_str = 'Normal';
             }
-            if ($filter_status === 'deactivated' && $st_norm !== 'deactivated') continue;
-        }
 
-        if ($filter_q !== '') {
-            $match = (strpos(strtolower($ugt_name), $filter_q) !== false) ||
-                     (strpos(strtolower($fuel_name), $filter_q) !== false) ||
-                     (strpos(strtolower($tc['label']), $filter_q) !== false);
-            if (!$match) continue;
-        }
+            $price = (float)($row['price_per_liter'] ?? 0);
+            if ($price <= 0 && isset($price_lookup[$ft_key])) {
+                $price = (float)$price_lookup[$ft_key];
+            }
 
-        $export_rows[] = [
-            'ugt_no'      => $ugt_name,
-            'fuel_type'   => $fuel_name . ' (' . $tc['label'] . ')',
-            'price'       => number_format($price, 2),
-            'current_vol' => number_format($ending_system, 2),
-            'capacity'    => number_format($capacity, 2),
-            'reorder_lvl' => number_format($reorder_level, 2),
-            'status'      => $status_str,
-            '_is_active'  => !$is_deactivated
-        ];
+            // Apply filters
+            if ($filter_status !== '') {
+                $st_norm = strtolower($status_str);
+                if ($filter_status === 'active' && $is_deactivated) continue;
+                if ($filter_status === 'inactive' && !$is_deactivated) continue;
+                if ($filter_status === 'normal' && $st_norm !== 'normal') continue;
+                if ($filter_status === 'low' || $filter_status === 'low stock') {
+                    if ($st_norm !== 'low stock' && $st_norm !== 'low') continue;
+                }
+                if ($filter_status === 'out' || $filter_status === 'out of stock') {
+                    if ($st_norm !== 'out of stock' && $st_norm !== 'out') continue;
+                }
+                if ($filter_status === 'deactivated' && $st_norm !== 'deactivated') continue;
+            }
+
+            if ($filter_q !== '') {
+                $match = (strpos(strtolower($ugt_val), $filter_q) !== false) ||
+                         (strpos(strtolower($ft_name), $filter_q) !== false);
+                if (!$match) continue;
+            }
+
+            $export_rows[] = [
+                'ugt_no'      => $ugt_val ?: ('UGT #' . $r_id),
+                'fuel_type'   => $ft_name,
+                'price'       => number_format($price, 2),
+                'current_vol' => number_format($ending_system, 2),
+                'capacity'    => number_format($cap, 2),
+                'reorder_lvl' => number_format($reord, 2),
+                'status'      => $status_str,
+                '_is_active'  => !$is_deactivated
+            ];
+        }
     }
 } elseif ($tab === 'merch') {
     $report_title = 'MERCHANDISE PRODUCTS & PRICING REPORT';
@@ -273,7 +239,7 @@ if ($tab === 'fuel') {
         ['label' => 'STATUS', 'width' => '10%', 'align' => 'center']
     ];
 
-    $raw_rows = load_merchandise_pricing_catalog($pdo, (int)$target_sid);
+    $raw_rows = ($target_sid > 0) ? load_merchandise_pricing_catalog($pdo, (int)$target_sid) : [];
 
     foreach ($raw_rows as $row) {
         $cat    = trim($row['category_name'] ?? $row['category'] ?? 'Uncategorized');
@@ -356,13 +322,17 @@ if ($tab === 'fuel') {
         ['label' => 'STATUS', 'width' => '10%', 'align' => 'center']
     ];
 
-    $stmt = $pdo->prepare("
-        SELECT id, service_code, service_name, category, service_price, labor_fee, estimated_duration, required_mechanics, active, updated_at
-        FROM job_order_service_types
-        ORDER BY category ASC, service_name ASC
-    ");
-    $stmt->execute();
-    $raw_services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw_services = [];
+    if ($target_sid > 0) {
+        $stmt = $pdo->prepare("
+            SELECT id, service_code, service_name, category, service_price, labor_fee, estimated_duration, required_mechanics, active, updated_at
+            FROM job_order_service_types
+            WHERE station_id = ?
+            ORDER BY category ASC, service_name ASC
+        ");
+        $stmt->execute([(int)$target_sid]);
+        $raw_services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     foreach ($raw_services as $svc) {
         $svc_id     = (int)$svc['id'];

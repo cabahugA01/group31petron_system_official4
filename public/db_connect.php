@@ -247,3 +247,17 @@ try {
 } catch (Throwable $e) {
     // Gracefully ignore if phpmyadmin DB is unavailable or restricted
 }
+
+// ── Self-healing Unique Constraint for fuel_inventory (station_id, ugt_no) ───
+try {
+    static $fuel_inv_ugt_unique_checked = false;
+    if (!$fuel_inv_ugt_unique_checked) {
+        $fuel_inv_ugt_unique_checked = true;
+        $chk_u_ugt = $pdo->query("SHOW INDEX FROM fuel_inventory WHERE Key_name = 'unique_station_ugt'");
+        if (!$chk_u_ugt || $chk_u_ugt->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE fuel_inventory ADD UNIQUE KEY `unique_station_ugt` (`station_id`, `ugt_no`)");
+        }
+    }
+} catch (Throwable $e) {
+    // Already exists or duplicate entry present
+}
