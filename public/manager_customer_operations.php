@@ -1142,7 +1142,12 @@ function manager_list_customer_requests(): void {
         LIMIT 100
     ");
     $stmt->execute([$sid]);
-    manager_send_json(['success' => true, 'requests' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        $r['request_no'] = 'CR-' . str_pad((string)$r['id'], 5, '0', STR_PAD_LEFT);
+    }
+    unset($r);
+    manager_send_json(['success' => true, 'requests' => $rows]);
 }
 
 function manager_fetch_request_for_review(int $requestId): array {
@@ -1157,7 +1162,7 @@ function manager_fetch_request_for_review(int $requestId): array {
 }
 
 function manager_approve_customer_request(): void {
-    global $pdo, $me, $station_id;
+    global $pdo, $me, $station_id, $role;
 
     $requestId = (int)($_POST['id'] ?? 0);
     if ($requestId <= 0) {
@@ -1166,6 +1171,11 @@ function manager_approve_customer_request(): void {
 
     $request = manager_fetch_request_for_review($requestId);
     $customerStation = (int)($request['station_id'] ?? $station_id);
+    $userStation = (int)(user_station_id() ?? $station_id);
+
+    if (!customer_can_view_all_stations($role) && $customerStation !== $userStation) {
+        throw new Exception('Unauthorized: Customer request belongs to a different station.');
+    }
 
     $pdo->beginTransaction();
     try {
@@ -1214,6 +1224,7 @@ function manager_approve_customer_request(): void {
 
         manager_log_timeline($newId, 'Customer Created', "Approved from Staff request #{$requestId}.");
 
+        $remarks = trim($_POST['remarks'] ?? '');
         $stmt = $pdo->prepare("
             UPDATE customer_requests
             SET status = 'approved',
@@ -1224,25 +1235,56 @@ function manager_approve_customer_request(): void {
                 updated_at = NOW()
             WHERE id = ?
         ");
-        $stmt->execute([$me['id'] ?? null, $newId, trim($_POST['remarks'] ?? ''), $requestId]);
+        $stmt->execute([$me['id'] ?? null, $newId, $remarks, $requestId]);
+
+        // Notify Staff who submitted the request
+        if (!empty($request['requested_by'])) {
+            $staffId = (int)$request['requested_by'];
+            $reqCode = 'CR-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+            notify(
+                $pdo,
+                $staffId,
+                'staff',
+                'success',
+                'customer_request',
+                'medium',
+                "Customer Registration Request Approved",
+                "Customer registration request {$reqCode} for {$fullName} has been approved.",
+                "cust_req_app_{$requestId}_s{$staffId}",
+                "staff_requests.php?id={$requestId}",
+                'customer_request',
+                $requestId
+            );
+        }
+
         $pdo->commit();
 
-        manager_audit('Approve', "Approved customer request #{$requestId} as {$customerId}", $newId);
+        manager_audit('Approve', "Approved customer request CR-" . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT) . " for {$fullName} as {$customerId}", $newId);
         manager_send_json(['success' => true, 'message' => 'Customer request approved and customer record created.', 'customer_id' => $customerId]);
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }
 
 function manager_reject_customer_request(): void {
-    global $pdo, $me;
+    global $pdo, $me, $role, $station_id;
 
     $requestId = (int)($_POST['id'] ?? 0);
     if ($requestId <= 0) {
         throw new Exception('Request ID is required.');
     }
-    manager_fetch_request_for_review($requestId);
+    $request = manager_fetch_request_for_review($requestId);
+    $customerStation = (int)($request['station_id'] ?? 0);
+    $userStation = (int)(user_station_id() ?? $station_id);
+
+    if (!customer_can_view_all_stations($role) && $customerStation !== $userStation) {
+        throw new Exception('Unauthorized: Customer request belongs to a different station.');
+    }
+
+    $remarks = trim($_POST['remarks'] ?? '');
 
     $stmt = $pdo->prepare("
         UPDATE customer_requests
@@ -1253,9 +1295,30 @@ function manager_reject_customer_request(): void {
             updated_at = NOW()
         WHERE id = ?
     ");
-    $stmt->execute([$me['id'] ?? null, trim($_POST['remarks'] ?? ''), $requestId]);
+    $stmt->execute([$me['id'] ?? null, $remarks, $requestId]);
 
-    manager_audit('Reject', "Rejected customer request #{$requestId}", $requestId);
+    // Notify Staff who submitted the request
+    if (!empty($request['requested_by'])) {
+        $staffId = (int)$request['requested_by'];
+        $reqCode = 'CR-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+        $reasonText = $remarks !== '' ? " Reason: {$remarks}" : "";
+        notify(
+            $pdo,
+            $staffId,
+            'staff',
+            'warning',
+            'customer_request',
+            'medium',
+            "Customer Registration Request Rejected",
+            "Customer registration request {$reqCode} was rejected.{$reasonText}",
+            "cust_req_rej_{$requestId}_s{$staffId}",
+            "staff_requests.php?id={$requestId}",
+            'customer_request',
+            $requestId
+        );
+    }
+
+    manager_audit('Reject', "Rejected customer request CR-" . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT) . ($remarks !== '' ? ". Reason: {$remarks}" : ""), $requestId);
     manager_send_json(['success' => true, 'message' => 'Customer request rejected.']);
 }
 

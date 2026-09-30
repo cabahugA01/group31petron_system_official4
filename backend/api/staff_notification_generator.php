@@ -280,6 +280,46 @@ try {
     }
 } catch (Exception $e) {}
 
+try {
+    if ($role === 'staff') {
+        $req_stmt = $pdo->prepare(
+            "SELECT id, first_name, middle_name, last_name, status, manager_remarks, created_at, updated_at
+             FROM customer_requests
+             WHERE requested_by = ?
+               AND status IN ('approved', 'rejected')
+               AND (updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) OR created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY))
+             ORDER BY id DESC LIMIT 15"
+        );
+        $req_stmt->execute([$user_id]);
+        $req_rows = $req_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($req_rows as $cr) {
+            $req_num = 'CR-' . str_pad($cr['id'], 5, '0', STR_PAD_LEFT);
+            $cust_name = trim($cr['first_name'] . ' ' . (!empty($cr['middle_name']) ? $cr['middle_name'] . ' ' : '') . $cr['last_name']);
+            if (strtolower($cr['status']) === 'approved') {
+                $key = "cust_req_app_{$cr['id']}_s{$user_id}";
+                $generated += push_notif(
+                    $pdo, $user_id, 'success', 'customer_request', 'medium',
+                    "Customer Registration Request Approved",
+                    "Customer registration request {$req_num} for {$cust_name} has been approved.",
+                    $key,
+                    "staff_requests.php?id={$cr['id']}"
+                );
+            } elseif (strtolower($cr['status']) === 'rejected') {
+                $key = "cust_req_rej_{$cr['id']}_s{$user_id}";
+                $reason = !empty($cr['manager_remarks']) ? " Reason: {$cr['manager_remarks']}" : " Reason: Requirements not met.";
+                $generated += push_notif(
+                    $pdo, $user_id, 'error', 'customer_request', 'medium',
+                    "Customer Registration Request Rejected",
+                    "Customer registration request {$req_num} was rejected.{$reason}",
+                    $key,
+                    "staff_requests.php?id={$cr['id']}"
+                );
+            }
+        }
+    }
+} catch (Exception $e) {}
+
 // ════════════════════════════════════════════════════════════
 // 6. DELIVERIES — recent status updates (48h)
 //    Column verified: status, supplier, delivery_date, delivery_type, updated_at

@@ -3566,6 +3566,12 @@ function notification_redirect_url(string $ref_type, int $ref_id, string $role):
             'superadmin' => "superadmin_admin_management.php{$id}",
             'admin'      => "superadmin_admin_management.php{$id}",
         ],
+        'customer_request' => [
+            'staff'      => "staff_requests.php{$id}",
+            'manager'    => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),
+            'admin'      => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),
+            'superadmin' => "manager_customers.php?tab=pending" . ($ref_id > 0 ? "&id={$ref_id}" : ""),
+        ],
     ];
     return $map[$ref_type][$role] ?? $map[$ref_type]['staff'] ?? 'notifications.php';
 }

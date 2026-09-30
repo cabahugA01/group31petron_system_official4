@@ -331,23 +331,28 @@ try {
 //    Column verified: customers.status
 // ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â
 try {
-    $s = $sw ? "AND station_id = {$sw}" : '';
+    $s = $sw ? "AND cr.station_id = {$sw}" : '';
     $rows = $pdo->query(
-        "SELECT id, name, status, created_at
-         FROM customers
-         WHERE status IN ('pending','Pending','pending_validation','Pending Validation')
-           AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        "SELECT cr.id, cr.first_name, cr.middle_name, cr.last_name, cr.station_id, cr.requested_by, cr.created_at,
+                TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_name,
+                u.username AS staff_username
+         FROM customer_requests cr
+         LEFT JOIN users u ON u.id = cr.requested_by
+         WHERE LOWER(cr.status) = 'pending'
+           AND cr.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
            {$s}
-         ORDER BY created_at DESC LIMIT 15"
+         ORDER BY cr.created_at DESC LIMIT 20"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $r) {
-        $cust = $r['name'] ?? ('Customer #' . $r['id']);
-        $key  = 'mgr_cust_pending_' . $r['id'];
-        $generated += mgr_push($pdo, $user_id, 'info', 'customer', 'low',
-            "Customer Pending Validation",
-            "Customer {$cust} uploaded ID ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pending validation.",
-            $key, 'manager_customers.php'
+        $staff = trim($r['staff_name'] ?? '') ?: ($r['staff_username'] ?? 'Staff');
+        $cust  = trim(($r['first_name'] ?? '') . ' ' . (!empty($r['middle_name']) ? $r['middle_name'] . ' ' : '') . ($r['last_name'] ?? ''));
+        if (!$cust) $cust = 'Customer #' . $r['id'];
+        $key   = "cust_req_sub_{$r['station_id']}_{$r['id']}_m{$user_id}";
+        $generated += mgr_push($pdo, $user_id, 'info', 'customer_request', 'medium',
+            "New Customer Registration Request",
+            "Staff {$staff} submitted a new customer registration request for {$cust}. Review the request for approval.", // ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pending validation.",
+            $key, 'manager_customers.php?tab=pending&id=' . $r['id']
         );
     }
 } catch (Exception $e) {}

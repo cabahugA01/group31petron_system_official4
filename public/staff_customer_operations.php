@@ -134,11 +134,11 @@ function staff_request_new_customer(): void {
         throw new Exception('A station assignment is required.');
     }
 
-    $firstName = trim($_POST['first_name'] ?? '');
+    $firstName  = trim($_POST['first_name'] ?? '');
     $middleName = trim($_POST['middle_name'] ?? '');
-    $lastName = trim($_POST['last_name'] ?? '');
-    $contact = trim($_POST['contact_number'] ?? '');
-    $type = trim($_POST['customer_type'] ?? 'walk-in');
+    $lastName   = trim($_POST['last_name'] ?? '');
+    $contact    = trim($_POST['contact_number'] ?? '');
+    $type       = trim($_POST['customer_type'] ?? 'walk-in');
 
     if ($firstName === '' || $lastName === '' || $contact === '') {
         throw new Exception('First name, last name, and contact number are required.');
@@ -147,45 +147,151 @@ function staff_request_new_customer(): void {
         $type = 'walk-in';
     }
 
-    $stmt = $pdo->prepare("
-        INSERT INTO customer_requests (
-            station_id,
-            requested_by,
-            first_name,
-            middle_name,
-            last_name,
-            contact_number,
-            address,
-            customer_type,
-            vehicle_plate,
-            vehicle_make,
-            vehicle_model,
-            vehicle_type,
-            request_reason,
-            status,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+    // ── Prevent Duplicate Submissions (double click, rapid retry) ──
+    $dupStmt = $pdo->prepare("
+        SELECT id FROM customer_requests
+        WHERE station_id = ?
+          AND LOWER(first_name) = LOWER(?)
+          AND LOWER(last_name) = LOWER(?)
+          AND contact_number = ?
+          AND LOWER(status) = 'pending'
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+        LIMIT 1
     ");
-    $stmt->execute([
-        $station_id,
-        $me['id'] ?? null,
-        $firstName,
-        $middleName,
-        $lastName,
-        $contact,
-        trim($_POST['address'] ?? ''),
-        $type,
-        strtoupper(trim($_POST['plate_no'] ?? $_POST['vehicle_plate'] ?? '')),
-        trim($_POST['vehicle_make'] ?? ''),
-        trim($_POST['vehicle_model'] ?? ''),
-        trim($_POST['vehicle_type'] ?? ''),
-        trim($_POST['request_reason'] ?? ''),
-    ]);
+    $dupStmt->execute([$station_id, $firstName, $lastName, $contact]);
+    $existingId = $dupStmt->fetchColumn();
+    if ($existingId) {
+        $reqCode = 'CR-' . str_pad((string)$existingId, 5, '0', STR_PAD_LEFT);
+        echo json_encode([
+            'success' => true,
+            'message' => "Customer registration request {$reqCode} has already been submitted and is pending review.",
+            'request_id' => (int)$existingId,
+            'request_no' => $reqCode,
+        ]);
+        return;
+    }
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'New customer request has been forwarded to the Manager for approval.',
-        'request_id' => (int)$pdo->lastInsertId(),
-    ]);
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO customer_requests (
+                station_id,
+                requested_by,
+                first_name,
+                middle_name,
+                last_name,
+                contact_number,
+                address,
+                customer_type,
+                vehicle_plate,
+                vehicle_make,
+                vehicle_model,
+                vehicle_type,
+                request_reason,
+                status,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+        ");
+        $stmt->execute([
+            $station_id,
+            $me['id'] ?? null,
+            $firstName,
+            $middleName,
+            $lastName,
+            $contact,
+            trim($_POST['address'] ?? ''),
+            $type,
+            strtoupper(trim($_POST['plate_no'] ?? $_POST['vehicle_plate'] ?? '')),
+            trim($_POST['vehicle_make'] ?? ''),
+            trim($_POST['vehicle_model'] ?? ''),
+            trim($_POST['vehicle_type'] ?? ''),
+            trim($_POST['request_reason'] ?? ''),
+        ]);
+
+        $requestId = (int)$pdo->lastInsertId();
+        $reqCode   = 'CR-' . str_pad((string)$requestId, 5, '0', STR_PAD_LEFT);
+
+        // Staff and Customer display names
+        $staffName = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+        if ($staffName === '') {
+            $staffName = trim($me['name'] ?? $me['username'] ?? 'Staff');
+        }
+
+        $custName = trim($firstName . ' ' . ($middleName !== '' ? $middleName . ' ' : '') . $lastName);
+
+        $notifTitle   = "New Customer Registration Request";
+        $notifMessage = "Staff {$staffName} submitted a new customer registration request for {$custName}. Review the request for approval.";
+        $redirectUrl  = "manager_customers.php?tab=pending&id={$requestId}";
+
+        // 1. Notify Manager(s) of the SAME station (Exclude superadmin/developer, other stations)
+        $mgrStmt = $pdo->prepare("
+            SELECT id FROM users
+            WHERE station_id = ?
+              AND LOWER(role) IN ('manager','supervisor')
+              AND status = 'Active'
+        ");
+        $mgrStmt->execute([$station_id]);
+        $managers = $mgrStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($managers as $mgrId) {
+            $sourceKey = "cust_req_sub_{$station_id}_{$requestId}_m{$mgrId}";
+            notify(
+                $pdo,
+                (int)$mgrId,
+                'manager',
+                'info',
+                'customer_request',
+                'medium',
+                $notifTitle,
+                $notifMessage,
+                $sourceKey,
+                $redirectUrl,
+                'customer_request',
+                $requestId
+            );
+        }
+
+        // 2. Notify Admin/Owner(s) of the SAME station (Exclude superadmin/developer, other stations)
+        $admStmt = $pdo->prepare("
+            SELECT id FROM users
+            WHERE station_id = ?
+              AND LOWER(role) IN ('admin','owner')
+              AND status = 'Active'
+        ");
+        $admStmt->execute([$station_id]);
+        $admins = $admStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($admins as $admId) {
+            $sourceKey = "cust_req_sub_{$station_id}_{$requestId}_a{$admId}";
+            notify(
+                $pdo,
+                (int)$admId,
+                'admin',
+                'info',
+                'customer_request',
+                'medium',
+                $notifTitle,
+                $notifMessage,
+                $sourceKey,
+                $redirectUrl,
+                'customer_request',
+                $requestId
+            );
+        }
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success' => true,
+            'message' => "New customer request {$reqCode} submitted successfully and forwarded to the Manager and Admin for approval.",
+            'request_id' => $requestId,
+            'request_no' => $reqCode,
+        ]);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 ?>

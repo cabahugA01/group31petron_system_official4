@@ -52,6 +52,57 @@ try {
     error_log("staff_requests.php query error: " . $e->getMessage());
 }
 
+try {
+    $cstmt = $pdo->prepare("
+        SELECT 
+            cr.id,
+            cr.station_id,
+            cr.first_name,
+            cr.middle_name,
+            cr.last_name,
+            cr.contact_number,
+            cr.address,
+            cr.vehicle_plate,
+            cr.vehicle_make,
+            cr.vehicle_model,
+            cr.vehicle_type,
+            cr.customer_type,
+            cr.request_reason,
+            cr.status,
+            cr.manager_remarks,
+            cr.created_at,
+            cr.updated_at,
+            COALESCE(
+                NULLIF(TRIM(CONCAT(COALESCE(rev.first_name, ''), ' ', COALESCE(rev.last_name, ''))), ''),
+                NULLIF(TRIM(rev.name), ''),
+                NULLIF(TRIM(rev.username), ''),
+                'Manager'
+            ) AS reviewer_name
+        FROM customer_requests cr
+        LEFT JOIN users rev ON cr.reviewed_by = rev.id
+        WHERE cr.requested_by = ?
+        ORDER BY cr.created_at DESC
+    ");
+    $cstmt->execute([(int)$me['id']]);
+    $cust_requests = $cstmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($cust_requests as $cr) {
+        $my_requests[] = [
+            'id' => $cr['id'],
+            'request_no' => 'CR-' . str_pad((string)$cr['id'], 5, '0', STR_PAD_LEFT),
+            'category' => 'Customer Registration',
+            'data_payload' => json_encode($cr),
+            'status' => $cr['status'],
+            'created_at' => $cr['created_at'],
+            'reviewer_name' => $cr['reviewer_name'],
+            'rejection_reason' => $cr['manager_remarks'],
+            'is_customer_request' => true
+        ];
+    }
+    usort($my_requests, function($a, $b) {
+        return strtotime($b['created_at']) <=> strtotime($a['created_at']);
+    });
+} catch (Exception $e) {}
+
 require_once __DIR__ . '/../partials/header.php';
 ?>
 <div class="main-content" style="padding: 24px; background: #f8fafc; min-height: calc(100vh - 120px);">
@@ -132,6 +183,14 @@ require_once __DIR__ . '/../partials/header.php';
                                         <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">
                                             Cat: <?= htmlspecialchars($payload['service_category'] ?? $payload['category'] ?? 'N/A') ?> • Fee: ₱<?= number_format((float)($payload['suggested_price'] ?? $payload['default_price'] ?? 0), 2) ?>
                                         </div>
+                                    <?php elseif ($row['category'] === 'Customer Registration'): 
+                                        $custName = trim(($payload['first_name'] ?? '') . ' ' . (!empty($payload['middle_name']) ? $payload['middle_name'] . ' ' : '') . ($payload['last_name'] ?? ''));
+                                    ?>
+                                        <strong><?= htmlspecialchars($custName) ?></strong>
+                                        <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">
+                                            Type: <?= htmlspecialchars($payload['customer_type'] ?? 'Regular') ?> • Contact: <?= htmlspecialchars($payload['contact_number'] ?? 'N/A') ?>
+                                            <?= !empty($payload['vehicle_plate']) ? ' • Plate: ' . htmlspecialchars($payload['vehicle_plate']) : '' ?>
+                                        </div>
                                     <?php else: ?>
                                         <?= htmlspecialchars(substr($row['data_payload'], 0, 50)) ?>
                                     <?php endif; ?>
@@ -154,10 +213,15 @@ require_once __DIR__ . '/../partials/header.php';
                                     <?= ($status !== 'Pending') ? htmlspecialchars($row['reviewer_name']) : '<span style="color:#94a3b8;">—</span>' ?>
                                 </td>
                                 <td style="padding: 12px 14px; text-align: center;">
-                                    <?php if ($status === 'Approved'): ?>
+                                    <?php if ($status === 'Approved' && empty($row['is_customer_request'])): ?>
                                         <a href="staff_transactions_hub.php?section=merchandise&apply_mdr=<?= (int)$row['id'] ?>" 
                                            style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; background: #002F70; color: #ffffff; border-radius: 6px; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 2px rgba(0,47,112,0.2);">
                                             <i class="fas fa-play" style="font-size: 10px;"></i> Use in Job Order
+                                        </a>
+                                    <?php elseif ($status === 'Approved' && !empty($row['is_customer_request'])): ?>
+                                        <a href="staff_transactions_hub.php?section=merchandise" 
+                                           style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; background: #16a34a; color: #ffffff; border-radius: 6px; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 2px rgba(22,163,74,0.2);">
+                                            <i class="fas fa-check" style="font-size: 10px;"></i> Select in POS
                                         </a>
                                     <?php else: ?>
                                         <span style="color: #94a3b8; font-size: 12px;">—</span>

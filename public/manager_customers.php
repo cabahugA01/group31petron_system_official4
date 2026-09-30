@@ -754,6 +754,7 @@ button.remove-v-btn i {
             
             <thead>
                 <tr>
+                    <th>Request ID</th>
                     <th>Customer Name</th>
                     <th>Contact No.</th>
                     <th>Plate No.</th>
@@ -763,7 +764,7 @@ button.remove-v-btn i {
                 </tr>
             </thead>
             <tbody id="requestsBody">
-                <tr><td colspan="6" class="empty">Loading pending requests...</td></tr>
+                <tr><td colspan="7" class="empty">Loading pending requests...</td></tr>
             </tbody>
         </table>
         <div id="custPendPaginationFooter" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #e2e8f0; background:#ffffff; border-radius:0 0 12px 12px; font-size:13px; color:#475569; flex-wrap:wrap; gap:12px;">
@@ -1380,10 +1381,12 @@ button.remove-v-btn i {
         <form id="reviewForm">
             <div class="modal-body">
                 <input type="hidden" id="reviewReqId">
+                <div class="info-row"><span>Request ID</span><strong id="revReqNo" style="color:#002F6C; font-family:monospace;">-</strong></div>
                 <div class="info-row"><span>Customer Name</span><span id="revName">-</span></div>
                 <div class="info-row"><span>Contact No.</span><span id="revContact">-</span></div>
                 <div class="info-row"><span>Plate No.</span><span id="revPlate">-</span></div>
                 <div class="info-row"><span>Requested By</span><span id="revReqBy">-</span></div>
+                <div class="info-row"><span>Date Requested</span><span id="revDate">-</span></div>
 
                 <div class="cust-field" style="margin-top:14px;">
                     <label>Manager Remarks (Optional)</label>
@@ -1699,8 +1702,10 @@ function custArchChangePerPage() {
 // ── PENDING CUSTOMER REQUESTS pagination ──────────────────────────────────
 var custPendState = { data: [], page: 1, perPage: 10 };
 
-function loadCustomerRequests() {
-    document.getElementById('requestsBody').innerHTML = `<tr><td colspan="6" class="empty">Loading pending requests...</td></tr>`;
+function loadCustomerRequests(silent = false) {
+    if (!silent) {
+        document.getElementById('requestsBody').innerHTML = `<tr><td colspan="7" class="empty">Loading pending requests...</td></tr>`;
+    }
 
     fetch(`${apiUrl}?action=requests`)
         .then(r => r.text())
@@ -1711,22 +1716,26 @@ function loadCustomerRequests() {
                 res = JSON.parse(cleanText);
             } catch (e) {
                 console.error("Non-JSON requests output:", text);
-                document.getElementById('requestsBody').innerHTML = `<tr><td colspan="6" class="empty">Error loading pending requests.</td></tr>`;
+                if (!silent) document.getElementById('requestsBody').innerHTML = `<tr><td colspan="7" class="empty">Error loading pending requests.</td></tr>`;
                 return;
             }
             if (!res.success) {
-                toast(res.error || 'Failed to load requests.', 'error');
+                if (!silent) toast(res.error || 'Failed to load requests.', 'error');
                 return;
             }
             currentRequests = res.requests || [];
             document.getElementById('requestCount').innerText = currentRequests.length + ' pending';
             document.getElementById('statRequests').innerText = currentRequests.length;
             custPendState.data = currentRequests;
-            custPendState.page = 1;
             custPendRender();
+
+            if (typeof targetRequestId !== 'undefined' && targetRequestId) {
+                openReviewModal(targetRequestId);
+                targetRequestId = null;
+            }
         })
         .catch(err => {
-            document.getElementById('requestsBody').innerHTML = `<tr><td colspan="6" class="empty">Network error loading requests.</td></tr>`;
+            if (!silent) document.getElementById('requestsBody').innerHTML = `<tr><td colspan="7" class="empty">Network error loading requests.</td></tr>`;
         });
 }
 
@@ -1739,7 +1748,7 @@ function custPendRender() {
     custPendState.page = safePage;
 
     if (!total) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty">No pending customer requests.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">No pending customer requests.</td></tr>`;
         document.getElementById('custPendShowingText').innerText = 'Showing 0 of 0 entries';
         document.getElementById('custPendPageLabel').innerText = 'Page 1 of 1';
         const p = document.getElementById('custPendPrevBtn');
@@ -1755,6 +1764,7 @@ function custPendRender() {
 
     tbody.innerHTML = slice.map(r => `
         <tr>
+            <td><strong style="color:#002F6C; font-family:monospace;">${h(r.request_no || ('CR-' + String(r.id).padStart(5, '0')))}</strong></td>
             <td><strong>${h(r.first_name + ' ' + (r.middle_name ? r.middle_name + ' ' : '') + r.last_name)}</strong></td>
             <td>${h(r.contact_number)}</td>
             <td><span class="pill regular">${h(r.vehicle_plate || 'N/A')}</span></td>
@@ -2589,10 +2599,14 @@ function openReviewModal(reqId) {
     const req = currentRequests.find(r => r.id == reqId);
     if (!req) return;
     document.getElementById('reviewReqId').value = reqId;
+    const reqNoEl = document.getElementById('revReqNo');
+    if (reqNoEl) reqNoEl.innerText = req.request_no || ('CR-' + String(req.id).padStart(5, '0'));
     document.getElementById('revName').innerText = req.first_name + ' ' + (req.middle_name ? req.middle_name + ' ' : '') + req.last_name;
     document.getElementById('revContact').innerText = req.contact_number;
     document.getElementById('revPlate').innerText = req.vehicle_plate || 'N/A';
     document.getElementById('revReqBy').innerText = req.requested_by_name || 'Staff';
+    const revDateEl = document.getElementById('revDate');
+    if (revDateEl) revDateEl.innerText = req.created_at || '-';
     document.getElementById('reviewRemarks').value = '';
     openModal('reviewModal');
 }
@@ -2622,7 +2636,9 @@ function submitReviewAction(type) {
         });
 }
 
-// Initial Load (No auto-refresh)
+let targetRequestId = null;
+
+// Initial Load & Real-Time Auto-Refresh
 document.addEventListener('DOMContentLoaded', function() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2631,8 +2647,41 @@ document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('filterSearch');
             if (searchInput) searchInput.value = searchVal;
         }
-    } catch (e) {}
-    loadManagerCustomers();
+
+        const tabParam = urlParams.get('tab');
+        const idParam  = urlParams.get('id');
+        if (idParam) {
+            targetRequestId = parseInt(idParam, 10) || idParam;
+        }
+
+        if (tabParam === 'pending' || targetRequestId) {
+            switchCustTab('pending');
+        } else {
+            loadManagerCustomers();
+        }
+    } catch (e) {
+        loadManagerCustomers();
+    }
+
+    // Auto-refresh pending requests list and counts in real time (every 10 seconds)
+    setInterval(function() {
+        if (activeTab === 'pending') {
+            loadCustomerRequests(true);
+        } else {
+            // Silently poll pending count for stats card
+            fetch(`${apiUrl}?action=requests`)
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.success && Array.isArray(res.requests)) {
+                        const statEl = document.getElementById('statRequests');
+                        if (statEl) statEl.innerText = res.requests.length;
+                        const reqCountEl = document.getElementById('requestCount');
+                        if (reqCountEl) reqCountEl.innerText = res.requests.length + ' pending';
+                    }
+                })
+                .catch(() => {});
+        }
+    }, 10000);
 });
 </script>
 

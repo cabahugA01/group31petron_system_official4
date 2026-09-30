@@ -421,7 +421,7 @@ if (!function_exists('customer_user_name_expr')) {
 
 if (!function_exists('customer_can_view_all_stations')) {
     function customer_can_view_all_stations(string $role): bool {
-        return in_array(strtolower($role), ['superadmin', 'developer', 'manager', 'admin'], true);
+        return in_array(strtolower($role), ['superadmin', 'developer'], true);
     }
 }
 

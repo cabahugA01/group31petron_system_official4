@@ -6571,6 +6571,7 @@ require_once __DIR__ . '/rbac_menu.php';
                 fuel_transaction        : 'fas fa-gas-pump',
                 inventory               : 'fas fa-warehouse',
                 customer                : 'fas fa-user',
+                customer_request        : 'fas fa-user-plus',
                 delivery                : 'fas fa-truck',
                 calendar                : 'fas fa-calendar-alt',
                 report                  : 'fas fa-chart-bar',
@@ -6728,6 +6729,13 @@ require_once __DIR__ . '/rbac_menu.php';
                                 badge.style.display = 'none';
                             }
                         }
+                        const item = document.querySelector('[onclick*="staffMarkRead(' + id + ')"]');
+                        if (item) {
+                            item.classList.remove('unread');
+                            item.style.backgroundColor = 'transparent';
+                            const dot = item.querySelector('div[style*="border-radius:50%"][style*="margin-top:20px"]');
+                            if (dot) dot.remove();
+                        }
                     })();
                     try {
                         const fd = new FormData();
@@ -6829,6 +6837,9 @@ require_once __DIR__ . '/rbac_menu.php';
 
             // ── Direct notifications (run generator on page load) ──
             runGeneratorBackground();
+            setInterval(function() {
+                runGeneratorBackground();
+            }, 10000);
         })();
         <?php endif; ?>
     </script>

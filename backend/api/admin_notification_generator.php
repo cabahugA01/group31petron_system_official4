@@ -456,6 +456,41 @@ try {
     }
 } catch (Exception $e) {}
 
+// ════════════════════════════════════════════════════════════
+// 11. CUSTOMER REGISTRATION REQUESTS — pending approval
+// ════════════════════════════════════════════════════════════
+try {
+    $cust_reqs = $pdo->prepare(
+        "SELECT cr.id, cr.first_name, cr.middle_name, cr.last_name, cr.station_id, cr.requested_by, cr.created_at,
+                TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS staff_name,
+                u.username AS staff_username
+         FROM customer_requests cr
+         LEFT JOIN users u ON u.id = cr.requested_by
+         WHERE cr.station_id = ?
+           AND LOWER(cr.status) = 'pending'
+           AND cr.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+         ORDER BY cr.created_at DESC LIMIT 20"
+    );
+    $cust_reqs->execute([$station_id]);
+    $rows = $cust_reqs->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rows as $r) {
+        $staff = trim($r['staff_name'] ?? '') ?: ($r['staff_username'] ?? 'Staff');
+        $cust  = trim(($r['first_name'] ?? '') . ' ' . (!empty($r['middle_name']) ? $r['middle_name'] . ' ' : '') . ($r['last_name'] ?? ''));
+        if (!$cust) $cust = 'Customer #' . $r['id'];
+        $key   = "cust_req_sub_{$station_id}_{$r['id']}_a{$user_id}";
+        $generated += upsert_notif($pdo, $user_id, [
+            'type'        => 'info',
+            'title'       => 'New Customer Registration Request',
+            'message'     => "Staff {$staff} submitted a new customer registration request for {$cust}. Review the request for approval.",
+            'event_type'  => 'customer_request',
+            'severity'    => 'medium',
+            'source_key'  => $key,
+            'redirect_url'=> 'manager_customers.php?tab=pending&id=' . $r['id'],
+        ]);
+    }
+} catch (Exception $e) {}
+
 // ── Cleanup old read notifications (> 14 days) ─────────────────
 try {
     $stmt = $pdo->prepare(
