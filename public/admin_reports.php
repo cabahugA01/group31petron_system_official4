@@ -1976,7 +1976,7 @@ function openCustomerModal(customerId) {
             const pmts  = data.payment_history || [];
             const ar    = data.ar_history || [];
 
-            const isCreditOrFleet = (info.customer_type === 'Credit Account' || info.customer_type === 'Fleet Card' || info.type === 'credit');
+            const isCreditOrFleet = (info.type === 'credit');
 
             let html = `
                 <!-- 1. CUSTOMER INFORMATION -->
@@ -1987,7 +1987,6 @@ function openCustomerModal(customerId) {
                         <div class="col-md-4"><strong>Full Name:</strong> ${info.name || 'N/A'}</div>
                         <div class="col-md-4"><strong>Contact Number:</strong> ${info.contact_number || info.phone || 'N/A'}</div>
                         <div class="col-md-4"><strong>Address:</strong> ${info.address || 'N/A'}</div>
-                        <div class="col-md-4"><strong>Customer Type:</strong> <span class="badge bg-secondary">${info.customer_type || info.type || 'Walk-in'}</span></div>
                         <div class="col-md-4"><strong>Date Registered:</strong> ${info.registered_at || info.created_at || 'N/A'}</div>
                     </div>
                 </div>

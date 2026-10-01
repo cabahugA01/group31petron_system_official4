@@ -654,7 +654,6 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 $customerNameExpr = customer_display_name_expr($pdo, 'c');
                 $customerIdExpr = customer_id_expr($pdo, 'c');
                 $customerContactExpr = customer_contact_expr($pdo, 'c');
-                $customerTypeExpr = customer_type_expr($pdo, 'c');
                 $customerStatusExpr = customer_status_expr($pdo, 'c');
                 $customerBalanceExpr = customer_balance_expr($pdo, 'c');
                 $customerCreditLimitExpr = customer_credit_limit_expr($pdo, 'c');
@@ -738,7 +737,7 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                             MAX(COALESCE({$customerNameExpr}, tx.customer_name, 'Registered Customer')) AS customer_name,
                             MAX({$customerIdExpr}) AS customer_ref,
                             MAX({$customerContactExpr}) AS contact_number,
-                            MAX({$customerTypeExpr}) AS customer_type,
+                            MAX(c.type) AS customer_type,
                             MAX({$customerStatusExpr}) AS status,
                             COUNT(*) AS txn_count,
                             MAX({$customerBalanceExpr}) AS balance,

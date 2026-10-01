@@ -26,7 +26,6 @@ if (!customer_can_view_all_stations($role) && !$station_id) {
 
 // 1. Get filter inputs
 $search   = trim($_GET['search'] ?? '');
-$type     = trim($_GET['type'] ?? '');
 $status   = trim($_GET['status'] ?? '');
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo   = trim($_GET['date_to'] ?? '');
@@ -43,7 +42,6 @@ $firstNameExpr = customer_first_name_expr($pdo, 'c');
 $middleNameExpr = customer_middle_name_expr($pdo, 'c');
 $lastNameExpr = customer_last_name_expr($pdo, 'c');
 $contactExpr = customer_contact_expr($pdo, 'c');
-$typeExpr = customer_type_expr($pdo, 'c');
 $statusExpr = customer_status_expr($pdo, 'c');
 $registeredExpr = customer_registered_at_expr($pdo, 'c');
 
@@ -52,7 +50,6 @@ if ($search !== '') {
     $s = "%$search%";
     array_push($params, $s, $s, $s);
 }
-if ($type !== '' && $type !== 'registered') { $type = ''; }
 if ($status !== '') {
     $where[] = "$statusExpr = ?";
     $params[] = $status;
@@ -77,7 +74,6 @@ $stmt = $pdo->prepare("
         $middleNameExpr AS middle_name,
         $lastNameExpr AS last_name,
         $contactExpr AS contact_number,
-        $typeExpr AS customer_type,
         $statusExpr AS status,
         $registeredExpr AS registered_at,
         (
@@ -192,7 +188,6 @@ if ($format === 'pdf') {
     // Build filter summary text
     $filterSummary = [];
     if ($search !== '') $filterSummary[] = "Search: \"$search\"";
-    if ($type !== '') $filterSummary[] = "Registration: Registered";
     if ($status !== '') $filterSummary[] = "Status: " . ucfirst($status);
     if ($dateFrom !== '' && $dateTo !== '') {
         $filterSummary[] = "Date Registered: " . date('M d, Y', strtotime($dateFrom)) . " to " . date('M d, Y', strtotime($dateTo));

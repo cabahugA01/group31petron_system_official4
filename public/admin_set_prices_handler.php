@@ -118,28 +118,42 @@ if (!function_exists('fetch_pumps_for_fuel_product')) {
         }
 
         $inv_id = (int)($fuel['id'] ?? 0);
-        try {
-            $sql = "SELECT id, pump_number, pump_name, nozzle_number, status 
-                    FROM fuel_pumps 
-                    WHERE station_id = ? 
-                      AND (
-                        (? > 0 AND tank_id = ?)
-                        OR (? > 0 AND fuel_type_id = ?)
-                        " . (!empty($ugt_list) ? " OR ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
-                        " . ($prefix !== '' ? " OR UPPER(pump_number) LIKE ?" : "") . "
-                      )
-                    ORDER BY id ASC";
-            $params = [$station_id, $inv_id, $inv_id, $ft_id, $ft_id];
-            if (!empty($ugt_list)) {
-                $params = array_merge($params, array_values($ugt_list));
-            }
-            if ($prefix !== '') {
-                $params[] = $prefix;
-            }
-            $p_stmt = $pdo->prepare($sql);
-            $p_stmt->execute($params);
-            $pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) { $pumps = []; }
+        // 1. Direct tank_id lookup first (guarantees exact 1:1 match with fuel management)
+        if ($inv_id > 0) {
+            try {
+                $p_stmt = $pdo->prepare("SELECT id, pump_number, pump_name, nozzle_number, status 
+                                          FROM fuel_pumps 
+                                          WHERE station_id = ? AND tank_id = ?
+                                          ORDER BY pump_number ASC, id ASC");
+                $p_stmt->execute([$station_id, $inv_id]);
+                $pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { $pumps = []; }
+        }
+
+        // 2. If no direct tank_id linkage, fallback to fuel_type_id + ugt_no matching
+        if (empty($pumps)) {
+            try {
+                $sql = "SELECT id, pump_number, pump_name, nozzle_number, status 
+                        FROM fuel_pumps 
+                        WHERE station_id = ? 
+                          AND (
+                            (? > 0 AND fuel_type_id = ?)
+                            " . (!empty($ugt_list) ? " OR ugt_no IN (" . implode(',', array_fill(0, count($ugt_list), '?')) . ")" : "") . "
+                            " . ($prefix !== '' ? " OR UPPER(pump_number) LIKE ?" : "") . "
+                          )
+                        ORDER BY pump_number ASC, id ASC";
+                $params = [$station_id, $ft_id, $ft_id];
+                if (!empty($ugt_list)) {
+                    $params = array_merge($params, array_values($ugt_list));
+                }
+                if ($prefix !== '') {
+                    $params[] = $prefix;
+                }
+                $p_stmt = $pdo->prepare($sql);
+                $p_stmt->execute($params);
+                $pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) { $pumps = []; }
+        }
 
         if (empty($pumps)) {
             try {
@@ -202,6 +216,7 @@ try {
             $capacity       = (float)($_POST['capacity'] ?? 0);
             $critical_level = (float)($_POST['critical_level'] ?? 0);
             $reorder_level  = (float)($_POST['reorder_level'] ?? 0);
+            $current_volume = max(0.0, (float)($_POST['current_volume'] ?? 0));
             $status         = strtolower(trim($_POST['status'] ?? 'active'));
             $remarks        = trim($_POST['remarks'] ?? '');
 
@@ -295,11 +310,15 @@ try {
                 }
 
                 // Insert EXACTLY ONE master fuel product record into fuel_inventory
+                // Cap current_volume to capacity (server-side safety)
+                if ($capacity > 0 && $current_volume > $capacity) {
+                    $current_volume = $capacity;
+                }
                 $stmt = $pdo->prepare("
                     INSERT INTO fuel_inventory
                     (station_id, fuel_type_id, fuel_type, ugt_no, price_per_liter, capacity, critical_level, reorder_level,
                      current_level, current_stock, status, updated_by, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ");
                 $stmt->execute([
                     $station_id,
@@ -310,6 +329,8 @@ try {
                     $capacity,
                     $critical_level,
                     $reorder_level,
+                    $current_volume,
+                    $current_volume,
                     $status,
                     $me['id']
                 ]);

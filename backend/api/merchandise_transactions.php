@@ -198,7 +198,6 @@ function getMerchandiseProducts($pdo, $station_id) {
 function getCreditCustomers($pdo, $station_id) {
     try {
         $nameExpr = customer_display_name_expr($pdo, 'c');
-        $typeExpr = customer_type_expr($pdo, 'c');
         $statusExpr = customer_status_expr($pdo, 'c');
         $creditLimitExpr = customer_credit_limit_expr($pdo, 'c');
         $balanceExpr = customer_balance_expr($pdo, 'c');
@@ -214,7 +213,7 @@ function getCreditCustomers($pdo, $station_id) {
             FROM customers c
             WHERE c.station_id = ?
               AND LOWER({$statusExpr}) = 'active'
-              AND {$typeExpr} = 'credit'
+              AND (c.type = 'credit' OR {$creditLimitExpr} > 0)
             ORDER BY {$nameExpr}
         ");
         $stmt->execute([$station_id]);

@@ -143,8 +143,8 @@ function manager_customer_select_sql(): array {
         'last_name'      => customer_last_name_expr($pdo, 'c'),
         'contact'        => customer_contact_expr($pdo, 'c'),
         'email'          => customer_expr_col($pdo, 'c', 'email', "''"),
-        'type'           => customer_type_expr($pdo, 'c'),
         'status'         => customer_status_expr($pdo, 'c'),
+        'type'           => customer_type_expr($pdo, 'c'),
         'registered_at'  => customer_registered_at_expr($pdo, 'c'),
         'balance'        => customer_balance_expr($pdo, 'c'),
         'credit_limit'   => customer_credit_limit_expr($pdo, 'c'),
@@ -346,7 +346,6 @@ function manager_list_customers(): void {
             {$expr['contact']} AS contact_number,
             {$expr['email']} AS email,
             {$expr['address']} AS address,
-            {$expr['type']} AS customer_type,
             {$expr['status']} AS status,
             {$expr['vehicle_plate']} AS plate_no,
             {$expr['vehicle_make']} AS vehicle_make,
@@ -403,19 +402,27 @@ function manager_list_customers(): void {
 
     $firstDayMonth = date('Y-m-01');
 
-    $statsStmt = $pdo->prepare("
-        SELECT
-            COUNT(CASE WHEN {$expr['status']} != 'archived' THEN 1 END) AS total,
-            SUM(CASE WHEN {$expr['status']} = 'active' THEN 1 ELSE 0 END) AS active,
-            SUM(CASE WHEN {$expr['status']} = 'inactive' THEN 1 ELSE 0 END) AS inactive,
-            SUM(CASE WHEN {$expr['status']} = 'archived' THEN 1 ELSE 0 END) AS archived,
-            SUM(CASE WHEN {$expr['type']} = 'credit' AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS credit,
-            SUM(CASE WHEN DATE({$expr['registered_at']}) >= '$firstDayMonth' AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS new_this_month
-        FROM customers c
-        WHERE c.station_id = ?
-    ");
-    $statsStmt->execute([$station_id_scope]);
-    $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: manager_empty_stats();
+    $stats = manager_empty_stats();
+    try {
+        $statsStmt = $pdo->prepare("
+            SELECT
+                COUNT(CASE WHEN {$expr['status']} != 'archived' THEN 1 END) AS total,
+                SUM(CASE WHEN {$expr['status']} = 'active' THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN {$expr['status']} = 'inactive' THEN 1 ELSE 0 END) AS inactive,
+                SUM(CASE WHEN {$expr['status']} = 'archived' THEN 1 ELSE 0 END) AS archived,
+                SUM(CASE WHEN (COALESCE(c.credit_limit, 0) > 0 OR LOWER(COALESCE(c.type, '')) = 'credit') AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS credit,
+                SUM(CASE WHEN DATE({$expr['registered_at']}) >= '$firstDayMonth' AND {$expr['status']} != 'archived' THEN 1 ELSE 0 END) AS new_this_month
+            FROM customers c
+            WHERE c.station_id = ?
+        ");
+        $statsStmt->execute([$station_id_scope]);
+        $fetchedStats = $statsStmt->fetch(PDO::FETCH_ASSOC);
+        if ($fetchedStats) {
+            $stats = array_merge($stats, array_map('intval', $fetchedStats));
+        }
+    } catch (Throwable $stErr) {
+        error_log("Customer stats calculation error: " . $stErr->getMessage());
+    }
     $stats['pending_requests'] = manager_count_pending_requests();
 
     manager_send_json(['success' => true, 'customers' => $customers, 'stats' => $stats]);
@@ -442,7 +449,6 @@ function manager_view_customer(): void {
             {$expr['contact']} AS contact_number,
             {$expr['email']} AS email,
             {$expr['address']} AS address,
-            {$expr['type']} AS customer_type,
             {$expr['status']} AS status,
             {$expr['vehicle_plate']} AS plate_no,
             {$expr['vehicle_make']} AS vehicle_make,
@@ -717,7 +723,6 @@ function manager_validate_customer_payload(): array {
     $contact     = sanitize_optional_field($_POST['contact_number'] ?? '');
     $email       = sanitize_optional_field($_POST['email'] ?? '');
     $address     = sanitize_optional_field($_POST['address'] ?? '');
-    $type        = trim($_POST['customer_type'] ?? 'registered');
     $status      = trim($_POST['status'] ?? 'active');
     $creditLimit = (float)($_POST['credit_limit'] ?? 0);
     $creditTerms = trim($_POST['credit_terms'] ?? '30 Days');
@@ -745,13 +750,10 @@ function manager_validate_customer_payload(): array {
         }
     }
 
-    if (!in_array($type, ['registered', 'credit', 'fleet', 'corporate', 'regular', 'walk-in'], true) || $type === 'walk-in') {
-        $type = 'registered';
-    }
     if (!in_array($status, ['active', 'inactive', 'archived'], true)) {
         $status = 'active';
     }
-    // Allow credit limit saving for all customer types
+    // Allow credit limit saving for all customers
     $creditLimit = max(0, $creditLimit);
 
     $govIdFile = manager_handle_file_upload('gov_id_file');
@@ -765,7 +767,6 @@ function manager_validate_customer_payload(): array {
         'contact_number' => $contact,
         'email'          => $email,
         'address'        => $address,
-        'customer_type'  => $type,
         'status'         => $status,
         'credit_limit'   => max(0, $creditLimit),
         'credit_terms'   => $creditTerms,
@@ -837,8 +838,7 @@ function manager_add_customer(): void {
         'phone'               => $data['contact_number'],
         'email'               => $data['email'],
         'address'             => $data['address'],
-        'customer_type'       => $data['customer_type'],
-        'type'                => customer_legacy_billing_type($data['customer_type']),
+        'type'                => ($data['credit_limit'] > 0 ? 'credit' : 'cash'),
         'status'              => $data['status'],
         'account_status'      => $data['status'],
         'vehicle_plate'       => $data['vehicle_plate'],
@@ -905,7 +905,7 @@ function manager_add_customer(): void {
     }
 
     manager_log_timeline($newId, 'Customer Created', "Customer {$fullName} registered into system.");
-    if ($data['customer_type'] === 'credit' && $data['credit_limit'] > 0) {
+    if (($data['credit_limit'] ?? 0) > 0) {
         manager_log_timeline($newId, 'Credit Approved', "Credit limit approved: ₱" . number_format($data['credit_limit'], 2));
     }
 
@@ -933,8 +933,7 @@ function manager_update_customer(): void {
         'phone'          => $data['contact_number'],
         'email'          => $data['email'],
         'address'        => $data['address'],
-        'customer_type'  => $data['customer_type'],
-        'type'           => customer_legacy_billing_type($data['customer_type']),
+        'type'           => (($data['credit_limit'] ?? 0) > 0 ? 'credit' : 'cash'),
         'status'         => $data['status'],
         'account_status' => $data['status'],
         'vehicle_plate'  => $data['vehicle_plate'],
@@ -1180,9 +1179,6 @@ function manager_approve_customer_request(): void {
     $pdo->beginTransaction();
     try {
         $customerId = manager_generate_customer_id($customerStation);
-        $type = in_array($request['customer_type'], ['walk-in', 'regular', 'credit', 'fleet', 'corporate'], true)
-            ? $request['customer_type']
-            : 'walk-in';
         $fullName = trim($request['first_name'] . ' ' . ($request['middle_name'] ?? '') . ' ' . $request['last_name']);
 
         $newId = customer_insert_existing($pdo, [
@@ -1195,8 +1191,7 @@ function manager_approve_customer_request(): void {
             'contact_number'      => $request['contact_number'],
             'phone'               => $request['contact_number'],
             'address'             => $request['address'],
-            'customer_type'       => $type,
-            'type'                => customer_legacy_billing_type($type),
+            'type'                => 'cash',
             'status'              => 'active',
             'account_status'      => 'active',
             'vehicle_plate'       => strtoupper($request['vehicle_plate'] ?? ''),

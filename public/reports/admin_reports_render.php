@@ -1724,10 +1724,9 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                     <thead>
                         <tr>
                             <th style="width:8%;text-align:left;">Customer ID</th>
-                            <th style="width:12%;text-align:left;">Customer Name</th>
-                            <th style="width:8%;text-align:left;">Contact No.</th>
-                            <th style="width:8%;text-align:left;">Customer Type</th>
-                            <th class="text-center" style="width:6%;text-align:center;">Visits</th>
+                            <th style="width:14%;text-align:left;">Customer Name</th>
+                            <th style="width:10%;text-align:left;">Contact No.</th>
+                            <th class="text-center" style="width:7%;text-align:center;">Visits</th>
                             <th class="text-center" style="width:7%;text-align:center;">Txns</th>
                             <th class="text-center" style="width:7%;text-align:center;">Job Orders</th>
                             <th class="text-center" style="width:7%;text-align:center;">Merch</th>
@@ -1758,7 +1757,6 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                 <td style="white-space:normal!important;word-break:break-all!important;padding:8px 4px!important;"><code style="font-size:10px;font-weight:700;word-break:break-all;"><?= htmlspecialchars($r['customer_id_code'] ?? '') ?></code></td>
                                 <td style="white-space:normal!important;word-break:break-word!important;padding:8px 4px!important;font-size:11.5px;"><strong><?= htmlspecialchars($r['customer_name'] ?? '') ?></strong></td>
                                 <td style="white-space:normal!important;word-break:break-all!important;padding:8px 4px!important;font-size:11px;"><?= htmlspecialchars($r['contact_no'] ?? 'N/A') ?></td>
-                                <td style="white-space:normal!important;padding:8px 4px!important;"><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucwords($r['customer_type'] ?? 'Walk-in')) ?></span></td>
                                 <td class="text-center fw-bold" style="white-space:normal!important;padding:8px 4px!important;"><?= number_format((int)($r['total_visits'] ?? 0)) ?></td>
                                 <td class="text-center" style="white-space:normal!important;padding:8px 4px!important;"><?= number_format((int)($r['total_transactions'] ?? 0)) ?></td>
                                 <td class="text-center" style="white-space:normal!important;padding:8px 4px!important;"><?= number_format((int)($r['total_job_orders'] ?? 0)) ?></td>
@@ -1799,7 +1797,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                 $pmts  = $d['payment_history'] ?? [];
                 $ar    = $d['ar_history'] ?? [];
                 $stats = $d['stats'] ?? [];
-                $ctype_val = strtolower($info['customer_type'] ?? $info['type'] ?? '');
+                $ctype_val = strtolower($info['type'] ?? '');
                 $is_credit_fleet = str_contains($ctype_val, 'credit') || str_contains($ctype_val, 'fleet');
             ?>
             <div class="cust-info-block mb-5 <?= $ri > 0 ? 'mt-4' : '' ?>">
@@ -1813,7 +1811,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         <div>
                             <h5 class="mb-0 fw-bold text-dark" style="font-size:15px;"><?= htmlspecialchars($r['customer_name'] ?? '') ?></h5>
                             <small class="text-muted" style="font-size:11px;">
-                                <code style="font-size:11px;color:#1e3a5f;"><?= htmlspecialchars($r['customer_id_code'] ?? '') ?></code> &nbsp;·&nbsp; <span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars(ucwords($r['customer_type'] ?? 'Walk-in')) ?></span>
+                                <code style="font-size:11px;color:#1e3a5f;"><?= htmlspecialchars($r['customer_id_code'] ?? '') ?></code>
                             </small>
                         </div>
                     </div>
@@ -1838,10 +1836,6 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         <div class="info-item">
                             <span class="info-label">Address</span>
                             <span class="info-value"><?= htmlspecialchars($info['address'] ?? 'N/A') ?></span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Customer Type</span>
-                            <span class="info-value"><?= htmlspecialchars(ucwords($info['customer_type'] ?? $info['type'] ?? 'Walk-in')) ?></span>
                         </div>
                         <div class="info-item">
                             <span class="info-label">Date Registered</span>

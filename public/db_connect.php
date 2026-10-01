@@ -261,3 +261,22 @@ try {
 } catch (Throwable $e) {
     // Already exists or duplicate entry present
 }
+
+// ── Self-healing Fuel Pumps Tank Linkage Sync (Station 1253 & All Stations) ──
+try {
+    static $fuel_pumps_tank_synced = false;
+    if (!$fuel_pumps_tank_synced) {
+        $fuel_pumps_tank_synced = true;
+        $pdo->exec("
+            UPDATE fuel_pumps fp
+            JOIN fuel_inventory fi ON fi.station_id = fp.station_id 
+              AND (
+                (fi.fuel_type_id > 0 AND fi.fuel_type_id = fp.fuel_type_id)
+                OR (NULLIF(fp.ugt_no,'') IS NOT NULL AND LOWER(REPLACE(fi.ugt_no,'-','')) = LOWER(REPLACE(fp.ugt_no,'-','')))
+              )
+            SET fp.tank_id = fi.id
+            WHERE fp.tank_id IS NULL OR fp.tank_id = 0
+        ");
+    }
+} catch (Throwable $e) {}
+

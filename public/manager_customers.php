@@ -869,7 +869,6 @@ button.remove-v-btn i {
                 <div class="form-grid">
                     <!-- Basic Information -->
                     <div class="form-title">Basic Information</div>
-                    <input type="hidden" id="customerType" name="customer_type" value="registered">
                     <div class="cust-field">
                         <label>First Name / Name <span style="color:red;">*</span></label>
                         <input type="text" id="firstName" name="first_name" required placeholder="e.g. Juan" oninput="this.value = this.value.replace(/[^a-zA-Z0-9\s\-\'\.\u00C0-\u024F]/g, '');">
