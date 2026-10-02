@@ -57,9 +57,9 @@ function apply_backup_retention_policy(PDO $pdo, int $retention_days): int {
 function execute_database_backup(PDO $pdo, string $backup_dir, ?int $user_id = null, string $trigger_label = 'Manual'): array {
     $btype = 'Full Backup';
     $comp  = 'SQL';
-    $fname = 'petron_pos_db_secure.sql';
+    $fname = 'u261539219_petrondbs.sql';
     $fpath = $backup_dir . $fname;
-    $db_name = 'petron_pos_db_secure';
+    $db_name = 'u261539219_petrondbs';
 
     if (!is_dir($backup_dir)) @mkdir($backup_dir, 0755, true);
 
@@ -1384,13 +1384,13 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                 </td>
                 <td>
                   <div class="db-action-row" style="display:flex; gap:8px; align-items:center;">
-                    <!-- Download via secure PHP handler → always served as petron_pos_db_secure.sql -->
+                    <!-- Download via secure PHP handler → always served as u261539219_petrondbs.sql -->
                     <?php
                       $fexists = file_exists($backup_dir . ($bk['backup_name'] ?? ''));
                       $dl_url  = 'db_download.php?id=' . (int)$bk['id'];
                     ?>
                     <a href="<?= $fexists ? $dl_url : '#' ?>"
-                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (petron_pos_db_secure.sql)"
+                       class="db-btn db-btn-success db-btn-icon" title="Download Backup (u261539219_petrondbs.sql)"
                        <?= $fexists ? '' : 'onclick="alert(\'Backup file not found on server.\');return false;"' ?>>
                       <i class="fas fa-download"></i>
                     </a>

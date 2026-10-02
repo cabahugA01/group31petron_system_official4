@@ -39,9 +39,9 @@ if (!$bk) {
     exit('Backup record not found.');
 }
 
-// Always serve as petron_pos_db_secure.sql regardless of stored name
+// Always serve as u261539219_petrondbs.sql regardless of stored name
 $stored_file = $backup_dir . basename($bk['backup_name'] ?? '');
-$download_name = 'petron_pos_db_secure.sql';
+$download_name = 'u261539219_petrondbs.sql';
 
 if (!file_exists($stored_file)) {
     http_response_code(404);

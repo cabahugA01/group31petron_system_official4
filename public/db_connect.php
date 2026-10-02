@@ -6,10 +6,17 @@ ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
+<<<<<<< HEAD
+$host = "localhost";
+$dbname = "u261539219_petrondbs";
+$user = "u261539219_petron_pos";
+$pass = "P3tr0n@123"; // Replace with actual password
+=======
 $host   = getenv('DB_HOST')   ?: "localhost";
 $dbname = getenv('DB_NAME')   ?: "petron_pos_db_secure";
 $user   = getenv('DB_USER')   ?: "root";
 $pass   = getenv('DB_PASS') !== false ? getenv('DB_PASS') : ""; // XAMPP default is empty
+>>>>>>> acfca20dd920f4eb8b50b105d5951e0e47bcee2f
 
 try {
   $pdo = new PDO(
@@ -235,7 +242,7 @@ try {
     static $pma_layout_checked = false;
     if (!$pma_layout_checked) {
         $pma_layout_checked = true;
-        $chk_pma = $pdo->query("SELECT COUNT(*) FROM phpmyadmin.pma__table_coords WHERE db_name = 'petron_pos_db_secure'");
+        $chk_pma = $pdo->query("SELECT COUNT(*) FROM phpmyadmin.pma__table_coords WHERE db_name = 'u261539219_petrondbs'");
         if (!$chk_pma || (int)$chk_pma->fetchColumn() === 0) {
             $backupFile = __DIR__ . '/../database/petron_designer_layout_backup.sql';
             if (file_exists($backupFile)) {
