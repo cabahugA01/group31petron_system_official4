@@ -148,7 +148,7 @@ if(in_array($export,['excel','csv'])) {
     }
     $out=fopen('php://output','w');
     fputcsv($out,['Transaction ID','Customer','Type','Amount','Shift','Date']);
-    foreach($recent as $r) fputcsv($out,[$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['txn_type'])),'₱'.number_format($r['amount'],2),$r['shift'],date('M d, Y H:i',strtotime($r['txn_date']))]);
+    foreach($recent as $r) fputcsv($out,[$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['txn_type'])),'₱'.number_format($r['amount'],2),$r['shift'],date('M d, Y h:i A',strtotime($r['txn_date']))]);
     fclose($out); exit;
 }
 

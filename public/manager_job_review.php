@@ -517,7 +517,7 @@ include __DIR__ . '/../partials/header.php';
                                 • 
                                 Technician: <?php echo htmlspecialchars($job['technician_name'] ?? 'Not assigned'); ?>
                                 • 
-                                Completed: <?php echo date('M j, Y H:i', strtotime($job['completed_at'])); ?>
+                                Completed: <?php echo date('M j, Y h:i A', strtotime($job['completed_at'])); ?>
                             </div>
                         </div>
                         <span class="status-badge status-completed">Completed</span>
@@ -592,7 +592,7 @@ include __DIR__ . '/../partials/header.php';
                         </div>
                         <div class="job-detail">
                             <span class="job-detail-label">Reviewed:</span>
-                            <?php echo date('M j, Y H:i', strtotime($job['reviewed_at'])); ?>
+                            <?php echo date('M j, Y h:i A', strtotime($job['reviewed_at'])); ?>
                         </div>
                     </div>
                 </div>

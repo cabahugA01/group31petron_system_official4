@@ -2144,7 +2144,7 @@ input[name="calibration"]:hover {
           <tr>
             <td>
               <?php echo date('M d, Y', strtotime($log['created_at'])); ?><br>
-              <small class="muted"><?php echo date('H:i:s', strtotime($log['created_at'])); ?></small>
+              <small class="muted"><?php echo date('h:i:s A', strtotime($log['created_at'])); ?></small>
             </td>
             <td><?php echo htmlspecialchars($log['user_name']); ?></td>
             <td>

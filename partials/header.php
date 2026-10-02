@@ -661,10 +661,48 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="<?php echo function_exists('sec_generate_csrf_token') ? sec_generate_csrf_token() : ''; ?>" />
-  <title>Petron Management System</title>
-  <link rel="icon" type="image/png" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
-  <link rel="shortcut icon" type="image/png" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
-  <link rel="apple-touch-icon" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
+
+  <!-- ── SEO Meta Tags ── -->
+  <meta name="description" content="Petron Station Management System — A comprehensive management platform for Petron fuel stations. Manage transactions, inventory, employees, and reports." />
+  <meta name="keywords" content="Petron, Station Management System, Petron POS, Fuel Station, Inventory Management" />
+  <meta name="author" content="Petron Station Management System" />
+  <meta name="robots" content="<?php echo in_array($role ?? '', ['superadmin','admin','manager','staff','developer']) ? 'noindex, nofollow' : 'index, follow'; ?>" />
+
+  <!-- ── Open Graph (for sharing sa social media & search engines) ── -->
+  <?php 
+    $_cur_proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $_cur_host  = $_SERVER['HTTP_HOST'] ?? 'yangch-stationms.online';
+    $_cur_domain_url = $_cur_proto . $_cur_host;
+  ?>
+  <meta property="og:title" content="Station MS" />
+  <meta property="og:description" content="Comprehensive management platform for Petron fuel stations." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="<?php echo htmlspecialchars($_cur_domain_url . '/'); ?>" />
+  <meta property="og:image" content="<?php echo htmlspecialchars($_cur_domain_url . $app_base_path . '/assets/img/petron_logo.png'); ?>" />
+
+  <!-- ── Mobile App / Chrome Shortcut Branding ── -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Station MS" />
+  <meta name="application-name" content="Station MS" />
+  <meta name="theme-color" content="#00264D" />
+
+  <title><?php echo !empty($page_title) ? htmlspecialchars($page_title) . ' | Station MS' : 'Station MS'; ?></title>
+
+  <!-- ── Favicon & Tab Logo (Instant Base64 Fallback + Multi-Resolution ICO & PNG) ── -->
+  <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAEJElEQVRYw+WXbUxbZRTHf719hTLa8o6M8DKQMIGJQYObfnBxTLe5kGhCFkMWJ8bFJYqJH7Y5Z3TE+GEm09jFqcDYwnxjavhggm664eSlQyVTNmUVmANaVqCFthRKe+uHLYStveXFkpj4fDv3nud/fvc8zz3Pc+D/PmQhn+bsyQFOAg8AQgTiiIAJqMRsNM9/oZCYcHLnxECpQ1DSEpOCOiCyfmqMMreVjNmpIGe7XEWXxsBZbRK9qlWh9ASg9NZHPbiYDPg/tHYJj7us2OUqPtBn87E+G69MoGTazjOOfra5LAgEgqb+qjFwxJDL99qk0JkwG+V3kkkRA2Dwe9k39gfNgxdI83no0hjYk3IfW9If4rI6Nmhi8bSdBouJWstFdOKspO5CAEHjnplJPhtqnxPtUesoX72B9qj4kP5l7hFODXWiDohhdZe0wTJmp3h5vHfO9sjkvJhcjFcWWqZoxsEuR3/kAADKnUO32VaFhm6NXtJ/q8sSWYB4vzcorT6JvQwQJ3ojCzCg1DIzL+Uxoo91MxOS/mZlTGQBjIac2+xXxv9EK/ok/U/oMiIHcNSwhk9j0+fs5xx9PBtmk53QZXJGmxxWU7GYwAHgUMJaPtJnz9WGGtvvbHcNS9RdGe8bcjgcn7eg9qIADiYWcFyXCcATrmHetPWQ4J8JveaqGF5NLKRNoj4sGeBwXB7HdZloAn7evvEbTzoHQ/rZ5GrejculMTYDn0y26GUNC9CiTeG9uFwMfi8NFhPF044gnzG5imP6NTToMpkS5Es+JiUB/Mg4lJCPVvTRONxJ4R2/mltQYDTkUKvLWlbgBQFaoxO5rozmmPXnoOBfr0qjJj6fEYXmX18UJAHOaJMpc4+wZV4pvaaMZm9SEReiEiJ2I5IEsMnVVDn65uy2qASqUktwCgoiOSTV7vJ5KPWMAXBVFcOu1BLcEQ4ethJuco/MHTEHEwpWJHjYDJyPTqQifQNKhZw2RSwhbl8rCzCg1PLJF6+TnqpHFANUvFRH6b1ZyGRgG3eRnmoAoPvyIOvy05hweqg/3cHT2+9HpZRTf7qD3Tsepq6pnfJNRWLDl53CUq7lAYArLa9RXdMk7n2+TBDFgKhSyYVvf7wi/vRLn7B/92Y6uvtJTdIxMupk28YCevtuiPbJKcHpnsbnF6ne+QjGxlYeXZ8nFm596yaA2Shb0ml45MBTwl9/2/iho1dQqxTE67XCuc6rXBse55zJzKRrmrU5KaJj0sPImFP45nwPX313ibRkPbZxFxtL70YQBGFZx/Gg1cGO6nqq9p+i9aKZKLWSkqIMMWt1PLZxF57pWUbtLuqa2lHIBbH57CXxwAuPcfSNCmo/b6NvcFTc904z1y32JXdG/gh1RMvuC0wr1AqaFrsElUDHrZ4uMl9+U6/yP9cd/wMZ2nU8I3Z10QAAAABJRU5ErkJggg==" />
+  <link rel="icon" type="image/x-icon" href="<?php echo $app_base_path; ?>/favicon.ico?v=2.2" />
+  <link rel="icon" type="image/png" sizes="16x16" href="<?php echo $app_base_path; ?>/favicon-16x16.png?v=2.2" />
+  <link rel="icon" type="image/png" sizes="32x32" href="<?php echo $app_base_path; ?>/favicon-32x32.png?v=2.2" />
+  <link rel="icon" type="image/png" sizes="48x48" href="<?php echo $app_base_path; ?>/favicon-48x48.png?v=2.2" />
+  <link rel="shortcut icon" type="image/x-icon" href="<?php echo $app_base_path; ?>/favicon.ico?v=2.2" />
+
+  <!-- ── Apple Touch & Chrome Android App Icons (Circle Shortcut & Homescreen) ── -->
+  <link rel="apple-touch-icon" sizes="180x180" href="<?php echo $app_base_path; ?>/apple-touch-icon.png?v=2.2" />
+  <link rel="icon" type="image/png" sizes="192x192" href="<?php echo $app_base_path; ?>/android-chrome-192x192.png?v=2.2" />
+  <link rel="icon" type="image/png" sizes="512x512" href="<?php echo $app_base_path; ?>/android-chrome-512x512.png?v=2.2" />
+  <link rel="manifest" href="<?php echo $app_base_path; ?>/manifest.json?v=2.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
@@ -3477,13 +3515,13 @@ table.tbl-requests td, table.pricing-table td, table.fuel-table td {
     width: 100% !important;
 }
 @media screen {
-    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) {
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.dev-inner-table):not(.dev-dashboard table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) {
         width: 100% !important;
         min-width: 1050px !important;
         table-layout: auto !important;
     }
-    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) th,
-    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) td {
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.dev-inner-table):not(.dev-dashboard table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) th,
+    table:not(.report-table):not(.rpt-table):not(.adm-table):not(.mgr-table):not(.no-min-width):not(.dashboard-table):not(.dev-inner-table):not(.dev-dashboard table):not(.adm-dashboard table):not(.mgr-dashboard table):not(.print-table):not(.cust-modal table):not(.modal-backdrop table):not(.modal-body table):not(.modal table) td {
         white-space: nowrap !important;
     }
 }

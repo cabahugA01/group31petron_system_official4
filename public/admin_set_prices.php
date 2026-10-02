@@ -1931,7 +1931,7 @@ table.pricing-table tbody tr:hover {
                         <td style="vertical-align:middle;text-align:center;">
                             <?php if (!empty($f['last_updated'])): ?>
                                 <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?php echo date('M d, Y', strtotime($f['last_updated'])); ?></div>
-                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('H:i', strtotime($f['last_updated'])); ?></div>
+                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($f['last_updated'])); ?></div>
                             <?php else: ?>
                                 <span style="color:#94a3b8;font-size:12px;">&mdash;</span>
                             <?php endif; ?>
@@ -2188,7 +2188,7 @@ table.pricing-table tbody tr:hover {
                         <td style="vertical-align:middle;text-align:center;padding:8px 4px;">
                             <?php if (!empty($item['last_updated'])): ?>
                                 <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?php echo date('M d, Y', strtotime($item['last_updated'])); ?></div>
-                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('H:i', strtotime($item['last_updated'])); ?></div>
+                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($item['last_updated'])); ?></div>
                             <?php else: ?>
                                 <span style="color:#94a3b8;font-size:12px;">&mdash;</span>
                             <?php endif; ?>

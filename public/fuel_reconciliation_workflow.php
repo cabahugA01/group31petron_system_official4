@@ -785,7 +785,7 @@ function getStepIcon($step, $current_step) {
                     <h4>Reconciliation Summary</h4>
                     <p><strong>Session ID:</strong> #<?php echo $session_data['id']; ?></p>
                     <p><strong>Created by:</strong> <?php echo htmlspecialchars($session_data['created_by_name']); ?></p>
-                    <p><strong>Created at:</strong> <?php echo date('M d, Y H:i', strtotime($session_data['created_at'])); ?></p>
+                    <p><strong>Created at:</strong> <?php echo date('M d, Y h:i A', strtotime($session_data['created_at'])); ?></p>
                     <p><strong>Status:</strong> <?php echo htmlspecialchars($session_data['status']); ?></p>
                     <?php if (!empty($session_data['variance_notes'])): ?>
                         <p><strong>Variance Notes:</strong> <?php echo htmlspecialchars($session_data['variance_notes']); ?></p>
@@ -804,7 +804,7 @@ function getStepIcon($step, $current_step) {
                         <p>This reconciliation has been approved by manager and is now locked.</p>
                         <p><span class="locked-badge">Audit Trail Locked</span></p>
                         <p><strong>Approved by:</strong> <?php echo htmlspecialchars($session_data['approved_by_name'] ?? 'Manager'); ?></p>
-                        <p><strong>Approved at:</strong> <?php echo date('M d, Y H:i', strtotime($session_data['approved_at'])); ?></p>
+                        <p><strong>Approved at:</strong> <?php echo date('M d, Y h:i A', strtotime($session_data['approved_at'])); ?></p>
                     </div>
                 <?php else: ?>
                     <form method="post">
@@ -857,7 +857,7 @@ function getStepIcon($step, $current_step) {
                     </tr>
                     <tr>
                         <th>Created At</th>
-                        <td><?php echo date('M d, Y H:i', strtotime($session_data['created_at'])); ?></td>
+                        <td><?php echo date('M d, Y h:i A', strtotime($session_data['created_at'])); ?></td>
                     </tr>
                     <tr>
                         <th>Approved By</th>
@@ -865,7 +865,7 @@ function getStepIcon($step, $current_step) {
                     </tr>
                     <tr>
                         <th>Approved At</th>
-                        <td><?php echo date('M d, Y H:i', strtotime($session_data['approved_at'])); ?></td>
+                        <td><?php echo date('M d, Y h:i A', strtotime($session_data['approved_at'])); ?></td>
                     </tr>
                     <tr>
                         <th>Status</th>

@@ -394,7 +394,7 @@ Staff Stock Requests
                         </td>
                         <td><?php echo (int)($request['requested_quantity'] ?? 0); ?></td>
                         <td><?php echo htmlspecialchars($request['staff_name'] ?? ''); ?></td>
-                        <td><?php echo date('M j, Y H:i', strtotime($request['created_at'])); ?></td>
+                        <td><?php echo date('M j, Y h:i A', strtotime($request['created_at'])); ?></td>
                         <td><?php echo htmlspecialchars($request['remarks'] ?? ''); ?></td>
                         <td>
                             <button class="btn btn-sm btn-success" style="background-color: #002F70; border-color: #002F70;" onclick="viewRequest(<?php echo $request['id']; ?>)">View</button>
@@ -539,7 +539,7 @@ function displayRequestDetails(request) {
             </div>
             <div>
                 <label style="font-weight: bold;">Request Date:</label>
-                <p>${new Date(request.created_at).toLocaleString()}</p>
+                <p>${new Date(request.created_at).toLocaleString('en-US', { hour12: true })}</p>
             </div>
             <div style="grid-column: 1 / -1;">
                 <label style="font-weight: bold;">Staff Remarks:</label>

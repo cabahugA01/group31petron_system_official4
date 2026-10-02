@@ -209,7 +209,7 @@ foreach ($employees as $emp) {
     $stn_name  = $emp['station_name'] ?: $station_name;
     $status    = ucfirst(strtolower(trim($emp['status'] ?: 'Active')));
     $created   = $emp['created_at'] ? date('Y-m-d', strtotime($emp['created_at'])) : '—';
-    $last_login= $emp['updated_at'] ? date('Y-m-d H:i:s', strtotime($emp['updated_at'])) : '—';
+    $last_login= $emp['updated_at'] ? date('M d, Y h:i A', strtotime($emp['updated_at'])) : '—';
     
     // Document statuses (Dynamic database check: missing if no file uploaded)
     $get_doc_status = function($uid, $type) use ($docs_map) {
@@ -226,7 +226,7 @@ foreach ($employees as $emp) {
     $valid_id   = $get_doc_status($uid, 'Valid ID');
     
     // Activity summary
-    $last_act   = !empty($activity_map[$uid]['last_act']) ? date('Y-m-d H:i:s', strtotime($activity_map[$uid]['last_act'])) : '—';
+    $last_act   = !empty($activity_map[$uid]['last_act']) ? date('M d, Y h:i A', strtotime($activity_map[$uid]['last_act'])) : '—';
     $act_count  = isset($activity_map[$uid]['count']) ? (int)$activity_map[$uid]['count'] : 0;
     
     $master_rows[] = [

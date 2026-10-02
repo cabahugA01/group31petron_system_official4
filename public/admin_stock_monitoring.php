@@ -62,7 +62,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_details') {
             'success' => true,
             'total_deliveries' => $total_deliveries,
             'total_released' => $total_released,
-            'last_delivery_date' => $last_delivery_date !== '—' ? date('M d, Y H:i', strtotime($last_delivery_date)) : '—',
+            'last_delivery_date' => $last_delivery_date !== '—' ? date('M d, Y h:i A', strtotime($last_delivery_date)) : '—',
             'last_purpose' => $last_purpose
         ]);
     } catch (Exception $e) {

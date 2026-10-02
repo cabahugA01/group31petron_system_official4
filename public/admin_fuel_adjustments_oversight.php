@@ -243,7 +243,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <?php endif; ?>
                     <div class="footer">
                         <p>Petron Fuel Operations</p>
-                        <p>Generated: <?= date('Y-m-d H:i:s') ?></p>
+                        <p>Generated: <?= date('M d, Y h:i:s A') ?></p>
                     </div>
                 </div>
             </body>
@@ -382,7 +382,7 @@ if (in_array($export, ['excel','pdf'])) {
             $adj['requested_by_name'] ?? '—',
             $adj['approved_by_name'] ?? '—',
             ucfirst($adj['status']),
-            $adj['approved_at'] ? date('M d, Y H:i', strtotime($adj['approved_at'])) : '—'
+            $adj['approved_at'] ? date('M d, Y h:i A', strtotime($adj['approved_at'])) : '—'
         ];
     }
     
@@ -408,7 +408,7 @@ if (in_array($export, ['excel','pdf'])) {
 
     if ($export === 'pdf') {
         header('Content-Type: text/html; charset=UTF-8');
-        $generated = date('M d, Y H:i');
+        $generated = date('M d, Y h:i A');
         
         $tbody = '';
         foreach ($rows_fmt as $r) {

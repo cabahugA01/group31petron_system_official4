@@ -298,7 +298,7 @@ if (($_GET['export'] ?? '') === 'excel') {
     header('Cache-Control: max-age=0');
     echo '<table border="1"><tr><th>Date/Time</th><th>Module</th><th>Category</th><th>Actor</th><th>Reference</th><th>Status</th><th>Details</th></tr>';
     foreach ($unique as $r) {
-        echo '<tr><td>'.htmlspecialchars(date('Y-m-d H:i:s',strtotime($r['datetime']))).'</td>';
+        echo '<tr><td>'.htmlspecialchars(date('M d, Y h:i:s A',strtotime($r['datetime']))).'</td>';
         echo '<td>'.htmlspecialchars($r['module']).'</td><td>'.htmlspecialchars($r['category']).'</td>';
         echo '<td>'.htmlspecialchars($r['actor']).'</td><td>'.htmlspecialchars($r['ref_no']).'</td>';
         echo '<td>'.htmlspecialchars($r['status']).'</td><td>'.htmlspecialchars($r['details']).'</td></tr>';
@@ -310,7 +310,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Content-Disposition: attachment; filename="Manager_Audit_Trail_'.date('Ymd').'.csv"');
     $out = fopen('php://output','w');
     fputcsv($out, ['Date/Time','Module','Category','Actor','Reference','Status','Details']);
-    foreach ($unique as $r) fputcsv($out, [date('Y-m-d H:i:s',strtotime($r['datetime'])),$r['module'],$r['category'],$r['actor'],$r['ref_no'],$r['status'],$r['details']]);
+    foreach ($unique as $r) fputcsv($out, [date('M d, Y h:i:s A',strtotime($r['datetime'])),$r['module'],$r['category'],$r['actor'],$r['ref_no'],$r['status'],$r['details']]);
     fclose($out); exit;
 }
 
@@ -521,7 +521,7 @@ include __DIR__ . '/../partials/header.php';
         <tr>
             <td style="white-space:nowrap;color:#64748b;font-size:11px;">
                 <?= htmlspecialchars(date('M j, Y', strtotime($r['datetime']))) ?><br>
-                <span style="font-size:10px;color:#94a3b8;"><?= htmlspecialchars(date('H:i:s', strtotime($r['datetime']))) ?></span>
+                <span style="font-size:10px;color:#94a3b8;"><?= htmlspecialchars(date('h:i:s A', strtotime($r['datetime']))) ?></span>
             </td>
             <td><span class="badge <?= $mc ?>"><?= htmlspecialchars($r['module']) ?></span></td>
             <td style="font-weight:600;font-size:12px;white-space:nowrap;">

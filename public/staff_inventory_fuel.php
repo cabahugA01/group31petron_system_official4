@@ -2078,7 +2078,7 @@ function viewFuelMovement(fuelType, tankName) {
         } else {
             var salesHtml = '';
             res.transactions.forEach(function(t) {
-                var dateStr = t.transaction_date ? new Date(t.transaction_date).toLocaleDateString() + ' ' + new Date(t.transaction_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '—';
+                var dateStr = t.transaction_date ? new Date(t.transaction_date).toLocaleDateString() + ' ' + new Date(t.transaction_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true}) : '—';
                 var statusCls = t.status === 'Verified' ? 'background:#e6f4ea; color:#28a745; border:1px solid #c3e6cb;' : 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
                 salesHtml += '<tr>' +
                     '<td>' + dateStr + '</td>' +

@@ -1163,7 +1163,7 @@ body, html { overflow-x: hidden; max-width: 100%; }
                             </span>
                         </td>
                         <td class="muted" style="font-size:11.5px;text-align:center;white-space:nowrap;">
-                            <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y H:i', strtotime($f['last_updated']))) : '&mdash;'; ?>
+                            <?php echo $f['last_updated'] ? htmlspecialchars(date('M d, Y h:i A', strtotime($f['last_updated']))) : '&mdash;'; ?>
                         </td>
                         <td style="text-align:center;white-space:nowrap;">
                             <div class="act-btn-wrap">

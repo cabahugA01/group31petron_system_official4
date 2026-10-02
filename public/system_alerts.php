@@ -233,7 +233,7 @@ if ($filter_type && isset($alert_types[$filter_type])) {
                         <?php if($alert['updated_at']): ?>
                             <div class="detail-item">
                                 <span class="label">Last Updated:</span>
-                                <span class="value"><?php echo date('M j, Y H:i', strtotime($alert['updated_at'])); ?></span>
+                                <span class="value"><?php echo date('M j, Y h:i A', strtotime($alert['updated_at'])); ?></span>
                             </div>
                         <?php endif; ?>
                     </div>

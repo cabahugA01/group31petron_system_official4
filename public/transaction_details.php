@@ -268,7 +268,7 @@ include __DIR__ . '/../partials/header.php';
                         <td><?php echo htmlspecialchars($log['action']); ?></td>
                         <td><?php echo htmlspecialchars($log['details']); ?></td>
                         <td><?php echo htmlspecialchars($log['action_user']); ?></td>
-                        <td><?php echo date('M d, H:i', strtotime($log['created_at'])); ?></td>
+                        <td><?php echo date('M d, h:i A', strtotime($log['created_at'])); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

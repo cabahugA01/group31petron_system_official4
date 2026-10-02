@@ -1993,7 +1993,7 @@ function printSecurityLogs() {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + ' ' +
-                  now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                  now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   const userName = '<?= htmlspecialchars(addslashes(($me['first_name']??'').' '.($me['last_name']??''))) ?>' || 'System Administrator';
   const roleName = '<?= htmlspecialchars(addslashes(ucwords(str_replace('_',' ',$my_role)))) ?>';

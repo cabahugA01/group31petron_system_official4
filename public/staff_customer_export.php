@@ -133,9 +133,9 @@ if ($format === 'csv') {
             $c['contact_number'],
             'Registered',
             $c['total_transactions'],
-            $c['last_transaction'] ? date('Y-m-d H:i', strtotime($c['last_transaction'])) : 'Never',
+            $c['last_transaction'] ? date('Y-m-d h:i A', strtotime($c['last_transaction'])) : 'Never',
             ucfirst($c['status']),
-            date('Y-m-d H:i', strtotime($c['registered_at'])),
+            date('Y-m-d h:i A', strtotime($c['registered_at'])),
         ]);
     }
     fclose($output);
@@ -158,7 +158,7 @@ if ($format === 'excel') {
     echo '<h1>PETRON CUSTOMER LIST REPORT</h1>';
     echo '<p><strong>Station Name:</strong> ' . htmlspecialchars($station_name) . '<br>';
     echo '<strong>Branch/Address:</strong> ' . htmlspecialchars($station_location) . '<br>';
-    echo '<strong>Export Date:</strong> ' . date('Y-m-d H:i:s') . '<br>';
+    echo '<strong>Export Date:</strong> ' . date('M d, Y h:i A') . '<br>';
     echo '<strong>Exported By:</strong> ' . htmlspecialchars($generated_by) . '</p>';
     
     echo '<table><thead><tr>';
@@ -172,9 +172,9 @@ if ($format === 'excel') {
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
         echo '<td>Registered</td>';
         echo '<td>' . htmlspecialchars($c['total_transactions']) . '</td>';
-        echo '<td>' . ($c['last_transaction'] ? htmlspecialchars(date('Y-m-d H:i', strtotime($c['last_transaction']))) : 'Never') . '</td>';
+        echo '<td>' . ($c['last_transaction'] ? htmlspecialchars(date('Y-m-d h:i A', strtotime($c['last_transaction']))) : 'Never') . '</td>';
         echo '<td>' . htmlspecialchars(ucfirst($c['status'])) . '</td>';
-        echo '<td>' . htmlspecialchars(date('Y-m-d H:i', strtotime($c['registered_at']))) . '</td>';
+        echo '<td>' . htmlspecialchars(date('Y-m-d h:i A', strtotime($c['registered_at']))) . '</td>';
         echo '</tr>';
     }
     echo '</tbody></table></body></html>';

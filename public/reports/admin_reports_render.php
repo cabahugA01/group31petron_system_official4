@@ -8,6 +8,15 @@ if (!defined('PETRON_SYSTEM')) {
     define('PETRON_SYSTEM', true);
 }
 
+if (!function_exists('ard_fmt_12h_datetime')) {
+    function ard_fmt_12h_datetime(?string $raw_dt): string {
+        if (empty($raw_dt) || $raw_dt === 'N/A' || $raw_dt === '—') return '—';
+        $ts = strtotime($raw_dt);
+        if (!$ts) return htmlspecialchars($raw_dt);
+        return date('Y-m-d h:i:s A', $ts);
+    }
+}
+
 function renderAdminReportContent(string $cat, string $tab, array $report_data): void {
     $rows = $report_data['rows'] ?? [];
 
@@ -792,7 +801,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                         <?= htmlspecialchars($stRaw) ?>
                                     </span>
                                 </td>
-                                <td class="text-center text-muted" style="font-size:10.5px;padding:8px 4px!important;white-space:normal!important;line-height:1.2;"><?php if (!empty($r['last_updated'])): $lut = strtotime($r['last_updated']); ?><div><?= date('m/d/Y', $lut) ?></div><div style="color:#94a3b8;"><?= date('H:i', $lut) ?></div><?php else: ?>N/A<?php endif; ?></td>
+                                <td class="text-center text-muted" style="font-size:10.5px;padding:8px 4px!important;white-space:normal!important;line-height:1.2;"><?php if (!empty($r['last_updated'])): $lut = strtotime($r['last_updated']); ?><div><?= date('m/d/Y', $lut) ?></div><div style="color:#94a3b8;"><?= date('h:i A', $lut) ?></div><?php else: ?>N/A<?php endif; ?></td>
                             </tr>
                         <?php endforeach; endif; ?>
                         </tbody>
@@ -848,7 +857,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                         <?= htmlspecialchars($stRaw) ?>
                                     </span>
                                 </td>
-                                <td class="text-center text-muted" style="font-size:10.5px;padding:8px 5px!important;white-space:normal!important;line-height:1.2;"><?php if (!empty($r['last_updated'])): $lut = strtotime($r['last_updated']); ?><div><?= date('m/d/Y', $lut) ?></div><div style="color:#94a3b8;"><?= date('H:i', $lut) ?></div><?php else: ?>N/A<?php endif; ?></td>
+                                <td class="text-center text-muted" style="font-size:10.5px;padding:8px 5px!important;white-space:normal!important;line-height:1.2;"><?php if (!empty($r['last_updated'])): $lut = strtotime($r['last_updated']); ?><div><?= date('m/d/Y', $lut) ?></div><div style="color:#94a3b8;"><?= date('h:i A', $lut) ?></div><?php else: ?>N/A<?php endif; ?></td>
                             </tr>
                         <?php endforeach; endif; ?>
                         </tbody>
@@ -1263,7 +1272,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                             ?>
                                 <tr>
                                     <td style="white-space:normal!important;word-break:break-all!important;padding:8px 5px!important;"><code style="font-size:10.5px;font-weight:700;word-break:break-all;"><?= htmlspecialchars($r['po_number'] ?? 'N/A') ?></code></td>
-                                    <td style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['po_date']) ? date('m/d/Y H:i', strtotime($r['po_date'])) : '-' ?></td>
+                                    <td style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['po_date']) ? date('m/d/Y h:i A', strtotime($r['po_date'])) : '-' ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><?= htmlspecialchars($r['requested_by'] ?? 'N/A') ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><?= htmlspecialchars($r['approved_by'] ?? 'N/A') ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><strong><?= htmlspecialchars($r['supplier'] ?? 'Petron Corporation') ?></strong></td>
@@ -1444,7 +1453,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td class="text-end" style="white-space:nowrap!important;padding:8px 5px!important;">₱<?= number_format((float)($r['unit_cost'] ?? 0), 2) ?></td>
                                     <td class="text-end fw-bold text-success" style="white-space:nowrap!important;padding:8px 5px!important;">₱<?= number_format((float)($r['selling_price'] ?? 0), 2) ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><?= htmlspecialchars($r['approved_by'] ?? 'N/A') ?></td>
-                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['approval_date']) ? date('m/d/Y H:i', strtotime($r['approval_date'])) : '-' ?></td>
+                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['approval_date']) ? date('m/d/Y h:i A', strtotime($r['approval_date'])) : '-' ?></td>
                                     <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;"><span class="badge <?= $badge ?>" style="font-size:10.5px;"><?= htmlspecialchars($st) ?></span></td>
                                 </tr>
                             <?php endforeach; endif; ?>
@@ -1619,7 +1628,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;"><span class="badge bg-secondary" style="font-size:10.5px;"><?= htmlspecialchars($r['payment_method'] ?? 'Cash') ?></span></td>
                                     <td class="text-end fw-bold text-success" style="white-space:nowrap!important;padding:8px 5px!important;">₱<?= number_format((float)($r['amount_paid'] ?? 0), 2) ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><?= htmlspecialchars($r['collected_by'] ?? 'N/A') ?></td>
-                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['payment_date']) ? date('m/d/Y H:i', strtotime($r['payment_date'])) : '-' ?></td>
+                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['payment_date']) ? date('m/d/Y h:i A', strtotime($r['payment_date'])) : '-' ?></td>
                                 </tr>
                             <?php endforeach; endif; ?>
                         </tbody>
@@ -2113,7 +2122,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         $amt = (float)($r['total_amount'] ?? 0);
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><small style="white-space:nowrap;"><?= ard_fmt_12h_datetime($r['datetime'] ?? 'N/A') ?></small></td>
                             <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
                             <td><span class="badge <?= $mod_cls ?>" style="font-size:10px;"><?= htmlspecialchars($mod) ?></span></td>
                             <td><strong><?= htmlspecialchars($r['action'] ?? 'Created Transaction') ?></strong></td>
@@ -2153,7 +2162,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         $chg = (float)($r['quantity_change'] ?? 0);
                     ?>
                         <tr>
-                            <td style="white-space:normal!important;word-break:break-word;"><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td style="white-space:normal!important;word-break:break-word;"><small style="white-space:nowrap;"><?= ard_fmt_12h_datetime($r['datetime'] ?? 'N/A') ?></small></td>
                             <td style="white-space:normal!important;word-break:break-all;"><code style="font-size:10px;font-weight:700;word-break:break-all;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
                             <td style="white-space:normal!important;word-break:break-word;"><strong><?= htmlspecialchars($r['product'] ?? 'N/A') ?></strong></td>
                             <td style="white-space:normal!important;word-break:break-word;"><span class="badge <?= $mov_cls ?>" style="font-size:10px;"><?= htmlspecialchars($mov) ?></span></td>
@@ -2206,7 +2215,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         $dt_raw = $r['datetime'] ?? '';
                         $dt_ts  = !empty($dt_raw) && $dt_raw !== 'N/A' ? strtotime($dt_raw) : false;
                         $dt_d   = $dt_ts ? date('M d, Y', $dt_ts) : ($dt_raw ?: 'N/A');
-                        $dt_t   = $dt_ts ? date('h:i A', $dt_ts) : '';
+                        $dt_t   = $dt_ts ? date('h:i:s A', $dt_ts) : '';
                     ?>
                         <tr>
                             <td style="white-space:normal!important;word-break:break-word!important;overflow-wrap:break-word!important;padding:8px 5px!important;">
@@ -2262,7 +2271,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         };
                     ?>
                         <tr>
-                            <td style="white-space:normal!important;word-break:break-word;"><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td style="white-space:normal!important;word-break:break-word;"><small style="white-space:nowrap;"><?= ard_fmt_12h_datetime($r['datetime'] ?? 'N/A') ?></small></td>
                             <td style="white-space:normal!important;word-break:break-word;"><strong><?= htmlspecialchars($r['user'] ?? 'N/A') ?></strong></td>
                             <td style="white-space:normal!important;word-break:break-word;"><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['role'] ?? 'Staff') ?></span></td>
                             <td style="white-space:normal!important;word-break:break-word;"><strong><?= htmlspecialchars($r['action'] ?? 'Login') ?></strong></td>
@@ -2296,7 +2305,7 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                         };
                     ?>
                         <tr>
-                            <td><small><?= htmlspecialchars($r['datetime'] ?? 'N/A') ?></small></td>
+                            <td><small style="white-space:nowrap;"><?= ard_fmt_12h_datetime($r['datetime'] ?? 'N/A') ?></small></td>
                             <td><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($r['entity_type'] ?? 'Record') ?></span></td>
                             <td><code style="font-size:10px;font-weight:700;"><?= htmlspecialchars($r['ref_no'] ?? 'N/A') ?></code></td>
                             <td><span class="badge <?= $act_cls ?>" style="font-size:10px;"><?= htmlspecialchars($r['action'] ?? 'Archived') ?></span></td>

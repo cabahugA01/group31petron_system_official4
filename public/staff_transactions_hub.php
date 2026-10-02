@@ -1136,7 +1136,7 @@ if ($section === 'history' || $section === 'fuel_history') {
                 number_format((float)$r['total_amount'], 2),
                 $r['payment_method'],
                 $r['payment_status'],
-                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                date('M d, Y h:i A', strtotime($r['transaction_date'])),
                 $r['validation_status']
             ]);
         }
@@ -1168,7 +1168,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
             echo '</tr>';
         }
@@ -1234,7 +1234,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
             echo '</tr>';
         }
@@ -1260,7 +1260,7 @@ if ($section === 'history' || $section === 'fuel_history') {
                 number_format((float)$r['liters_sold'], 2),
                 number_format((float)$r['price_per_liter'], 2),
                 number_format((float)$r['total_amount'], 2),
-                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                date('M d, Y h:i A', strtotime($r['transaction_date'])),
                 $r['status'],
                 $r['shift_period']
             ]);
@@ -1293,7 +1293,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['status']) . '</td>';
             echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
             echo '</tr>';
@@ -1362,7 +1362,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
             echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['status']) . '</td>';
             echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
             echo '</tr>';

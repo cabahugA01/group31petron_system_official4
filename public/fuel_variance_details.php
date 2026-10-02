@@ -163,8 +163,8 @@ $severity_label = $variance_severity > 5 ? 'Critical' : ($variance_severity > 2 
                             <p><strong>Investigated by:</strong> <?php echo $variance['investigator_name'] ? htmlspecialchars($variance['investigator_name']) : '<span class="text-muted">Not investigated</span>'; ?></p>
                         </div>
                         <div class="col-md-6">
-                            <p><strong>Created:</strong> <?php echo date('M d, Y H:i', strtotime($variance['created_at'] ?? $variance['report_date'])); ?></p>
-                            <p><strong>Last Updated:</strong> <?php echo $variance['updated_at'] ? date('M d, Y H:i', strtotime($variance['updated_at'])) : '<span class="text-muted">Never</span>'; ?></p>
+                            <p><strong>Created:</strong> <?php echo date('M d, Y h:i A', strtotime($variance['created_at'] ?? $variance['report_date'])); ?></p>
+                            <p><strong>Last Updated:</strong> <?php echo $variance['updated_at'] ? date('M d, Y h:i A', strtotime($variance['updated_at'])) : '<span class="text-muted">Never</span>'; ?></p>
                         </div>
                     </div>
                     

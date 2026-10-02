@@ -328,7 +328,7 @@ if (in_array($export, ['excel', 'pdf'])) {
 
     if ($export === 'pdf') {
         header('Content-Type: text/html; charset=UTF-8');
-        $generated = date('M d, Y H:i');
+        $generated = date('M d, Y h:i A');
         
         $tbody = '';
         foreach ($rows_fmt as $r) {

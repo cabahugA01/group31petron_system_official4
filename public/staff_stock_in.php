@@ -524,7 +524,7 @@ include __DIR__ . '/../partials/header.php';
         <?php if (!empty($po['unit_price'])): ?><span><i class="fas fa-money-bill-wave"></i> Unit Price: <strong>₱<?= number_format((float)$po['unit_price'], 2) ?></strong></span><?php endif; ?>
         <?php if ($po['encoded_by_name']): ?><span><i class="fas fa-user-edit"></i> Encoded by: <?= htmlspecialchars($po['encoded_by_name']) ?></span><?php endif; ?>
         <?php if ($po['admin_name']): ?><span><i class="fas fa-user-shield"></i> Admin: <?= htmlspecialchars($po['admin_name']) ?></span><?php endif; ?>
-        <?php if ($po['admin_action_at']): ?><span><i class="fas fa-calendar-check"></i> <?= date('M d, Y H:i', strtotime($po['admin_action_at'])) ?></span><?php endif; ?>
+        <?php if ($po['admin_action_at']): ?><span><i class="fas fa-calendar-check"></i> <?= date('M d, Y h:i A', strtotime($po['admin_action_at'])) ?></span><?php endif; ?>
       </div>
       <!-- Admin validation summary -->
       <?php if ($disc_type): ?>
@@ -675,7 +675,7 @@ include __DIR__ . '/../partials/header.php';
                 </span>
               </td>
               <td><code style="font-size:11px;"><?= htmlspecialchars($r['batch_ref'] ?? '') ?></code></td>
-              <td style="white-space:nowrap;font-size:12px;"><?= $r['encoded_at'] ? date('M d, Y H:i', strtotime($r['encoded_at'])) : '' ?></td>
+              <td style="white-space:nowrap;font-size:12px;"><?= $r['encoded_at'] ? date('M d, Y h:i A', strtotime($r['encoded_at'])) : '' ?></td>
               <td><?= htmlspecialchars($r['reference'] ?? '—') ?></td>
               <td><strong><?= htmlspecialchars($r['product'] ?? '') ?></strong></td>
               <td>

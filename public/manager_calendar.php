@@ -1225,7 +1225,7 @@ function showManagerDetailsModal(evt) {
     const statusClean  = evt.status_clean || (status.charAt(0).toUpperCase() + status.slice(1));
     const evtDate      = evt.event_date || evt.scheduled_date || '';
     const timeStr      = (evt.start_time && evt.start_time !== '00:00:00')
-        ? new Date('1970-01-01T' + evt.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+        ? new Date('1970-01-01T' + evt.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:true}) : '';
 
     // Helper: row
     const row = (label, value) => value

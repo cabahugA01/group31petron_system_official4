@@ -120,8 +120,8 @@ foreach ($mechanics as $m) {
     $contact_no  = trim($m['contact_no'] ?? '') ?: '—';
     $specialty   = trim($m['specialization'] ?? '') ?: 'General Mechanic';
     $status      = ucfirst(strtolower(trim($m['status'] ?? 'Active')));
-    $date_added  = !empty($m['created_at']) ? date('Y-m-d H:i', strtotime($m['created_at'])) : '—';
-    $date_updated= !empty($m['updated_at']) ? date('Y-m-d H:i', strtotime($m['updated_at'])) : '—';
+    $date_added  = !empty($m['created_at']) ? date('M d, Y h:i A', strtotime($m['created_at'])) : '—';
+    $date_updated= !empty($m['updated_at']) ? date('M d, Y h:i A', strtotime($m['updated_at'])) : '—';
 
     $mechanic_rows[] = [
         'mechanic_id' => $mech_id,

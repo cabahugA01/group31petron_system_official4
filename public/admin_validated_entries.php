@@ -297,7 +297,7 @@ include __DIR__ . '/../partials/header.php';
                     </td>
                     <td style="padding:9px 12px;color:#64748b;font-size:11px;white-space:nowrap;">
                         <?= date('M j, Y', strtotime($r['txn_date'])) ?><br>
-                        <span style="font-size:10px;"><?= date('H:i', strtotime($r['txn_date'])) ?></span>
+                        <span style="font-size:10px;"><?= date('h:i A', strtotime($r['txn_date'])) ?></span>
                     </td>
                     <td style="padding:9px 12px;color:#64748b;font-size:11px;" title="<?= htmlspecialchars($r['notes'] ?? '') ?>">
                         <?= htmlspecialchars(mb_strimwidth($r['notes'] ?? '', 0, 35, '…')) ?>

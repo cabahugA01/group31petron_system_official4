@@ -18,7 +18,7 @@ if ($role === 'manager' && isset($_GET['station_id']) && $_GET['station_id'] != 
 }
 
 // Add recent data indicator
-$last_updated = date('M j, Y H:i');
+$last_updated = date('M j, Y h:i A');
 
 // Don't redirect - let admins see the reconciliation report page
 // They can navigate to fuel_reconciliation_finalize.php from the sidebar if needed
@@ -919,7 +919,7 @@ include __DIR__ . '/../partials/header.php';
                                         <div style="font-size: 11px;">
                                             <div style="color: #059669;"><i class="fas fa-check"></i> Investigated</div>
                                             <div style="color: #6b7280;">by <?php echo htmlspecialchars($data['investigated_by_name'] ?? 'Unknown'); ?></div>
-                                            <div style="color: #6b7280;"><?php echo date('M d, H:i', strtotime($data['investigated_at'])); ?></div>
+                                            <div style="color: #6b7280;"><?php echo date('M d, h:i A', strtotime($data['investigated_at'])); ?></div>
                                         </div>
                                     <?php else: ?>
                                         <div style="color: #dc2626; font-size: 11px;"><i class="fas fa-exclamation-triangle"></i> Not Investigated</div>

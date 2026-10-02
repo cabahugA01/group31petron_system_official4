@@ -277,7 +277,7 @@ include __DIR__ . '/../partials/header.php';
                     $txnTypeJs = $t['transaction_type'];
                     $productJs = addslashes($t['product_name']);
                     $totalJs = number_format($t['total_amount'], 2);
-                    $dateJs = addslashes(date('M d, Y H:i', strtotime($t['created_at'])));
+                    $dateJs = addslashes(date('M d, Y h:i A', strtotime($t['created_at'])));
                     $staffJs = addslashes($t['staff_name']);
                     $qtyJs = number_format($t['quantity'], 2);
                     $unitJs = number_format($t['unit_price'], 2);
@@ -294,7 +294,7 @@ include __DIR__ . '/../partials/header.php';
                     <td><?php echo number_format($t['quantity'], 2); ?><?php echo $isFuel ? ' L' : ''; ?></td>
                     <td>&#8369;<?php echo number_format($t['unit_price'], 2); ?></td>
                     <td style="font-weight:bold;">&#8369;<?php echo number_format($t['total_amount'], 2); ?></td>
-                    <td><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
+                    <td><?php echo date('M d, h:i A', strtotime($t['created_at'])); ?></td>
                     <td>
                         <div class="actions-cell">
                             <button class="btn-action btn-view" onclick="viewDetails('<?php echo $txnIdJs; ?>','<?php echo $txnTypeJs; ?>','<?php echo $productJs; ?>','<?php echo $qtyJs; ?>','<?php echo $unitJs; ?>','<?php echo $totalJs; ?>','<?php echo $staffJs; ?>','<?php echo $dateJs; ?>')">

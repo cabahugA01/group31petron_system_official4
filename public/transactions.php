@@ -1076,7 +1076,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                     'Updated Amount' => number_format((float)($row['total'] ?? 0), 2),
                     'Reason' => $audit['new_value'] ?? 'Manager adjustment',
                     'Adjusted By' => $audit['manager_name'] ?? 'Manager',
-                    'Date' => date('Y-m-d H:i:s', strtotime($audit['timestamp'] ?? $row['created_at'])),
+                    'Date' => date('M d, Y h:i A', strtotime($audit['timestamp'] ?? $row['created_at'])),
                 ];
             }
         } elseif ($view === 'voided') {
@@ -1089,7 +1089,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                     'Amount' => number_format((float)($row['total'] ?? 0), 2),
                     'Void Reason' => $audit['new_value'] ?? 'Returned / Cancelled',
                     'Voided By' => $audit['manager_name'] ?? 'Manager',
-                    'Date' => date('Y-m-d H:i:s', strtotime($audit['timestamp'] ?? $row['created_at'])),
+                    'Date' => date('M d, Y h:i A', strtotime($audit['timestamp'] ?? $row['created_at'])),
                 ];
             }
         } else {
@@ -1104,7 +1104,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                     'Payment Status' => $row['payment_status_raw'] ?? '',
                     'Shift' => $row['shift_label'] ?? '',
                     'Staff Encoder' => $row['staff_display'] ?? '',
-                    'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+                    'Date & Time' => date('M d, Y h:i A', strtotime($row['created_at'])),
                 ];
             }
         }
@@ -1117,7 +1117,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                 'Amount' => number_format((float)($row['total'] ?? 0), 2),
                 'Shift' => $row['shift_label'] ?? 'General',
                 'Staff Encoder' => $row['staff_display'] ?? '',
-                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+                'Date & Time' => date('M d, Y h:i A', strtotime($row['created_at'])),
             ];
         }
     } elseif ($section === 'merchandise') {
@@ -1129,7 +1129,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                 'Type' => $row['type_label'] ?? 'Merchandise',
                 'Amount' => number_format((float)($row['total'] ?? 0), 2),
                 'Status' => $row['status'] ?? 'Verified',
-                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+                'Date & Time' => date('M d, Y h:i A', strtotime($row['created_at'])),
             ];
         }
     } elseif ($section === 'receipts') {
@@ -1141,7 +1141,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                 'Type' => $row['type_label'] ?? '',
                 'Amount' => number_format((float)($row['total'] ?? 0), 2),
                 'Receipt Type' => $receipt_type,
-                'Date & Time' => date('Y-m-d H:i:s', strtotime($row['created_at'])),
+                'Date & Time' => date('M d, Y h:i A', strtotime($row['created_at'])),
             ];
         }
     } else {
@@ -1602,7 +1602,7 @@ try {
                     <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
                     <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['adjustment_reason'] ?? 'Manager adjustment')); ?></td>
                     <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
-                    <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
+                    <td><?php echo date('M d, Y h:i A', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -1631,7 +1631,7 @@ try {
                     <td>₱<?php echo number_format((float)($row['total'] ?? 0), 2); ?></td>
                     <td><?php echo htmlspecialchars($audit['new_value'] ?? ($row['rejection_reason'] ?? 'Returned / Cancelled')); ?></td>
                     <td><?php echo htmlspecialchars($audit['manager_name'] ?? 'Manager'); ?></td>
-                    <td><?php echo date('M d, Y H:i', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
+                    <td><?php echo date('M d, Y h:i A', strtotime($audit['timestamp'] ?? $row['created_at'])); ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -1725,7 +1725,7 @@ try {
                         'staff'         => $t['staff_name'],
                         'staffId'       => $t['staff_id'] ?? '',
                         'customer'      => $t['customer'],
-                        'date'          => date('M d, Y H:i', strtotime($t['created_at'])),
+                        'date'          => date('M d, Y h:i A', strtotime($t['created_at'])),
                         'status'        => $ns === 'pending' ? 'Pending Validation' : $statusLabel,
                         'joStatus'      => $t['jo_status'] ?? '',
                     ];
@@ -1790,7 +1790,7 @@ try {
                         ?>
                         <div><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($ps_raw); ?></span></div>
                     </td>
-                    <td class="col-date"><?php echo date('M d, H:i', strtotime($t['created_at'])); ?></td>
+                    <td class="col-date"><?php echo date('M d, h:i A', strtotime($t['created_at'])); ?></td>
                     <!-- Validation Status -->
                     <td class="col-status">
                         <span class="status-badge <?php echo $statusClass; ?>">

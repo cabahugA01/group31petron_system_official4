@@ -79,7 +79,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Adj ID','Transaction ID','Customer','Type','Original Amount','Updated Amount','Difference','Reason','Adjusted By','Date']);
-    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y H:i',strtotime($r['adjustment_date']))]);
+    foreach($rows as $r) fputcsv($out,['ADJ-'.$r['adj_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['original_amount'],2),'₱'.number_format($r['updated_amount'],2),'₱'.number_format($r['amount_difference'],2),$r['adjustment_reason'],$r['adjusted_by_name'],date('M d, Y h:i A',strtotime($r['adjustment_date']))]);
     fclose($out); exit;
 }
 

@@ -191,7 +191,7 @@ include __DIR__ . '/../partials/header.php';
                             <strong><?php echo htmlspecialchars($record['product_name'] ?? $record['user_name'] ?? $record['customer_name'] ?? 'Record #' . $rid); ?></strong>
                             <div style="font-size:12px; color:#64748b; margin-top:5px;">
                                 <?php echo htmlspecialchars($record['station_name'] ?? 'Station'); ?>
-                                <?php echo ' | ' . date('M d, Y H:i', strtotime($record['finalized_at'] ?? $record['unlocked_at'] ?? 'now')); ?>
+                                <?php echo ' | ' . date('M d, Y h:i A', strtotime($record['finalized_at'] ?? $record['unlocked_at'] ?? 'now')); ?>
                             </div>
                         </div>
                         <button type="button" class="btn small primary" onclick="openUnlockModal('<?php echo $table; ?>', <?php echo $rid; ?>)"
@@ -269,7 +269,7 @@ include __DIR__ . '/../partials/header.php';
                     <div style="padding:15px; border-bottom:1px solid #e5e7eb; font-size:14px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                             <strong style="color:#003d7a;"><?php echo htmlspecialchars($log['admin_name'] ?? 'Unknown'); ?></strong>
-                            <span style="color:#64748b;"><?php echo date('M d, Y H:i', strtotime($log['unlocked_at'])); ?></span>
+                            <span style="color:#64748b;"><?php echo date('M d, Y h:i A', strtotime($log['unlocked_at'])); ?></span>
                         </div>
                         <div style="margin-bottom:5px; color:#0f172a;"><?php echo htmlspecialchars(substr($log['unlock_reason'], 0, 100)); ?>...</div>
                         <div style="font-size:12px; color:#64748b;">

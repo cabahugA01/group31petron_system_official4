@@ -207,7 +207,7 @@ include __DIR__ . '/../partials/header.php';
                     $stClass = 'st-' . str_replace(' ', '', $j['status']);
                 ?>
                 <tr>
-                    <td><?php echo date('M d, Y', strtotime($j['created_at'])); ?><br><small><?php echo date('H:i', strtotime($j['created_at'])); ?></small></td>
+                    <td><?php echo date('M d, Y', strtotime($j['created_at'])); ?><br><small><?php echo date('h:i A', strtotime($j['created_at'])); ?></small></td>
                     <td><?php echo htmlspecialchars($j['station_name']); ?></td>
                     <td>
                         <b><?php echo htmlspecialchars($j['vehicle_plate']); ?></b><br>
@@ -248,7 +248,7 @@ include __DIR__ . '/../partials/header.php';
                     <td><?php echo htmlspecialchars($log['username']); ?><br><small><?php echo htmlspecialchars($log['station_name']); ?></small></td>
                     <td><?php echo htmlspecialchars($log['action']); ?></td>
                     <td><?php echo htmlspecialchars($log['details']); ?></td>
-                    <td><?php echo date('M d H:i', strtotime($log['created_at'])); ?></td>
+                    <td><?php echo date('M d, h:i A', strtotime($log['created_at'])); ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <?php if(empty($auditLogs)): ?><tr><td colspan="4">No audit logs found for job orders.</td></tr><?php endif; ?>

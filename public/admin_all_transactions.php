@@ -335,7 +335,7 @@ if(in_array($export,['excel','csv'])) {
             $r['shift'],
             $r['staff_name'],
             $statusLabel,
-            date('M d, Y H:i',strtotime($r['txn_date']))
+            date('M d, Y h:i A',strtotime($r['txn_date']))
         ]);
     }
     fclose($out); exit;

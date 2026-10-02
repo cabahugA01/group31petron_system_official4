@@ -399,7 +399,7 @@ include __DIR__ . '/../partials/header.php';
                         <td style="text-align:center;font-weight:700;"><?php echo number_format((float)($po['quantity'] ?? 0), 2); ?> L</td>
                         <td>&#8369;<?php echo number_format((float)($po['unit_price'] ?? 0), 2); ?></td>
                         <td><strong>&#8369;<?php echo number_format((float)($po['total_amount'] ?? 0), 2); ?></strong></td>
-                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($po['created_at'])); ?></td>
+                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y h:i A', strtotime($po['created_at'])); ?></td>
                         <td>
                             <button class="btn-finalize" onclick="openFinalize(
                                 <?php echo (int)$po['id']; ?>, 'fuel',
@@ -544,7 +544,7 @@ include __DIR__ . '/../partials/header.php';
                                 <span class="step">&#128101; <?php echo htmlspecialchars($po['manager_name'] ?? $po['created_by_name'] ?? 'Manager'); ?></span>
                             </div>
                         </td>
-                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y H:i', strtotime($po['created_at'])); ?></td>
+                        <td style="font-size:12px;color:#6c757d;"><?php echo date('M d, Y h:i A', strtotime($po['created_at'])); ?></td>
                         <td>
                             <button class="btn-finalize" onclick="openFinalize(
                                 <?php echo (int)$po['id']; ?>, 'merch',

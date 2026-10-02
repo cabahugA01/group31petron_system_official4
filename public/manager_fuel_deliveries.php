@@ -691,7 +691,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 </style></head><body>';
                     echo '<h1 style="color:#003d7a">Fuel Variance Report</h1>';
-                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('Y-m-d H:i:s') . "</p>";
+                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('M d, Y h:i A') . "</p>";
                     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel Type</th><th>Expected (L)</th><th>Actual (L)</th><th>Variance (L)</th><th>Variance %</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
                     foreach ($variances as $v) {
                         $cls = abs($v['variance_percent']) > 5 ? 'high' : 'ok';
@@ -1176,7 +1176,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                 <?php endif; ?>
                 <?php endif; ?>
             </td>
-            <td><?php echo date('M j, Y H:i', strtotime($d['created_at'])); ?></td>
+            <td><?php echo date('M j, Y h:i A', strtotime($d['created_at'])); ?></td>
             <td><?php echo htmlspecialchars($d['invoice_no'] ?? '&#8212;'); ?></td>
             <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem;"
                 title="<?php echo htmlspecialchars($d['notes'] ?? ''); ?>">
@@ -1204,7 +1204,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                     <span class="audit-badge" style="font-size:.7rem;">
                         <i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($d['verified_by_name']); ?>
                         <?php if ($d['verified_at']): ?>
-                        <br><span style="color:#aaa;"><?php echo date('M j H:i', strtotime($d['verified_at'])); ?></span>
+                        <br><span style="color:#aaa;"><?php echo date('M j, h:i A', strtotime($d['verified_at'])); ?></span>
                         <?php endif; ?>
                     </span>
                 <?php else: ?>

@@ -130,7 +130,7 @@ function exportToExcel($data, $start_date, $end_date) {
     
     echo "Fuel Reconciliation Report\n";
     echo "Date Range: " . $start_date . " to " . $end_date . "\n";
-    echo "Generated: " . date('Y-m-d H:i:s') . "\n\n";
+    echo "Generated: " . date('M d, Y h:i A') . "\n\n";
     
     echo "Date\tStation\tFuel Type\tVolume In (L)\tVolume Out (L)\tVariance (L)\tStatus\n";
     
@@ -177,7 +177,7 @@ function exportToPDF($data, $start_date, $end_date) {
             <h1>Fuel Reconciliation Report</h1>
             <div class="info">
                 <p><strong>Date Range:</strong> ' . $start_date . ' to ' . $end_date . '</p>
-                <p><strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</p>
+                <p><strong>Generated:</strong> ' . date('M d, Y h:i A') . '</p>
             </div>
         </div>
         

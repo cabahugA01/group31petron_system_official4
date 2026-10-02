@@ -406,7 +406,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 ?>
                 <tr>
                     <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
-                    <td style="font-size:12px;"><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
+                    <td style="font-size:12px;"><?php echo date('M d, Y h:i A', strtotime($req['created_at'])); ?></td>
                     <td><?php echo htmlspecialchars($req['staff_name']); ?></td>
                     <td>
                         <strong><?php echo htmlspecialchars($req['item_name']); ?></strong>
@@ -492,7 +492,7 @@ include __DIR__ . '/../partials/header.php'; require_once __DIR__ . '/../partial
                 ?>
                 <tr>
                     <td style="font-family:monospace;font-size:11px;color:#888;">#<?php echo $req['id']; ?></td>
-                    <td style="font-size:12px;"><?php echo date('M d, Y H:i', strtotime($req['created_at'])); ?></td>
+                    <td style="font-size:12px;"><?php echo date('M d, Y h:i A', strtotime($req['created_at'])); ?></td>
                     <td><?php echo htmlspecialchars($req['staff_name']); ?></td>
                     <td><strong><?php echo htmlspecialchars($req['fuel_type']); ?></strong></td>
                     <td>

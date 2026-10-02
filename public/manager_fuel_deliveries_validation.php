@@ -271,7 +271,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             number_format($d['delivery_liters'], 2),
             $d['staff_name'] ?? '—',
             getStatusLabel($d['status'] ?? ''),
-            $d['verified_at'] ? date('M d, Y H:i', strtotime($d['verified_at'])) : '—',
+            $d['verified_at'] ? date('M d, Y h:i A', strtotime($d['verified_at'])) : '—',
             $d['notes'] ?? '—'
         ];
     }
@@ -295,7 +295,7 @@ if (in_array($export, ['excel', 'pdf'])) {
 
     if ($export === 'pdf') {
         header('Content-Type: text/html; charset=UTF-8');
-        $generated = date('M d, Y H:i');
+        $generated = date('M d, Y h:i A');
         
         $tbody = '';
         foreach ($deliveries as $d) {
@@ -603,7 +603,7 @@ html, body { max-width: 100vw !important; width: 100%; overflow-x: hidden !impor
                                 <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 13px;"><?= number_format($d['delivery_liters'], 2) ?> L</td>
                                 <td style="font-size: 13px;"><?= htmlspecialchars($d['staff_name'] ?? '—') ?></td>
                                 <td><span class="afto-badge <?= getStatusBadgeClass($d['status'] ?? '') ?>"><?= getStatusLabel($d['status'] ?? '') ?></span></td>
-                                <td style="font-size: 13px;"><?= $d['verified_at'] ? date('M d, H:i', strtotime($d['verified_at'])) : '—' ?></td>
+                                <td style="font-size: 13px;"><?= $d['verified_at'] ? date('M d, h:i A', strtotime($d['verified_at'])) : '—' ?></td>
                                 <td style="text-align: center;">
                                     <div style="display: flex; flex-direction: column; gap: 2px;">
                                         <button type="button" class="row-btn row-btn-info" onclick="viewDetails(<?= htmlspecialchars(json_encode($d)) ?>)" title="View Details" style="width: 100%; font-size: 11px;">
