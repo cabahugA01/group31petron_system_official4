@@ -15,7 +15,7 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 3000;
+const PORT = process.PORT || 3000;
 
 // Middleware
 app.use(cors({ origin: '*' }));
@@ -33,9 +33,9 @@ const io = new Server(server, {
 // MySQL Connection Pool
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'petron_pos_db_secure',
+    user: process.env.DB_USER || 'u261539219_petron_pos',
+    password: process.env.DB_PASSWORD || 'P3tr0n@123',
+    database: process.env.DB_NAME || 'u261539219_petrondbs',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0

@@ -72,9 +72,9 @@ if (!function_exists('execute_database_backup')) {
     function execute_database_backup(PDO $pdo, string $backup_dir, ?int $user_id = null, string $trigger_label = 'Automated'): array {
         $btype = 'Full Backup';
         $comp  = 'SQL';
-        $fname = 'petron_pos_db_secure.sql';
+        $fname = 'u261539219_petrondbs.sql';
         $fpath = $backup_dir . $fname;
-        $db_name = 'petron_pos_db_secure';
+        $db_name = 'u261539219_petrondbs';
 
         if (!is_dir($backup_dir)) @mkdir($backup_dir, 0755, true);
 

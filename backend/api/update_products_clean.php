@@ -5,10 +5,10 @@ header('Content-Type: application/json');
 try {
     // Database connection - copied from lib.php
     $host = 'localhost';
-    $dbname = 'petron_pos_db_secure
+    $dbname = 'u261539219_petrondbs
 ';
-    $username = 'root';
-    $password = '';
+    $username = 'u261539219_petron_pos';
+    $password = 'P3tr0n@123';
     
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

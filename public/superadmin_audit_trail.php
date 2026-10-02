@@ -212,7 +212,7 @@ switch ($active_tab) {
         try {
             $sql = "SELECT 
                         b.created_at AS date_time,
-                        'petron_pos_db_secure
+                        'u261539219_petrondbs
 ' AS db_name,
                         UPPER(b.backup_type) AS action_name,
                         COALESCE(b.backup_name, 'System Backup') AS table_name,
@@ -223,7 +223,7 @@ switch ($active_tab) {
                     UNION ALL
                     SELECT 
                         r.restored_at AS date_time,
-                        'petron_pos_db_secure
+                        'u261539219_petrondbs
 ' AS db_name,
                         'RESTORE' AS action_name,
                         COALESCE(r.backup_name, 'Database Restore') AS table_name,
@@ -238,9 +238,9 @@ switch ($active_tab) {
 
             if (empty($raw_rows)) {
                 $raw_rows = [
-                    ['date_time' => $date_to.' 02:00:00', 'db_name' => 'petron_pos_db_secure
+                    ['date_time' => $date_to.' 02:00:00', 'db_name' => 'u261539219_petrondbs
 ', 'action_name' => 'OPTIMIZE', 'table_name' => 'audit_logs', 'records_count' => 192, 'status' => 'Completed'],
-                    ['date_time' => $date_from.' 04:00:00', 'db_name' => 'petron_pos_db_secure
+                    ['date_time' => $date_from.' 04:00:00', 'db_name' => 'u261539219_petrondbs
 ', 'action_name' => 'MIGRATION', 'table_name' => 'system_settings', 'records_count' => 23, 'status' => 'Success'],
                 ];
             }

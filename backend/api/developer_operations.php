@@ -25,10 +25,10 @@ $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
 // Database constants for backup
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'petron_pos_db_secure
+define('DB_NAME', 'u261539219_petrondbs
 ');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_USER', 'u261539219_petron_pos');
+define('DB_PASS', 'P3tr0n@123');
 
 try {
     switch ($action) {
