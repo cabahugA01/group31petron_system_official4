@@ -1,7 +1,7 @@
 {
-  "name": "Petron Station Management System",
-  "short_name": "Petron POS",
-  "description": "Offline-capable POS and station management system for Petron",
+  "name": "Station MS",
+  "short_name": "Station MS",
+  "description": "Station Management System",
   "start_url": "login.php",
   "display": "standalone",
   "background_color": "#00264D",
@@ -9,16 +9,28 @@
   "orientation": "any",
   "icons": [
     {
-      "src": "../assets/img/logo.png",
+      "src": "android-chrome-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "../assets/img/logo.png",
+      "src": "android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

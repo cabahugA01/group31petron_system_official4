@@ -228,7 +228,7 @@ function check_and_run_scheduled_backup(PDO $pdo, string $backup_dir): bool {
 }
 
 
-// ── Ensure backup columns exist ────────────────────────────────────────
+// ── Ensure backup & restore columns exist ──────────────────────────────
 try {
     $cols = $pdo->query("SHOW COLUMNS FROM database_backups")->fetchAll(PDO::FETCH_COLUMN);
     if (!in_array('backup_type',  $cols)) $pdo->exec("ALTER TABLE database_backups ADD COLUMN backup_type VARCHAR(50) DEFAULT 'Full Backup'");
@@ -237,6 +237,24 @@ try {
     if (!in_array('compression',  $cols)) $pdo->exec("ALTER TABLE database_backups ADD COLUMN compression VARCHAR(20) DEFAULT 'SQL'");
     if (!in_array('verified',     $cols)) $pdo->exec("ALTER TABLE database_backups ADD COLUMN verified TINYINT(1) DEFAULT 0");
     if (!in_array('backup_file',  $cols)) $pdo->exec("ALTER TABLE database_backups ADD COLUMN backup_file VARCHAR(500) DEFAULT ''");
+
+    // Ensure restore_logs has backup_id column
+    $rcols = $pdo->query("SHOW COLUMNS FROM restore_logs")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('backup_id', $rcols)) {
+        $pdo->exec("ALTER TABLE restore_logs ADD COLUMN backup_id INT DEFAULT NULL AFTER backup_name");
+    }
+
+    // Auto-link any existing completed restore_logs entries and mark matching backup as Restored
+    $unlinked = $pdo->query("SELECT id, backup_name, restored_at FROM restore_logs WHERE (backup_id IS NULL OR backup_id = 0) AND status IN ('completed','success')")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($unlinked as $ul) {
+        $mstmt = $pdo->prepare("SELECT id FROM database_backups WHERE backup_name = ? AND created_at <= ? AND status NOT IN ('Archived','Restored') ORDER BY created_at DESC LIMIT 1");
+        $mstmt->execute([$ul['backup_name'], $ul['restored_at']]);
+        $matchedId = $mstmt->fetchColumn();
+        if ($matchedId) {
+            $pdo->prepare("UPDATE restore_logs SET backup_id = ? WHERE id = ?")->execute([$matchedId, $ul['id']]);
+            $pdo->prepare("UPDATE database_backups SET status = 'Restored' WHERE id = ?")->execute([$matchedId]);
+        }
+    }
 } catch (Exception $e) { /* ignore */ }
 
 // ── Load config ────────────────────────────────────────────────────────
@@ -261,8 +279,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $active_tab = 'backup';
     } elseif ($action === 'restore') {
         $active_tab = 'restore';
-    } elseif ($action === 'apply_migration') {
-        $active_tab = 'schema';
     }
 
 
@@ -285,21 +301,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         check_and_run_scheduled_backup($pdo, $backup_dir);
 
         log_activity($pdo, $me['id'], 'Database Management', "Saved backup configuration: Frequency={$freq}, Time={$stime}, Retention={$ret} Days");
-        $success = "Backup configuration saved successfully.";
+        $freq_label = ucfirst($freq);
+        $success = "Backup configuration saved successfully (Frequency: {$freq_label}, Retention: {$ret} Days).";
     }
 
-    // ── Run Manual Backup ──────────────────────────────────────────────
+    // ── Run Manual Backup (Synchronized with Backup Configuration) ──────
     elseif ($action === 'run_backup') {
+        // Automatically save and sync configuration if provided
+        if (isset($_POST['backup_frequency'])) {
+            $freq     = $_POST['backup_frequency']    ?? 'manual';
+            $stime    = $_POST['scheduled_time']      ?? '02:00';
+            $ret      = max(1, (int)($_POST['retention_days'] ?? 30));
+            cfg_set($pdo, 'backup_frequency',      $freq,  $me['id']);
+            cfg_set($pdo, 'backup_scheduled_time', $stime, $me['id']);
+            cfg_set($pdo, 'backup_retention_days', $ret,   $me['id']);
+            $cfg_backup_frequency = $freq;
+            $cfg_scheduled_time   = $stime;
+            $cfg_retention_days   = $ret;
+            log_activity($pdo, $me['id'], 'Database Management', "Synchronized backup configuration: Frequency={$freq}, Time={$stime}, Retention={$ret} Days");
+        } else {
+            $ret = max(1, (int)cfg_get($pdo, 'backup_retention_days', '30'));
+        }
+
         $res   = execute_database_backup($pdo, $backup_dir, $me['id'], 'Manual');
         $fname = $res['filename'];
         $fsize = $res['size'];
         $status= $res['status'];
 
-        // Apply retention policy
-        $ret = max(1, (int)cfg_get($pdo, 'backup_retention_days', '30'));
+        // Apply retention policy with the active retention days
         apply_backup_retention_policy($pdo, $ret);
 
-        $success = "Backup <strong>{$fname}</strong> created successfully. <small>(Status: {$status}, Size: " .
+        $success = "Configuration synchronized and backup <strong>{$fname}</strong> created successfully. <small>(Status: {$status}, Size: " .
                    ($fsize >= 1048576 ? round($fsize/1048576,2).' MB' : round($fsize/1024,1).' KB') . ")</small>";
     }
 
@@ -365,11 +397,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $row->execute([$bid]);
                 $brow = $row->fetch(PDO::FETCH_ASSOC);
                 if ($brow) {
-                    // Log the restore attempt
-                    $pdo->prepare("INSERT INTO restore_logs (backup_name,restored_by,status,details) VALUES(?,?,?,?)")
-                        ->execute([$brow['backup_name'] ?? "ID:{$bid}", $me['id'], 'completed', 'Restore initiated from Database Management']);
+                    // Update status in database_backups to 'Restored' so it leaves the Restore Backup module
+                    $pdo->prepare("UPDATE database_backups SET status='Restored' WHERE id=?")->execute([$bid]);
+
+                    // Log the restore attempt with backup_id in restore_logs
+                    try {
+                        $rcols = $pdo->query("SHOW COLUMNS FROM restore_logs")->fetchAll(PDO::FETCH_COLUMN);
+                        if (in_array('backup_id', $rcols)) {
+                            $pdo->prepare("INSERT INTO restore_logs (backup_name,backup_id,restored_by,status,details) VALUES(?,?,?,?,?)")
+                                ->execute([$brow['backup_name'] ?? "ID:{$bid}", $bid, $me['id'], 'completed', 'Restore initiated from Database Management']);
+                        } else {
+                            $pdo->prepare("INSERT INTO restore_logs (backup_name,restored_by,status,details) VALUES(?,?,?,?)")
+                                ->execute([$brow['backup_name'] ?? "ID:{$bid}", $me['id'], 'completed', 'Restore initiated from Database Management']);
+                        }
+                    } catch (Exception $re) {
+                        $pdo->prepare("INSERT INTO restore_logs (backup_name,restored_by,status,details) VALUES(?,?,?,?)")
+                            ->execute([$brow['backup_name'] ?? "ID:{$bid}", $me['id'], 'completed', 'Restore initiated from Database Management']);
+                    }
+
                     log_activity($pdo, $me['id'], 'Database Management', "Restored database from backup: " . ($brow['backup_name'] ?? "ID:{$bid}"));
-                    $success = "Database successfully restored from <strong>" . htmlspecialchars($brow['backup_name'] ?? '') . "</strong>.";
+                    $success = "Database successfully restored from <strong>" . htmlspecialchars($brow['backup_name'] ?? '') . "</strong>. Record has been moved to Restore History.";
                 } else {
                     $msg = "Selected backup record not found.";
                 }
@@ -377,40 +424,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ── Schema Migration ───────────────────────────────────────────────
-    elseif ($action === 'apply_migration') {
-        $tbl     = trim($_POST['table_name']   ?? '');
-        $col     = trim($_POST['column_name']  ?? '');
-        $dtype   = $_POST['data_type']         ?? 'VARCHAR(255)';
-        $maction = $_POST['migration_action']  ?? 'add_column';
-        $desc    = trim($_POST['description']  ?? '');
-        if (!$tbl || !$col) { $msg = "Table name and column name are required."; }
-        else {
-            $mname = "migration_{$maction}_{$tbl}_{$col}_" . date('YmdHis');
-            try {
-                if ($maction === 'add_column') {
-                    $pdo->exec("ALTER TABLE `{$tbl}` ADD COLUMN `{$col}` {$dtype}");
-                    $success = "Column <strong>{$col}</strong> added to <strong>{$tbl}</strong>.";
-                } elseif ($maction === 'remove_column') {
-                    $pdo->exec("ALTER TABLE `{$tbl}` DROP COLUMN `{$col}`");
-                    $success = "Column <strong>{$col}</strong> removed from <strong>{$tbl}</strong>.";
-                }
-                $pdo->prepare("INSERT INTO schema_migrations (migration_name,table_name,action,description,executed_by) VALUES(?,?,?,?,?)")
-                    ->execute([$mname, $tbl, $maction, $desc ?: "{$maction} {$col} ({$dtype}) on {$tbl}", $me['id']]);
-                try { $pdo->prepare("INSERT INTO schema_versions (version,description,applied_by) VALUES(?,?,?)")
-                    ->execute(['v2.' . date('YmdHis'), $success, $me['id']]); } catch (Exception $ex2) {}
-            } catch (Exception $ex) {
-                $msg = "Migration failed: " . htmlspecialchars($ex->getMessage());
-            }
-            log_activity($pdo, $me['id'], 'Schema Migration', $mname);
-        }
-    }
-
     // Post-Redirect-Get (PRG) pattern with Session Flash to prevent stale query string messages
     if ($msg || $success) {
         $target_tab = 'backup';
         if ($action === 'restore') $target_tab = 'restore';
-        elseif ($action === 'apply_migration') $target_tab = 'schema';
         elseif (in_array($action, ['save_backup_config','run_backup','archive_backup','verify_backup'])) $target_tab = 'backup';
 
         if ($msg)     $_SESSION['db_flash_msg']     = $msg;
@@ -426,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 check_and_run_scheduled_backup($pdo, $backup_dir);
 
 // ── Data queries ───────────────────────────────────────────────────────
-// Backup history with created_by user join
+// Backup history with created_by user join (all backups for Tab 1)
 try {
     $backup_history = $pdo->query(
         "SELECT b.*, u.first_name, u.last_name
@@ -434,6 +451,20 @@ try {
          ORDER BY b.created_at DESC LIMIT 50"
     )->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $backup_history = []; }
+
+// Backups available for restore (Tab 2 top table):
+// Exclude backups that have already been restored or archived, or are in restore_logs
+try {
+    $restore_available_backups = $pdo->query(
+        "SELECT b.*, u.first_name, u.last_name
+         FROM database_backups b LEFT JOIN users u ON u.id = b.created_by
+         WHERE b.status NOT IN ('Restored', 'Archived')
+           AND b.id NOT IN (
+               SELECT COALESCE(backup_id, 0) FROM restore_logs WHERE backup_id IS NOT NULL AND status IN ('completed', 'success')
+           )
+         ORDER BY b.created_at DESC LIMIT 50"
+    )->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { $restore_available_backups = []; }
 
 // Restore history
 try {
@@ -443,22 +474,6 @@ try {
          ORDER BY r.restored_at DESC LIMIT 30"
     )->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $restore_history = []; }
-
-// Migration history
-try {
-    $migration_history = $pdo->query(
-        "SELECT m.*, u.first_name, u.last_name
-         FROM schema_migrations m LEFT JOIN users u ON u.id = m.executed_by
-         ORDER BY m.executed_at DESC LIMIT 30"
-    )->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $migration_history = []; }
-
-// Current schema version
-try {
-    $current_version = $pdo->query(
-        "SELECT version, applied_at FROM schema_versions ORDER BY applied_at DESC LIMIT 1"
-    )->fetch(PDO::FETCH_ASSOC);
-} catch (Exception $e) { $current_version = null; }
 
 // Security logs
 $sec_date_from = $_GET['date_from'] ?? '';
@@ -482,9 +497,6 @@ $security_logs = $sec_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Users list for filter
 $users_list = $pdo->query("SELECT id, first_name, last_name FROM users ORDER BY first_name, last_name")->fetchAll(PDO::FETCH_ASSOC);
-
-// All DB tables for schema editor
-$all_tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
 
 // Database size
 try {
@@ -528,7 +540,6 @@ if (isset($_GET['ajax_db']) && $_GET['ajax_db'] == '1') {
         'backup_count_text'  => count($backup_history) . ' records',
         'restore_count_text' => count($restore_history) . ' records',
         'security_count_text'=> count($security_logs) . ' entries',
-        'migration_count_text'=> count($migration_history) . ' migrations',
     ]);
     exit;
 }
@@ -1052,20 +1063,6 @@ a.db-btn,
 /* Restore table */
 .db-restore-note { font-size: 13.5px; color: #64748b; margin-top: 8px; font-style: italic; }
 
-/* Schema tab version box */
-.db-version-box {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 16px !important;
-  background: linear-gradient(135deg, var(--db-blue), var(--db-blue2)) !important;
-  color: #fff !important;
-  border-radius: 14px !important;
-  padding: 18px 26px !important;
-  margin-bottom: 24px !important;
-}
-.db-version-box .lbl { font-size: 13px !important; opacity: .85 !important; text-transform: uppercase !important; letter-spacing: .5px !important; font-weight: 600 !important; }
-.db-version-box .ver { font-size: 26px !important; font-weight: 800 !important; font-family: monospace !important; }
-
 /* Print Styles */
 @media print {
   @page { size: A4 portrait; margin: 10mm 12mm; }
@@ -1080,6 +1077,49 @@ a.db-btn,
   .db-table-wrap { border: none !important; overflow: visible !important; }
   .db-table thead tr { background: #002F6C !important; }
   .db-table thead th { color: #fff !important; background: #002F6C !important; }
+}
+
+/* Export Group & Buttons (Matching Reports Standard) */
+.rpt-export-group {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  white-space: nowrap !important;
+}
+.rpt-export-btn {
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  text-decoration: none !important;
+  transition: all 0.18s ease-in-out !important;
+  line-height: 1.4 !important;
+}
+.rpt-btn-print {
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+  background: #ffffff !important;
+}
+.rpt-btn-print:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+.rpt-btn-pdf {
+  color: #dc2626 !important;
+  border-color: #dc2626 !important;
+  background: #ffffff !important;
+}
+.rpt-btn-pdf:hover {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #b91c1c !important;
 }
 </style>
 
@@ -1165,12 +1205,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
     <button class="db-tab-btn" data-tab="restore">
       <i class="fas fa-undo-alt"></i> Restore
     </button>
-    <button class="db-tab-btn" data-tab="export">
-      <i class="fas fa-file-export"></i> Export Database
-    </button>
-    <button class="db-tab-btn" data-tab="schema">
-      <i class="fas fa-code-branch"></i> Schema &amp; Migration
-    </button>
     <button class="db-tab-btn" data-tab="security">
       <i class="fas fa-shield-virus"></i> Security Logs
     </button>
@@ -1223,8 +1257,11 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
             </div>
           </div>
           <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center; margin-top:16px;">
-            <button type="submit" class="db-btn db-btn-primary">
+            <button type="submit" class="db-btn db-btn-primary" id="saveConfigBtn">
               <i class="fas fa-save"></i> Save Configuration
+            </button>
+            <button type="button" class="db-btn db-btn-success" id="saveAndRunBackupBtn" onclick="saveAndRunBackupNow()">
+              <i class="fas fa-play-circle"></i> Save &amp; Run Backup Now
             </button>
           </div>
         </form>
@@ -1232,7 +1269,7 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
     </div>
 
     <!-- Run Manual Backup -->
-    <div class="db-card">
+    <div class="db-card" id="manualBackupCard">
       <div class="db-card-header">
         <h3 class="db-card-title"><i class="fas fa-play-circle"></i> Run Manual Backup</h3>
       </div>
@@ -1240,6 +1277,17 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <p style="color:#555; font-size:14.5px; margin:0 0 16px; line-height:1.5;">
           Triggers an immediate database backup using the current configuration.
         </p>
+
+        <!-- Live Synchronized Configuration Summary Banner -->
+        <div class="db-active-config-banner" style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:18px; padding:12px 16px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13.5px; color:#334155; align-items:center;">
+          <span style="font-weight:700; color:var(--db-blue); display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-sliders-h"></i> Synchronized Configuration:
+          </span>
+          <span><strong>Frequency:</strong> <span id="summary_freq" style="color:#0f172a; font-weight:600;"><?= ucfirst($cfg_backup_frequency) ?></span></span>
+          <span id="summary_time_block"><strong>Scheduled Time:</strong> <span id="summary_time" style="color:#0f172a; font-weight:600;"><?= in_array($cfg_backup_frequency, ['manual', 'hourly'], true) ? 'Manual / Hourly' : date('h:i A', strtotime($cfg_scheduled_time ?: '02:00')) ?></span></span>
+          <span><strong>Retention:</strong> <span id="summary_ret" style="color:#0f172a; font-weight:600;"><?= htmlspecialchars($cfg_retention_days) ?> Days</span></span>
+          <span><strong>Storage Path:</strong> <code style="font-size:12px; background:#e2e8f0; color:#1e293b; padding:2px 6px; border-radius:4px; font-family:monospace;"><?= htmlspecialchars($backup_dir_display) ?></code></span>
+        </div>
 
         <!-- Progress bar (animated on click) -->
         <div id="backupProgressWrap" style="display:none; margin-bottom:16px;">
@@ -1256,6 +1304,9 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <form method="POST" id="manualBackupForm" onsubmit="triggerBackupProgress(event)" style="display:flex; justify-content:flex-end;">
           <input type="hidden" name="tab" value="<?= htmlspecialchars($active_tab) ?>" class="db-form-tab-input">
           <input type="hidden" name="action" value="run_backup">
+          <input type="hidden" name="backup_frequency" id="m_backup_frequency" value="<?= htmlspecialchars($cfg_backup_frequency) ?>">
+          <input type="hidden" name="scheduled_time" id="m_scheduled_time" value="<?= htmlspecialchars($cfg_scheduled_time) ?>">
+          <input type="hidden" name="retention_days" id="m_retention_days" value="<?= htmlspecialchars($cfg_retention_days) ?>">
           <button type="submit" class="db-btn db-btn-success" id="runBackupBtn">
             <i class="fas fa-database"></i> Run Backup Now
           </button>
@@ -1312,12 +1363,17 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                 </td>
                 <td>
                   <?php
-                    $st = strtolower($bk['status'] ?? 'completed');
-                    $bc = $st==='completed'?'db-badge-green':($st==='simulated'?'db-badge-yellow':'db-badge-gray');
+                    $st = strtolower(trim($bk['status'] ?? 'completed'));
+                    $st_ok = in_array($st, ['completed', 'success']);
+                    $st_res = ($st === 'restored');
+                    $st_sim = in_array($st, ['simulated', 'pending']);
+                    $st_arc = ($st === 'archived');
+                    $bc = $st_ok ? 'db-badge-green' : ($st_res ? 'db-badge-blue' : ($st_sim ? 'db-badge-yellow' : ($st_arc ? 'db-badge-gray' : 'db-badge-red')));
+                    $ico = $st_ok ? 'check-circle' : ($st_res ? 'history' : ($st_sim ? 'exclamation-circle' : ($st_arc ? 'box-archive' : 'times-circle')));
                   ?>
                   <span class="db-badge <?= $bc ?>">
-                    <i class="fas fa-<?= $st==='completed'?'check-circle':($st==='simulated'?'exclamation-circle':'clock') ?>"></i>
-                    <?= ucfirst($st) ?>
+                    <i class="fas fa-<?= $ico ?>"></i>
+                    <?= ucfirst($bk['status'] ?? 'Completed') ?>
                   </span>
                 </td>
                 <td style="font-size:13.5px; color:#555;">
@@ -1369,12 +1425,14 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
     <div class="db-card">
       <div class="db-card-header">
         <h3 class="db-card-title"><i class="fas fa-undo-alt"></i> Restore Backup</h3>
+        <span style="font-size:13.5px; color:#666; font-weight:600;"><?= count($restore_available_backups) ?> available</span>
       </div>
       <div class="db-card-body">
-        <?php if (empty($backup_history)): ?>
-        <div class="db-empty">
-          <i class="fas fa-database"></i>
-          <p>No backups available for restore. Create a backup first.</p>
+        <?php if (empty($restore_available_backups)): ?>
+        <div class="db-empty" style="padding:28px;">
+          <i class="fas fa-check-circle" style="color:var(--db-green); font-size:32px; margin-bottom:10px;"></i>
+          <p style="font-size:15px; font-weight:600; color:#334155; margin:0 0 4px;">No backups pending restore.</p>
+          <p style="font-size:13.5px; color:#64748b; margin:0;">All completed backups have already been restored or archived. Check the Restore Log History below or create a new backup.</p>
         </div>
         <?php else: ?>
         <div class="db-table-wrap" style="margin-bottom:20px;">
@@ -1390,17 +1448,30 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
               </tr>
             </thead>
             <tbody>
-              <?php foreach($backup_history as $i => $bk): ?>
+              <?php foreach($restore_available_backups as $i => $bk): ?>
               <tr>
                 <td style="color:#666; font-size:13.5px;"><?= $i+1 ?></td>
-                <td style="font-weight:600; font-size:14px; font-family:monospace;"><?= htmlspecialchars($bk['backup_name'] ?? '') ?></td>
+                <td style="font-weight:600; font-size:14px; font-family:monospace;">
+                  <?= htmlspecialchars($bk['backup_name'] ?? '') ?>
+                  <?php if (!empty($bk['verified'])): ?>
+                  <div style="font-size:12.5px; color:var(--db-green); margin-top:2px; font-weight:600;"><i class="fas fa-shield-alt"></i> Verified</div>
+                  <?php endif; ?>
+                </td>
                 <td style="font-size:14px;">
                   <?php $sz=(int)($bk['backup_size']??0); echo $sz>=1048576?round($sz/1048576,2).' MB':($sz>=1024?round($sz/1024,1).' KB':$sz.' B'); ?>
                 </td>
                 <td style="font-size:13.5px; color:#555;"><?= !empty($bk['created_at'])?date('M d, Y h:i A',strtotime($bk['created_at'])):'—' ?></td>
                 <td>
-                  <span class="db-badge <?= !empty($bk['verified'])?'db-badge-green':'db-badge-gray' ?>">
-                    <?= !empty($bk['verified'])?'Verified':'Unverified' ?>
+                  <?php
+                    $bst = strtolower(trim($bk['status'] ?? 'completed'));
+                    $b_ok = in_array($bst, ['completed', 'success']);
+                    $b_sim = in_array($bst, ['simulated', 'pending']);
+                    $b_arc = ($bst === 'archived');
+                    $b_cls = $b_ok ? 'db-badge-green' : ($b_sim ? 'db-badge-yellow' : ($b_arc ? 'db-badge-gray' : 'db-badge-red'));
+                    $b_ico = $b_ok ? 'fa-check-circle' : ($b_sim ? 'fa-exclamation-circle' : ($b_arc ? 'fa-box-archive' : 'fa-times-circle'));
+                  ?>
+                  <span class="db-badge <?= $b_cls ?>">
+                    <i class="fas <?= $b_ico ?>"></i> <?= ucfirst($bk['status'] ?? 'Completed') ?>
                   </span>
                 </td>
                 <td>
@@ -1409,25 +1480,6 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                       onclick="openRestoreModal(<?= $bk['id'] ?>,'<?= htmlspecialchars(addslashes($bk['backup_name']??''), ENT_QUOTES) ?>')">
                       <i class="fas fa-undo"></i> Restore
                     </button>
-                    <?php
-                      $fexists2 = file_exists($backup_dir . ($bk['backup_name'] ?? ''));
-                      $dl_url2  = 'db_download.php?id=' . (int)$bk['id'];
-                    ?>
-                    <a href="<?= $fexists2 ? $dl_url2 : '#' ?>"
-                      class="db-btn db-btn-success db-btn-icon"
-                      title="Download Backup"
-                      <?= $fexists2 ? '' : 'onclick="alert(\'Backup file not found on server.\');return false;"' ?>>
-                      <i class="fas fa-download"></i>
-                    </a>
-                    <form method="POST" style="display:inline;"
-                      onsubmit="return confirm('Archive backup <?= htmlspecialchars(addslashes($bk['backup_name'] ?? '')) ?>?')">
-                      <input type="hidden" name="tab" value="restore">
-                      <input type="hidden" name="action" value="archive_backup">
-                      <input type="hidden" name="backup_id" value="<?= $bk['id'] ?>">
-                      <button type="submit" class="db-btn db-btn-gray db-btn-icon" title="Archive Backup">
-                        <i class="fas fa-box-archive"></i>
-                      </button>
-                    </form>
                   </div>
                 </td>
               </tr>
@@ -1438,9 +1490,12 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
         <?php endif; ?>
 
         <!-- Restore History -->
-        <h4 style="font-size:17px; font-weight:700; color:var(--db-blue); margin-bottom:12px;">
-          <i class="fas fa-history" style="margin-right:6px;"></i>Restore Log History
-        </h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h4 style="font-size:17px; font-weight:700; color:var(--db-blue); margin:0;">
+            <i class="fas fa-history" style="margin-right:6px;"></i>Restore Log History
+          </h4>
+          <span style="font-size:13px; color:#64748b; font-weight:600;"><?= count($restore_history) ?> records</span>
+        </div>
         <?php if (empty($restore_history)): ?>
         <div class="db-empty" style="padding:24px;"><p>No restore events recorded.</p></div>
         <?php else: ?>
@@ -1457,9 +1512,15 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
                 <td style="font-size:13.5px;color:#555;"><?= !empty($rh['restored_at'])?date('M d, Y h:i A',strtotime($rh['restored_at'])):'—' ?></td>
                 <td style="font-size:14px;"><?= htmlspecialchars(($rh['first_name']??'').($rh['last_name']?' '.$rh['last_name']:'') ?: '—') ?></td>
                 <td>
-                  <?php $rs=strtolower($rh['status']??''); ?>
-                  <span class="db-badge <?= $rs==='success'?'db-badge-green':($rs==='attempted'?'db-badge-yellow':'db-badge-red') ?>">
-                    <?= ucfirst($rh['status']??'—') ?>
+                  <?php
+                    $rs = strtolower(trim($rh['status'] ?? ''));
+                    $r_ok = in_array($rs, ['completed', 'success', 'restored']) || str_contains($rs, 'success') || str_contains($rs, 'complet');
+                    $r_att = in_array($rs, ['attempted', 'pending', 'in_progress']) || str_contains($rs, 'attempt');
+                    $r_cls = $r_ok ? 'db-badge-green' : ($r_att ? 'db-badge-yellow' : 'db-badge-red');
+                    $r_ico = $r_ok ? 'fa-check-circle' : ($r_att ? 'fa-clock' : 'fa-times-circle');
+                  ?>
+                  <span class="db-badge <?= $r_cls ?>">
+                    <i class="fas <?= $r_ico ?>"></i> <?= ucfirst($rh['status'] ?? '—') ?>
                   </span>
                 </td>
               </tr>
@@ -1473,194 +1534,18 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
   </div><!-- /tab-restore -->
 
   <!-- ══════════════════════════════════════════════════════
-       TAB 3: EXPORT DATABASE
-  ══════════════════════════════════════════════════════ -->
-  <div class="db-tab-pane" id="tab-export">
-    <div class="db-card">
-      <div class="db-card-header">
-        <h3 class="db-card-title"><i class="fas fa-file-export"></i> Export Database</h3>
-      </div>
-      <div class="db-card-body">
-        <p style="color:#555; font-size:14.5px; margin:0 0 20px; line-height:1.5;">
-          Export the database in your preferred format. The system will generate the export file for download.
-        </p>
-        <div class="db-form-grid" style="margin-bottom:20px;">
-          <div class="db-form-group">
-            <label class="db-label">Export Format</label>
-            <select id="exportFormat" class="db-select">
-              <option value="sql">SQL — Full Database Structure &amp; Data</option>
-              <option value="csv">CSV — Comma-Separated Values (Data Only)</option>
-              <option value="json">JSON — JavaScript Object Notation</option>
-              <option value="xml">XML — Extensible Markup Language</option>
-            </select>
-            <span class="db-hint">Choose the export format based on your use case.</span>
-          </div>
-          <div class="db-form-group">
-            <label class="db-label">Table Selection</label>
-            <select id="exportTable" class="db-select">
-              <option value="__all__">All Tables</option>
-              <?php foreach($all_tables as $tbl): ?>
-              <option value="<?= htmlspecialchars($tbl) ?>"><?= htmlspecialchars($tbl) ?></option>
-              <?php endforeach; ?>
-            </select>
-            <span class="db-hint">Select a specific table or export all.</span>
-          </div>
-        </div>
-
-        <!-- Preview area -->
-        <div id="exportPreviewWrap" style="display:none; margin-bottom:16px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-            <span style="font-size:14.5px; font-weight:700; color:var(--db-blue);">PREVIEW <span id="exportPreviewLabel"></span></span>
-            <button type="button" onclick="document.getElementById('exportPreviewWrap').style.display='none'" class="db-btn db-btn-ghost db-btn-sm"><i class="fas fa-times"></i> Close Preview</button>
-          </div>
-          <pre id="exportPreviewCode"
-            style="background:#0f172a; color:#e2e8f0; border-radius:10px; padding:16px; font-size:13px; font-family:monospace; max-height:280px; overflow:auto; white-space:pre-wrap; margin:0;"></pre>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
-          <button type="button" class="db-btn db-btn-primary" onclick="previewExport()">
-            <i class="fas fa-eye"></i> Preview
-          </button>
-          <button type="button" class="db-btn db-btn-success" onclick="runExport()">
-            <i class="fas fa-file-download"></i> Export &amp; Download
-          </button>
-        </div>
-
-        <div id="exportSpinner" style="display:none; margin-top:12px; color:#64748b; font-size:14.5px;">
-          <i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Generating export…
-        </div>
-      </div>
-    </div>
-  </div><!-- /tab-export -->
-
-  <!-- ══════════════════════════════════════════════════════
-       TAB 4: SCHEMA & MIGRATION
-  ══════════════════════════════════════════════════════ -->
-  <div class="db-tab-pane" id="tab-schema">
-    <!-- Current Version -->
-    <div class="db-version-box">
-      <div>
-        <div class="lbl">Current Version</div>
-        <div class="ver"><?= $current_version ? htmlspecialchars($current_version['version']) : 'v1.0.0' ?></div>
-        <?php if ($current_version): ?>
-        <div style="font-size:13px; opacity:.85; margin-top:2px; font-weight:500;">Applied: <?= date('M d, Y', strtotime($current_version['applied_at'])) ?></div>
-        <?php endif; ?>
-      </div>
-      <div style="width:1px;background:rgba(255,255,255,.2);height:50px;margin:0 12px;"></div>
-      <div>
-        <div class="lbl">Latest Version</div>
-        <div class="ver"><?= $current_version ? htmlspecialchars($current_version['version']) : 'v1.0.0' ?></div>
-        <div style="font-size:13px; opacity:.95; margin-top:2px; color:#86efac; font-weight:600;"><i class="fas fa-check"></i> Up to date</div>
-      </div>
-    </div>
-
-    <!-- Run Migration -->
-    <div class="db-card">
-      <div class="db-card-header">
-        <h3 class="db-card-title"><i class="fas fa-code-branch"></i> Run Migration</h3>
-      </div>
-      <div class="db-card-body">
-        <form method="POST">
-          <input type="hidden" name="action" value="apply_migration">
-          <div class="db-form-grid" style="margin-bottom:16px;">
-            <div class="db-form-group">
-              <label class="db-label">Table Name <span style="color:#cc0000">*</span></label>
-              <select name="table_name" class="db-select" required>
-                <option value="">— Select Table —</option>
-                <?php foreach($all_tables as $t): ?>
-                <option value="<?= htmlspecialchars($t) ?>"><?= htmlspecialchars($t) ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="db-form-group">
-              <label class="db-label">Action</label>
-              <select name="migration_action" class="db-select">
-                <option value="add_column">Add Column</option>
-                <option value="remove_column">Remove Column</option>
-              </select>
-            </div>
-          </div>
-          <div class="db-form-grid" style="margin-bottom:16px;">
-            <div class="db-form-group">
-              <label class="db-label">Column Name <span style="color:#cc0000">*</span></label>
-              <input type="text" name="column_name" class="db-input" placeholder="e.g. phone_verified" required>
-            </div>
-            <div class="db-form-group">
-              <label class="db-label">Data Type</label>
-              <select name="data_type" class="db-select">
-                <?php foreach(['VARCHAR(255)','INT','TEXT','TINYINT(1)','DECIMAL(15,2)','DATETIME','DATE','BIGINT','JSON','FLOAT'] as $dt): ?>
-                <option value="<?= $dt ?>"><?= $dt ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-          </div>
-          <div class="db-form-group" style="margin-bottom:16px;">
-            <label class="db-label">Description / Note</label>
-            <input type="text" name="description" class="db-input" placeholder="e.g. Add phone_verified flag for SMS 2FA">
-          </div>
-          <div style="display:flex; justify-content:flex-end; gap:10px;">
-            <button type="submit" class="db-btn db-btn-primary"
-              onclick="return confirm('Apply this migration to the live database?')">
-              <i class="fas fa-play"></i> Run Migration
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Migration History -->
-    <div class="db-card">
-      <div class="db-card-header">
-        <h3 class="db-card-title"><i class="fas fa-history"></i> Migration History</h3>
-        <span style="font-size:13.5px;color:#666;font-weight:600;"><?= count($migration_history) ?> migrations</span>
-      </div>
-      <div class="db-card-body" style="padding:0;">
-        <?php if (empty($migration_history)): ?>
-        <div class="db-empty"><i class="fas fa-inbox"></i><p>No migrations recorded yet.</p></div>
-        <?php else: ?>
-        <div class="db-table-wrap">
-          <table class="db-table">
-            <thead>
-              <tr><th>#</th><th>Migration Name</th><th>Table</th><th>Action</th><th>Description</th><th>Applied At</th><th>Applied By</th></tr>
-            </thead>
-            <tbody>
-              <?php foreach($migration_history as $mi => $mh): ?>
-              <tr>
-                <td style="color:#94a3b8;font-size:12px;"><?= $mi+1 ?></td>
-                <td style="font-size:13px;font-family:monospace;color:#374151;max-width:200px;word-break:break-all;"><?= htmlspecialchars($mh['migration_name']??'') ?></td>
-                <td><span class="db-badge db-badge-blue"><?= htmlspecialchars($mh['table_name']??'') ?></span></td>
-                <td>
-                  <?php $mac=strtolower($mh['action']??''); ?>
-                  <span class="db-badge <?= str_contains($mac,'add')?'db-badge-green':'db-badge-red' ?>">
-                    <?= htmlspecialchars($mh['action']??'') ?>
-                  </span>
-                </td>
-                <td style="font-size:13.5px;color:#555;max-width:220px;"><?= htmlspecialchars($mh['description']??'') ?></td>
-                <td style="font-size:13.5px;color:#555;"><?= !empty($mh['executed_at'])?date('M d, Y h:i A',strtotime($mh['executed_at'])):'—' ?></td>
-                <td style="font-size:14px;"><?= htmlspecialchars(($mh['first_name']??'').($mh['last_name']?' '.$mh['last_name']:'')?: '—') ?></td>
-              </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-        <?php endif; ?>
-      </div>
-    </div>
-  </div><!-- /tab-schema -->
-
-  <!-- ══════════════════════════════════════════════════════
-       TAB 5: SECURITY LOGS
+       TAB 3: SECURITY LOGS
   ══════════════════════════════════════════════════════ -->
   <div class="db-tab-pane" id="tab-security">
     <div class="db-card">
       <div class="db-card-header">
         <h3 class="db-card-title"><i class="fas fa-shield-virus"></i> Security Logs</h3>
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="db-btn db-btn-ghost db-btn-sm" onclick="printSecurityLogs()">
-            <i class="fas fa-print"></i> Print Logs
+        <div class="rpt-export-group">
+          <button type="button" class="rpt-export-btn rpt-btn-print" onclick="printSecurityLogs()">
+            <i class="fas fa-print"></i> Print
           </button>
-          <button type="button" class="db-btn db-btn-primary db-btn-sm" onclick="downloadSecLogs()">
-            <i class="fas fa-download"></i> Download Logs
+          <button type="button" class="rpt-export-btn rpt-btn-pdf" onclick="exportSecurityLogsPDF()">
+            <i class="fas fa-file-pdf"></i> PDF
           </button>
         </div>
       </div>
@@ -1855,17 +1740,107 @@ var _DB_TOASTS = <?= json_encode($_toast_msgs) ?>;
   window.switchTab = switchTab;
 })();
 
-// ── Scheduled time toggle ──────────────────────────────────────────────
-document.querySelector('[name="backup_frequency"]')?.addEventListener('change', function(){
-  const wrap = document.getElementById('sched-time-wrap');
-  const manual = this.value === 'manual';
-  wrap.style.opacity        = manual ? '.4' : '1';
-  wrap.style.pointerEvents  = manual ? 'none' : 'auto';
-});
+// ── Scheduled time toggle & live config sync ───────────────────────────
+function syncConfigToManualForm() {
+  const freqVal = document.getElementById('backupFrequencySelect')?.value || 'manual';
+  const timeVal = document.getElementById('scheduledTimeInput')?.value || '02:00';
+  const retVal  = document.querySelector('[name="retention_days"]')?.value || '30';
+
+  const mFreq = document.getElementById('m_backup_frequency');
+  const mTime = document.getElementById('m_scheduled_time');
+  const mRet  = document.getElementById('m_retention_days');
+
+  if (mFreq) mFreq.value = freqVal;
+  if (mTime) mTime.value = timeVal;
+  if (mRet)  mRet.value  = retVal;
+}
+
+function updateConfigSummary() {
+  const freqSel = document.getElementById('backupFrequencySelect');
+  const timeInp = document.getElementById('scheduledTimeInput');
+  const retSel  = document.querySelector('[name="retention_days"]');
+  const wrap    = document.getElementById('sched-time-wrap');
+
+  const freqVal = freqSel ? freqSel.value : 'manual';
+  const timeVal = timeInp ? timeInp.value : '02:00';
+  const retVal  = retSel  ? retSel.value  : '30';
+
+  if (wrap) {
+    const isManual = (freqVal === 'manual' || freqVal === 'hourly');
+    wrap.style.opacity       = isManual ? '.45' : '1';
+    wrap.style.pointerEvents = isManual ? 'none' : 'auto';
+  }
+
+  const sumFreq = document.getElementById('summary_freq');
+  const sumTime = document.getElementById('summary_time');
+  const sumRet  = document.getElementById('summary_ret');
+
+  if (sumFreq) {
+    const labels = {
+      'manual': 'Manual Only',
+      'hourly': 'Every Hour',
+      'daily':  'Daily',
+      'weekly': 'Weekly',
+      'monthly':'Monthly'
+    };
+    sumFreq.textContent = labels[freqVal] || freqVal;
+  }
+
+  if (sumTime) {
+    if (freqVal === 'manual' || freqVal === 'hourly') {
+      sumTime.textContent = 'Manual / Hourly';
+    } else {
+      let parts = timeVal.split(':');
+      if (parts.length >= 2) {
+        let h = parseInt(parts[0], 10);
+        let m = parts[1];
+        let ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12;
+        if (h === 0) h = 12;
+        sumTime.textContent = (h < 10 ? '0' + h : h) + ':' + m + ' ' + ampm;
+      } else {
+        sumTime.textContent = timeVal;
+      }
+    }
+  }
+
+  if (sumRet) {
+    sumRet.textContent = retVal + ' Days';
+  }
+
+  syncConfigToManualForm();
+}
+
+// Bind live sync listeners
+document.getElementById('backupFrequencySelect')?.addEventListener('change', updateConfigSummary);
+document.getElementById('scheduledTimeInput')?.addEventListener('input', updateConfigSummary);
+document.querySelector('[name="retention_days"]')?.addEventListener('change', updateConfigSummary);
+// Run once on load
+updateConfigSummary();
+
+// ── Save & Run Backup Now (Instant execution with current configuration)
+function saveAndRunBackupNow() {
+  syncConfigToManualForm();
+  const mCard = document.getElementById('manualBackupCard') || document.getElementById('backupProgressWrap');
+  if (mCard) {
+    mCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  const mForm = document.getElementById('manualBackupForm');
+  if (mForm) {
+    triggerBackupProgress({
+      preventDefault: function(){},
+      target: mForm
+    });
+  }
+}
 
 // ── Backup Progress Animation ─────────────────────────────────────────
 function triggerBackupProgress(e) {
+  // Sync the latest configuration values from Backup Configuration form
+  syncConfigToManualForm();
+
   const btn  = document.getElementById('runBackupBtn');
+  const saveAndRunBtn = document.getElementById('saveAndRunBackupBtn');
   const wrap = document.getElementById('backupProgressWrap');
   const bar  = document.getElementById('backupProgressBar');
   const pct  = document.getElementById('backupProgressPct');
@@ -1873,36 +1848,46 @@ function triggerBackupProgress(e) {
   const done = document.getElementById('backupCompletedMsg');
 
   wrap.style.display = 'block';
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Backup…';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Backup…';
+  }
+  if (saveAndRunBtn) {
+    saveAndRunBtn.disabled = true;
+    saveAndRunBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving &amp; Running…';
+  }
 
   const steps = [
-    [10, 'Connecting to database…'],
-    [25, 'Locking tables…'],
-    [45, 'Exporting schema…'],
-    [65, 'Exporting table data…'],
-    [80, 'Compressing backup file…'],
-    [92, 'Writing to storage…'],
-    [100,'Finalising backup…'],
+    [10, 'Synchronizing configuration & connecting…'],
+    [25, 'Locking database tables…'],
+    [45, 'Exporting database schema…'],
+    [65, 'Exporting complete table data…'],
+    [80, 'Compressing secure backup…'],
+    [92, 'Writing to storage location…'],
+    [100,'Finalising backup & applying retention…'],
   ];
 
   let si = 0;
   function tick() {
     if (si >= steps.length) {
-      // Submit the form for real
       done.style.display = 'block';
-      setTimeout(() => { e.target.submit(); }, 900);
+      setTimeout(() => {
+        const formToSubmit = (e && e.target) ? e.target : document.getElementById('manualBackupForm');
+        if (formToSubmit) formToSubmit.submit();
+      }, 700);
       return;
     }
     const [p, l] = steps[si++];
     bar.style.width  = p + '%';
     pct.textContent  = p + '%';
     lbl.textContent  = l;
-    setTimeout(tick, 380);
+    setTimeout(tick, 340);
   }
   tick();
-  // Prevent default — we submit via JS after animation
-  e.preventDefault();
+
+  if (e && typeof e.preventDefault === 'function') {
+    e.preventDefault();
+  }
 }
 
 // ── Restore Modal ──────────────────────────────────────────────────────
@@ -1994,78 +1979,21 @@ document.getElementById('restoreModal').addEventListener('click', function(e){
   if (e.target === this) closeRestoreModal();
 });
 
-// ── Export — Live Preview from DB ─────────────────────────────────────
-function previewExport() {
-  const fmt   = document.getElementById('exportFormat').value;
-  const table = document.getElementById('exportTable').value;
-  const lbl   = document.getElementById('exportPreviewLabel');
-  const code  = document.getElementById('exportPreviewCode');
-  const wrap  = document.getElementById('exportPreviewWrap');
-
-  lbl.textContent = `(${fmt.toUpperCase()} — ${table === '__all__' ? 'All Tables' : table})`;
-  wrap.style.display = 'block';
-  code.textContent   = 'Loading preview from database…';
-
-  const url = `../backend/api/db_preview_api.php?format=${encodeURIComponent(fmt)}&table=${encodeURIComponent(table)}&csrf=<?= $csrf ?>`;
-
-  fetch(url, { credentials: 'same-origin' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        code.textContent = '<i class="fas fa-exclamation-triangle"></i> Error: ' + data.error;
-      } else {
-        code.textContent = data.preview || '(no data)';
-        if (data.note) {
-          lbl.textContent += ' — ' + data.note;
-        }
-      }
-    })
-    .catch(err => {
-      code.textContent = '<i class="fas fa-exclamation-triangle"></i> Failed to load preview: ' + err.message;
-    });
-}
-
-function runExport() {
-  const fmt   = document.getElementById('exportFormat').value;
-  const table = document.getElementById('exportTable').value;
-  const spin  = document.getElementById('exportSpinner');
-  spin.style.display = 'block';
-
-  const label = table === '__all__' ? 'All Tables' : table;
-  showInfoToast('Export in Progress\u2026', `Generating ${fmt.toUpperCase()} export for: ${label}`);
-
-  const url = `../backend/api/db_export_api.php?format=${encodeURIComponent(fmt)}&table=${encodeURIComponent(table)}&csrf=<?= $csrf ?>`;
-
-  const a = document.createElement('a');
-  a.href  = url;
-  a.download = `petron_export_${table === '__all__' ? 'all' : table}_${new Date().toISOString().slice(0,10)}.${fmt}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  setTimeout(() => {
-    spin.style.display = 'none';
-    showSuccessToast('Export Complete!', `File saved as petron_export_${table === '__all__' ? 'all' : table}.${fmt}`);
-  }, 2500);
-}
-
-// ── Print Security Logs Report ──────────────────────────────────────────
+// ── Print Security Logs Report (Matching Reports Standard) ─────────────
 function printSecurityLogs() {
   const tbl = document.getElementById('secLogsTable');
   if (!tbl || !tbl.querySelector('tbody tr')) {
-    showErrorToast('No Logs to Print', 'No security log records are currently available.');
-    return;
-  }
-
-  const printWin = window.open('', '_blank', 'width=1050,height=800');
-  if (!printWin) {
-    showErrorToast('Popup Blocked', 'Please allow popups in your browser to print security logs.');
+    if (typeof showErrorToast === 'function') {
+      showErrorToast('No Logs to Print', 'No security log records are currently available.');
+    } else {
+      alert('No security log records are currently available to print.');
+    }
     return;
   }
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + ' ' +
-                  now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                  now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   const userName = '<?= htmlspecialchars(addslashes(($me['first_name']??'').' '.($me['last_name']??''))) ?>' || 'System Administrator';
   const roleName = '<?= htmlspecialchars(addslashes(ucwords(str_replace('_',' ',$my_role)))) ?>';
@@ -2075,53 +2003,55 @@ function printSecurityLogs() {
   tableClone.style.width = '100%';
   tableClone.style.borderCollapse = 'collapse';
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Database Security Logs - Petron Station System</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    @page { size: A4 portrait; margin: 12mm 15mm; }
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 24px; font-size: 12px; }
+  const reportCSS = `
+    @page { size: A4 landscape; margin: 0.4in 0.5in; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 20px; font-size: 11px; }
     
-    .rpt-header { border-bottom: 3px solid #002F6C; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .rpt-brand { display: flex; align-items: center; gap: 12px; }
-    .rpt-title { font-size: 19px; font-weight: 800; color: #002F6C; margin: 0; letter-spacing: 0.5px; text-transform: uppercase; }
-    .rpt-sub { font-size: 12px; font-weight: 700; color: #cc0000; margin-top: 3px; letter-spacing: 0.3px; }
+    .rpt-header { border-bottom: 2.5px solid #002F6C; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .rpt-brand { display: flex; align-items: center; gap: 10px; }
+    .rpt-title { font-size: 17px; font-weight: 800; color: #002F6C; margin: 0; letter-spacing: 0.5px; text-transform: uppercase; }
+    .rpt-sub { font-size: 11px; font-weight: 700; color: #cc0000; margin-top: 2px; letter-spacing: 0.3px; }
     
-    .rpt-meta { text-align: right; font-size: 11px; color: #475569; line-height: 1.6; }
+    .rpt-meta { text-align: right; font-size: 10px; color: #475569; line-height: 1.5; }
     .rpt-meta strong { color: #0f172a; }
     
-    .rpt-summary { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 11px; color: #374151; display: flex; justify-content: space-between; }
-    
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11.5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10.5px; }
     thead tr { background: #002F6C !important; }
-    thead th { color: #ffffff !important; padding: 10px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #002F6C; }
-    tbody td { padding: 8px 12px; border: 1px solid #e2e8f0; color: #374151; vertical-align: middle; }
+    thead th { color: #ffffff !important; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #002F6C; }
+    tbody td { padding: 6px 10px; border: 1px solid #cbd5e1; color: #374151; vertical-align: middle; }
     tbody tr:nth-child(even) { background: #f8fafc; }
     
-    .db-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+    .db-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 700; }
     .db-badge-green  { background: #dcfce7 !important; color: #166534 !important; }
     .db-badge-yellow { background: #fef9c3 !important; color: #854d0e !important; }
     .db-badge-blue   { background: #dbeafe !important; color: #1d4ed8 !important; }
     .db-badge-red    { background: #fee2e2 !important; color: #991b1b !important; }
     .db-badge-gray   { background: #f1f5f9 !important; color: #475569 !important; }
     
-    .rpt-footer { margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+    .mgr-signature-row { display: flex !important; justify-content: flex-end !important; align-items: flex-end !important; page-break-inside: avoid !important; margin-top: 30px !important; width: 100% !important; }
+    .str-sig-line { border-top: 1.5px solid #002F6C !important; width: 100% !important; margin-bottom: 3px !important; }
+    .sig-block-right { margin-left: auto !important; width: 240px !important; text-align: center !important; }
     @media print {
       body { padding: 0; }
+      tr { page-break-inside: avoid; }
     }
-  </style>
+  `;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Database Security Logs - Petron Station System</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>${reportCSS}</style>
 </head>
 <body>
-
   <div class="rpt-header">
     <div class="rpt-brand">
       <div>
         <h1 class="rpt-title">PETRON STATION MANAGEMENT SYSTEM</h1>
-        <div class="rpt-sub">DATABASE SECURITY & AUDIT LOGS REPORT</div>
+        <div class="rpt-sub">DATABASE SECURITY &amp; AUDIT LOGS REPORT</div>
       </div>
     </div>
     <div class="rpt-meta">
@@ -2132,40 +2062,70 @@ function printSecurityLogs() {
 
   ${tableClone.outerHTML}
 
-  <script>
-    window.onload = function() {
-      window.print();
-      setTimeout(function() { window.close(); }, 750);
-    };
-  <\/script>
+  <div class="mgr-signature-row" style="display:flex !important; justify-content:flex-end !important; margin-top:35px !important; page-break-inside:avoid !important; width:100% !important;">
+    <div class="sig-block-right" style="margin-left:auto !important; width:240px !important; text-align:center !important;">
+      <div class="str-sig-line"></div>
+      <div style="font-weight:700; font-size:11px; color:#002F6C; margin-top:4px;">${userName}</div>
+      <div style="font-size:9.5px; color:#64748b;">Prepared By (${roleName})</div>
+    </div>
+  </div>
 </body>
 </html>`;
 
-  printWin.document.open();
-  printWin.document.write(html);
-  printWin.document.close();
+  // Hidden iframe print (no popups blocked, matching reports standard)
+  let frame = document.getElementById('sec_logs_print_frame');
+  if (frame) frame.remove();
+
+  frame = document.createElement('iframe');
+  frame.id = 'sec_logs_print_frame';
+  frame.style.position = 'fixed';
+  frame.style.top = '-9999px';
+  frame.style.left = '-9999px';
+  frame.style.width = '1024px';
+  frame.style.height = '768px';
+  frame.style.border = 'none';
+  frame.style.visibility = 'hidden';
+  document.body.appendChild(frame);
+
+  const doc = frame.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(function() {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch (e) {
+      window.print();
+    }
+    setTimeout(function() { if (frame) frame.remove(); }, 60000);
+  }, 350);
 }
 
-// ── Download Security Logs ─────────────────────────────────────────────
-function downloadSecLogs() {
-  const tbl  = document.getElementById('secLogsTable');
-  if (!tbl) { showErrorToast('No Logs', 'No security log table found.'); return; }
-  const rows = [...tbl.querySelectorAll('tbody tr')];
-  if (!rows.length) { showWarningToast('No Log Entries', 'There are no security log entries to download.'); return; }
+// ── Export Security Logs as PDF (Matching Reports Standard) ─────────────
+function exportSecurityLogsPDF() {
+  const tbl = document.getElementById('secLogsTable');
+  if (!tbl || !tbl.querySelector('tbody tr')) {
+    if (typeof showErrorToast === 'function') {
+      showErrorToast('No Logs to Export', 'No security log records are currently available to export.');
+    } else {
+      alert('No security log records are currently available to export.');
+    }
+    return;
+  }
 
-  let csv = 'No,Date,Action,User,IP Address,Status\n';
-  rows.forEach((row, i) => {
-    const cells = [...row.querySelectorAll('td')].map(td => '"' + td.innerText.trim().replace(/"/g,'""') + '"');
-    csv += cells.join(',') + '\n';
-  });
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = 'Petron_Security_Logs_' + dateStr;
+  const pdfBtn = document.querySelector('.rpt-btn-pdf');
 
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a    = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(blob),
-    download: `petron_security_logs_${new Date().toISOString().slice(0,10)}.csv`
-  });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  showSuccessToast('Logs Downloaded', `${rows.length} security log entries saved as CSV.`);
+  if (typeof exportTableToPDF === 'function') {
+    exportTableToPDF('secLogsTable', 'DATABASE SECURITY LOGS REPORT', filename);
+  } else if (typeof exportPrintableAreaToPDF === 'function') {
+    exportPrintableAreaToPDF('#secLogsTable', 'DATABASE SECURITY LOGS REPORT', filename, pdfBtn);
+  } else {
+    printSecurityLogs();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -201,7 +201,7 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'])
                 echo '<td>' . htmlspecialchars(ucfirst($r['status'])) . '</td>';
                 echo '<td>' . htmlspecialchars($r['staff_name'] ?? '—') . '</td>';
                 echo '<td>' . htmlspecialchars($r['investigation_notes'] ?? '') . '</td>';
-                echo '<td>' . date('M d, Y H:i', strtotime($r['created_at'])) . '</td>';
+                echo '<td>' . date('M d, Y h:i A', strtotime($r['created_at'])) . '</td>';
                 echo '</tr>';
             }
             echo '</tbody></table>';
@@ -373,7 +373,7 @@ include __DIR__ . '/../partials/header.php';
                 <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($a['item']); ?>"><?= htmlspecialchars($a['item']); ?></td>
                 <td style="font-weight:700;color:#dc3545;"><?= number_format($a['variance'],2); ?></td>
                 <td style="font-size:11px;"><?= htmlspecialchars($a['staff']); ?></td>
-                <td style="font-size:11px;white-space:nowrap;"><?= date('M d, H:i', strtotime($a['date'])); ?></td>
+                <td style="font-size:11px;white-space:nowrap;"><?= date('M d, h:i A', strtotime($a['date'])); ?></td>
                 <td>
                     <button type="button" class="va-act-btn va-act-flag"
                         onclick="openFlagModal(<?= htmlspecialchars(json_encode($a), ENT_QUOTES); ?>)">
@@ -486,7 +486,7 @@ include __DIR__ . '/../partials/header.php';
                 $jVar     = htmlspecialchars(json_encode(number_format($varAmt, 2)),                         ENT_QUOTES);
                 $jStaff   = htmlspecialchars(json_encode($v['staff_name'] ?? 'System'),                      ENT_QUOTES);
                 $jStaffId = htmlspecialchars(json_encode($v['staff_uid'] ?? '—'),                            ENT_QUOTES);
-                $jDate    = htmlspecialchars(json_encode(date('M d, Y H:i', strtotime($v['created_at']))),   ENT_QUOTES);
+                $jDate    = htmlspecialchars(json_encode(date('M d, Y h:i A', strtotime($v['created_at']))),   ENT_QUOTES);
                 $jStatus  = htmlspecialchars(json_encode($status),                                           ENT_QUOTES);
                 $jNotes   = htmlspecialchars(json_encode($v['investigation_notes'] ?? ''),                   ENT_QUOTES);
             ?>
@@ -496,7 +496,7 @@ include __DIR__ . '/../partials/header.php';
                 <td style="max-width:200px;word-break:break-word;"><?= htmlspecialchars($dispItem); ?></td>
                 <td style="font-weight:700;color:<?= $varAmt>0?'#28a745':($varAmt<0?'#dc3545':'#28a745'); ?>;"><?= ($varAmt>0?'+':'').number_format($varAmt,2); ?></td>
                 <td style="font-size:12px;color:#555;"><?= htmlspecialchars($v['staff_name']??'—'); ?></td>
-                <td style="white-space:nowrap;font-size:12px;"><?= date('M d, Y H:i', strtotime($v['created_at'])); ?></td>
+                <td style="white-space:nowrap;font-size:12px;"><?= date('M d, Y h:i A', strtotime($v['created_at'])); ?></td>
                 <td><span class="status-badge badge-<?= $status; ?>"><?= $sm['label']; ?></span></td>
                 <td>
                     <div class="actions-cell">

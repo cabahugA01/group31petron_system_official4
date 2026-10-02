@@ -368,7 +368,7 @@ if ($section === 'meter_readings') {
     if (empty($meter_rows)) {
         $meter_rows = q($pdo,"SELECT m.*, COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') as staff_name FROM fuel_pump_readings m LEFT JOIN users u ON u.id = m.user_id WHERE m.station_id = ? AND m.status = 'Approved' ORDER BY m.reading_time DESC LIMIT 50", [$station_id]);
     }
-    $datasets['meter'] = ['title'=>'Validated Meter Readings','headers'=>['Date & Time','Pump / Nozzle','Fuel Type','Opening Reading','Closing Reading','Staff'],'rows'=>$meter_rows,'map'=>function($r){return [date('M j, Y H:i',strtotime($r['reading_time'])),'Pump '.$r['pump_number'].' - N'.$r['nozzle_number'],$r['fuel_type'],number_format($r['opening_reading'],2),number_format($r['closing_reading'],2),$r['staff_name']?:'—'];}];
+    $datasets['meter'] = ['title'=>'Validated Meter Readings','headers'=>['Date & Time','Pump / Nozzle','Fuel Type','Opening Reading','Closing Reading','Staff'],'rows'=>$meter_rows,'map'=>function($r){return [date('M j, Y h:i A',strtotime($r['reading_time'])),'Pump '.$r['pump_number'].' - N'.$r['nozzle_number'],$r['fuel_type'],number_format($r['opening_reading'],2),number_format($r['closing_reading'],2),$r['staff_name']?:'—'];}];
 }
 
 if ($section === 'inventory') {

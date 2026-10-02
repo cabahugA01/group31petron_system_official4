@@ -696,7 +696,7 @@ if ($export_type === 'csv') {
             vt_pay_status($r),
             $r['shift'] ?? 'N/A',
             $r['staff_name'],
-            date('M d, Y H:i', strtotime($r['txn_date'])),
+            date('M d, Y h:i A', strtotime($r['txn_date'])),
             $r['validated_by'],
             $r['validation_remarks'] ?? '—'
         ]);
@@ -749,7 +749,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
         echo '<td>' . htmlspecialchars($r['shift'] ?? 'N/A') . '</td>';
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
-        echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
+        echo '<td>' . date('M d, Y h:i A', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
         echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
@@ -863,7 +863,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
         echo '<td>' . htmlspecialchars($r['shift'] ?? 'N/A') . '</td>';
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
-        echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
+        echo '<td>' . date('M d, Y h:i A', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
         echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
@@ -878,7 +878,7 @@ if ($export_type === 'pdf') {
             vt_pay_status($r),
             $r['shift'] ?? 'N/A',
             $r['staff_name'],
-            date('M d, Y H:i', strtotime($r['txn_date'])),
+            date('M d, Y h:i A', strtotime($r['txn_date'])),
             $r['validated_by'],
             $r['validation_remarks'] ?? '—'
         ]);
@@ -931,7 +931,7 @@ if ($export_type === 'excel') {
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
         echo '<td>' . htmlspecialchars($r['shift'] ?? 'N/A') . '</td>';
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
-        echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
+        echo '<td>' . date('M d, Y h:i A', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
         echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';
@@ -1045,7 +1045,7 @@ if ($export_type === 'pdf') {
         echo '<td>' . htmlspecialchars($pay_st) . '</td>';
         echo '<td>' . htmlspecialchars($r['shift'] ?? 'N/A') . '</td>';
         echo '<td>' . htmlspecialchars($r['staff_name']) . '</td>';
-        echo '<td>' . date('M d, Y H:i', strtotime($r['txn_date'])) . '</td>';
+        echo '<td>' . date('M d, Y h:i A', strtotime($r['txn_date'])) . '</td>';
         echo '<td>' . htmlspecialchars($r['validated_by']) . '</td>';
         echo '<td>' . htmlspecialchars($r['validation_remarks'] ?? '—') . '</td>';
         echo '</tr>';

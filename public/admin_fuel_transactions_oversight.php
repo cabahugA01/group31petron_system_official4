@@ -189,7 +189,7 @@ if (isset($_GET['single_id']) && $export === 'pdf') {
                     <div class="row" style="flex-direction:column; align-items:flex-start;"><label>Remarks:</label><span style="text-align:left; font-weight: normal; margin-top: 3px; color:#555;">' . htmlspecialchars($remarks) . '</span></div>
                     <div class="footer">
                         <p>Thank you for choosing Petron!</p>
-                        <p>Generated: ' . date('Y-m-d H:i:s') . '</p>
+                        <p>Generated: ' . date('M d, Y h:i:s A') . '</p>
                     </div>
                 </div>
             </body>
@@ -381,7 +381,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
         $remarks      = !empty($tx['notes']) ? $tx['notes'] : (!empty($tx['reject_reason']) ? $tx['reject_reason'] : '—');
         $rows_fmt[] = [
             $tx['transaction_id'],
-            date('M d, Y H:i', strtotime($tx['transaction_date'])),
+            date('M d, Y h:i A', strtotime($tx['transaction_date'])),
             $shift_label,
             $tx['station_name'] ?? '—',
             $tx['fuel_type'],
@@ -394,7 +394,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
             $tx['staff_name'] ?? '—',
             $tx['manager_name'] ?? '—',
             ucfirst($tx['status'] ?? 'Pending'),
-            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—',
+            $tx['validated_at'] ? date('M d, Y h:i A', strtotime($tx['validated_at'])) : '—',
             $remarks
         ];
     }
@@ -442,7 +442,7 @@ if (in_array($export, ['csv','excel','pdf'])) {
             $tbody .= '<td>'.htmlspecialchars($tx['staff_name']).'</td>';
             $tbody .= '<td>'.htmlspecialchars($tx['manager_name']).'</td>';
             $tbody .= '<td style="color:'.$sc_color.';font-weight:700">'.ucfirst($tx['status'] ?? 'Pending').'</td>';
-            $tbody .= '<td>'.($tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—').'</td>';
+            $tbody .= '<td>'.($tx['validated_at'] ? date('M d, Y h:i A', strtotime($tx['validated_at'])) : '—').'</td>';
             $tbody .= '<td style="font-size:10px;max-width:150px;white-space:normal;">'.htmlspecialchars($remarks).'</td>';
             $tbody .= '</tr>';
         }

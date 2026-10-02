@@ -430,7 +430,7 @@ include __DIR__ . '/../partials/header.php';
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
                     <div>
                         <strong style="font-size: 16px;"><?php echo htmlspecialchars($batch['batch_number']); ?></strong>
-                        <br><small class="muted">Encoded by: <?php echo htmlspecialchars($batch['staff_name'] ?? 'Unknown'); ?> on <?php echo date('M d, Y H:i', strtotime($batch['created_at'])); ?></small>
+                        <br><small class="muted">Encoded by: <?php echo htmlspecialchars($batch['staff_name'] ?? 'Unknown'); ?> on <?php echo date('M d, Y h:i A', strtotime($batch['created_at'])); ?></small>
                         <br><small class="muted">Supplier: <?php echo htmlspecialchars($batch['supplier']); ?></small>
                         <br><small class="muted">Delivery Date: <?php echo date('M d, Y', strtotime($batch['delivery_date'])); ?></small>
                     </div>

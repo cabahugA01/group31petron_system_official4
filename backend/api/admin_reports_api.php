@@ -265,8 +265,8 @@ try {
         // ============================================================
         case 'get_customers':
             $sql = "SELECT 
-                    c.id, c.customer_name, c.contact_number, c.email,
-                    c.customer_type, c.credit_limit, c.current_balance,
+                    c.id, COALESCE(NULLIF(c.name,''), c.id) as customer_name, c.contact_number, c.email,
+                    c.credit_limit, c.current_balance,
                     DATE(c.created_at) as date_added,
                     COUNT(DISTINCT t.id) as transaction_count,
                     COALESCE(SUM(t.amount), 0) as total_transactions
@@ -331,7 +331,7 @@ try {
             
             // Accounts Receivable
             $sql_receivables = "SELECT 
-                    c.customer_name, c.customer_type, c.credit_limit, 
+                    COALESCE(NULLIF(c.name,''), c.id) as customer_name, c.credit_limit, 
                     c.current_balance, c.contact_number
                 FROM customers c
                 WHERE c.station_id = ? 

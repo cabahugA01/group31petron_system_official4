@@ -81,7 +81,7 @@ function exportToExcel($data, $start_date, $end_date) {
     // Create Excel content
     echo "Sales Report\n";
     echo "Date Range: " . $start_date . " to " . $end_date . "\n";
-    echo "Generated: " . date('Y-m-d H:i:s') . "\n\n";
+    echo "Generated: " . date('M d, Y h:i A') . "\n\n";
     
     // Headers
     echo "Date\tBranch\tSales\tTransactions\tAverage Sale\n";

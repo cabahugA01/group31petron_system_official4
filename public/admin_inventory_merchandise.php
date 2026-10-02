@@ -537,7 +537,7 @@ if (isset($_GET['print_id'])) {
                     <tbody>
                         <?php foreach ($logs as $log): ?>
                         <tr>
-                            <td><?= date('m/d H:i', strtotime($log['created_at'])) ?></td>
+                            <td><?= date('m/d h:i A', strtotime($log['created_at'])) ?></td>
                             <td><?= htmlspecialchars($log['action']) ?></td>
                             <td><?= ($log['quantity_change'] > 0 ? '+' : '') . number_format($log['quantity_change'], 0) ?></td>
                             <td><?= htmlspecialchars($log['user_fullname']) ?></td>

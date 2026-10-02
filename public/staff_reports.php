@@ -1488,7 +1488,7 @@ if (isset($_GET['export']) && $sub_tab === 'fuel_sales') {
         fputcsv($out, ['DAILY FUEL SALES REPORT']);
         fputcsv($out, ['Station:', $station_name]);
         fputcsv($out, ['Date Range:', $date_start . ' to ' . $date_end]);
-        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, ['Generated:', date('M d, Y h:i A')]);
 
         // Meter Readings
         fputcsv($out, []);
@@ -1637,7 +1637,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 <div class="print-header">
   <h1>DAILY SALES &amp; SERVICES REPORT</h1>
-  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('M d, Y h:i A').'</p>
 </div>
 
 <div class="summary-grid">
@@ -1738,7 +1738,7 @@ if (isset($_GET['export']) && $section === 'job_orders' && $sub_tab === 'jo_list
         fputcsv($out, ['DAILY JOB ORDER REPORT']);
         fputcsv($out, ['Station:', $station_name]);
         fputcsv($out, ['Period:', $date_start . ' to ' . $date_end]);
-        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, ['Generated:', date('M d, Y h:i A')]);
         fputcsv($out, []);
 
         // Job Order Table
@@ -1864,7 +1864,7 @@ table{width:100%;border-collapse:collapse;}
 </div>
 <div class="ph">
   <h1>DAILY JOB ORDER REPORT</h1>
-  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('M d, Y h:i A').'</p>
 </div>
 <div class="sg">
   <div class="sc"><div class="v">'.count($report_data).'</div><div class="l">Total Job Orders</div></div>
@@ -1958,7 +1958,7 @@ if (isset($_GET['export']) && $sub_tab === 'merch_sales') {
         fputcsv($out, ['DAILY MERCHANDISE SALES REPORT']);
         fputcsv($out, ['Station:', $station_name]);
         fputcsv($out, ['Period:', $date_start . ' to ' . $date_end]);
-        fputcsv($out, ['Generated:', date('Y-m-d H:i:s')]);
+        fputcsv($out, ['Generated:', date('M d, Y h:i A')]);
 
         // Merchandise Sales Table
         fputcsv($out, []);
@@ -2079,7 +2079,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 <div class="print-header">
   <h1>DAILY MERCHANDISE SALES REPORT</h1>
-  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('Y-m-d H:i:s').'</p>
+  <p>Station: '.htmlspecialchars($station_name).' &nbsp;|&nbsp; Period: '.htmlspecialchars($date_start).' to '.htmlspecialchars($date_end).' &nbsp;|&nbsp; Generated: '.date('M d, Y h:i A').'</p>
 </div>
 
 <div class="summary-grid">

@@ -1,0 +1,33 @@
+# ==============================================================================
+# Petron Station Management System — robots.txt
+# Tells search engines which pages they can/cannot index
+# ==============================================================================
+
+User-agent: *
+
+# Allow public pages only
+Allow: /public/login.php
+
+# Block all sensitive/private pages from search engines
+Disallow: /public/dashboard.php
+Disallow: /public/admin_dashboard.php
+Disallow: /public/manager_dashboard.php
+Disallow: /public/staff_dashboard.php
+Disallow: /public/super_admin_dashboard.php
+Disallow: /public/superadmin_admin_management.php
+Disallow: /public/profile.php
+Disallow: /public/logout.php
+Disallow: /public/users.php
+Disallow: /backend/
+Disallow: /partials/
+Disallow: /data/
+Disallow: /database/
+Disallow: /config/
+Disallow: /sessions/
+Disallow: /backups/
+Disallow: /vendor/
+Disallow: /assets/js/
+Disallow: /assets/css/
+
+# Sitemap location
+Sitemap: https://yangch-stationms.online/sitemap.xml

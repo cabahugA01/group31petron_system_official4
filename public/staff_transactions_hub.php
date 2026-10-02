@@ -256,7 +256,6 @@ try {
     $customerLastExpr = customer_last_name_expr($pdo, 'c');
     $customerContactExpr = customer_contact_expr($pdo, 'c');
     $customerStatusExpr = customer_status_expr($pdo, 'c');
-    $customerTypeExpr = customer_type_expr($pdo, 'c');
     $customerIdExpr = customer_id_expr($pdo, 'c');
     $customerPlateExpr = customer_vehicle_expr($pdo, 'vehicle_plate', 'c');
     $customerMakeExpr = customer_vehicle_expr($pdo, 'vehicle_make', 'c');
@@ -292,8 +291,7 @@ try {
             COALESCE(NULLIF(cv.plate_number,''), {$customerPlateExpr}) AS plate_number,
             COALESCE(NULLIF(cv.year_model,''), {$customerYearExpr}) AS year_model,
             COALESCE(NULLIF(cv.engine_no,''), {$customerEngineExpr}) AS engine_number,
-            COALESCE(NULLIF(cv.chassis_no,''), {$customerChassisExpr}) AS chassis_number,
-            {$customerTypeExpr} AS customer_type
+            COALESCE(NULLIF(cv.chassis_no,''), {$customerChassisExpr}) AS chassis_number
         FROM customers c
         LEFT JOIN (
             SELECT cv1.* FROM customer_vehicles cv1
@@ -1138,7 +1136,7 @@ if ($section === 'history' || $section === 'fuel_history') {
                 number_format((float)$r['total_amount'], 2),
                 $r['payment_method'],
                 $r['payment_status'],
-                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                date('M d, Y h:i A', strtotime($r['transaction_date'])),
                 $r['validation_status']
             ]);
         }
@@ -1170,7 +1168,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
             echo '</tr>';
         }
@@ -1236,7 +1234,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_method']) . '</td>';
             echo '<td>' . htmlspecialchars($r['payment_status']) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['validation_status']) . '</td>';
             echo '</tr>';
         }
@@ -1262,7 +1260,7 @@ if ($section === 'history' || $section === 'fuel_history') {
                 number_format((float)$r['liters_sold'], 2),
                 number_format((float)$r['price_per_liter'], 2),
                 number_format((float)$r['total_amount'], 2),
-                date('M d, Y H:i', strtotime($r['transaction_date'])),
+                date('M d, Y h:i A', strtotime($r['transaction_date'])),
                 $r['status'],
                 $r['shift_period']
             ]);
@@ -1295,7 +1293,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['status']) . '</td>';
             echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
             echo '</tr>';
@@ -1364,7 +1362,7 @@ if ($section === 'history' || $section === 'fuel_history') {
             echo '<td style="text-align:right">' . number_format((float)$r['liters_sold'], 2) . ' L</td>';
             echo '<td style="text-align:right">&#8369;' . number_format((float)$r['price_per_liter'], 2) . '</td>';
             echo '<td class="amount">&#8369;' . number_format((float)$r['total_amount'], 2) . '</td>';
-            echo '<td>' . date('M d, Y H:i', strtotime($r['transaction_date'])) . '</td>';
+            echo '<td>' . date('M d, Y h:i A', strtotime($r['transaction_date'])) . '</td>';
             echo '<td>' . htmlspecialchars($r['status']) . '</td>';
             echo '<td>' . htmlspecialchars($r['shift_period']) . '</td>';
             echo '</tr>';
@@ -10130,8 +10128,7 @@ setTimeout(function() {
                 'chassis_number' => $customer['chassis_number'] ?? '',
                 'points' => (int)($customer['points'] ?? 0),
                 'customer_id' => $customer['customer_id'] ?? '',
-                'id_number' => $customer['id_number'] ?? '',
-                'customer_type' => $customer['customer_type'] ?? 'walk-in'
+                'id_number' => $customer['id_number'] ?? ''
             ];
         }, $customers)) ?>;
 
@@ -10178,17 +10175,9 @@ setTimeout(function() {
                                     <input type="text" id="requestCustomerContact" class="txn-input" autocomplete="off">
                                 </div>
                                 <div class="txn-field">
-                                    <label>Customer Type</label>
-                                    <select id="requestCustomerType" class="txn-select">
-                                        <option value="walk-in">Walk-in</option>
-                                        <option value="regular">Regular</option>
-                                        <option value="credit">Credit</option>
-                                    </select>
+                                    <label>Address</label>
+                                    <input type="text" id="requestCustomerAddress" class="txn-input" autocomplete="off">
                                 </div>
-                            </div>
-                            <div class="txn-field" style="margin-bottom:14px;">
-                                <label>Address</label>
-                                <input type="text" id="requestCustomerAddress" class="txn-input" autocomplete="off">
                             </div>
                             <div style="font-size:11px;font-weight:800;color:#00264D;text-transform:uppercase;margin:14px 0 10px;">Vehicle Information</div>
                             <div class="txn-form-grid" style="margin-bottom:14px;">
@@ -10252,7 +10241,6 @@ setTimeout(function() {
             document.getElementById('requestCustomerMiddleName').value = '';
             document.getElementById('requestCustomerLastName').value = get(customerRequestPrefix + 'LastName');
             document.getElementById('requestCustomerContact').value = get(customerRequestPrefix + 'ContactNumber');
-            document.getElementById('requestCustomerType').value = 'walk-in';
             document.getElementById('requestCustomerAddress').value = '';
             document.getElementById('requestCustomerPlate').value = get(customerRequestPrefix + 'VehiclePlate');
             document.getElementById('requestCustomerMake').value = get(customerRequestPrefix + 'VehicleBrand');
@@ -10288,7 +10276,6 @@ setTimeout(function() {
             form.append('last_name', lastName);
             form.append('contact_number', contact);
             form.append('address', (document.getElementById('requestCustomerAddress')?.value || '').trim());
-            form.append('customer_type', document.getElementById('requestCustomerType')?.value || 'walk-in');
             form.append('vehicle_plate', (document.getElementById('requestCustomerPlate')?.value || '').trim());
             form.append('vehicle_make', (document.getElementById('requestCustomerMake')?.value || '').trim());
             form.append('vehicle_model', (document.getElementById('requestCustomerModel')?.value || '').trim());

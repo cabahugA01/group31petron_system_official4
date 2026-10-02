@@ -1090,7 +1090,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
                     echo '</head><body>';
                     echo '<h1>Fuel Transactions Report</h1>';
-                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('M d, Y h:i A') . '</div>';
                     echo '<table><thead><tr><th>TXN ID</th><th>Date</th><th>Fuel</th><th>Liters</th><th>Price/L</th><th>Amount</th><th>Status</th><th>Staff</th><th>Validated By</th></tr></thead><tbody>';
                     foreach ($transactions as $t) {
                         echo '<tr>';
@@ -1161,7 +1161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
                     echo '</head><body>';
                     echo '<h1>Fuel Deliveries Validation Report</h1>';
-                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('M d, Y h:i A') . '</div>';
                     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel</th><th>Supplier</th><th>Invoice</th><th>Liters</th><th>Status</th><th>Verified By</th></tr></thead><tbody>';
                     foreach ($deliveries as $d) {
                         echo '<tr>';
@@ -1226,7 +1226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
                     echo '</head><body>';
                     echo '<h1>Fuel Adjustments Report</h1>';
-                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('M d, Y h:i A') . '</div>';
                     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel</th><th>Type</th><th>Liters</th><th>Reason</th><th>Adjusted By</th></tr></thead><tbody>';
                     foreach ($adjustments as $a) {
                         echo '<tr>';
@@ -1291,7 +1291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}</style>';
                     echo '</head><body>';
                     echo '<h1>Pump Calibration Master Report</h1>';
-                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+                    echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Generated:</strong> ' . date('M d, Y h:i A') . '</div>';
                     echo '<table><thead><tr><th>Fuel Type</th><th>Pump</th><th>Calibration</th><th>Price/L</th><th>Current Level</th><th>Capacity</th><th>Last Updated</th></tr></thead><tbody>';
                     foreach ($calibrations as $c) {
                         echo '<tr>';
@@ -1345,7 +1345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     header('Content-Disposition: attachment; filename="variance_report_' . date('Y-m-d') . '.html"');
                     echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Variance Report</title><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#003d7a;color:#fff}.high{color:#dc3545;font-weight:700}.ok{color:#28a745}</style></head><body>';
                     echo '<h1 style="color:#003d7a">Fuel Variance Report</h1>';
-                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('Y-m-d H:i:s') . "</p>";
+                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('M d, Y h:i A') . "</p>";
                     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel Type</th><th>Expected (L)</th><th>Actual (L)</th><th>Variance (L)</th><th>Variance %</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
                     foreach ($variances as $v) {
                         $cls = abs($v['variance_percent']) > 5 ? 'high' : 'ok';
@@ -2205,7 +2205,7 @@ require __DIR__ . '/../partials/flash_toast.php';
                 <span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($r['staff_name']); ?></span>
             </td>
             <td style="font-size:.73rem;color:#666;">
-                <?php echo $submitted_at ? date('M j Y', strtotime($submitted_at)) . '<br><span style="color:#999">' . date('H:i', strtotime($submitted_at)) . '</span>' : '—'; ?>
+                <?php echo $submitted_at ? date('M j Y', strtotime($submitted_at)) . '<br><span style="color:#999">' . date('h:i A', strtotime($submitted_at)) . '</span>' : '—'; ?>
             </td>
             <td style="text-align:center;">
                 <?php if ($is_flagged): ?>
@@ -2504,7 +2504,7 @@ require __DIR__ . '/../partials/flash_toast.php';
             </td>
             <td style="font-size:.75rem;color:#555;">
                 <?= date('M j, Y', strtotime($d['created_at'])) ?><br>
-                <span style="color:#94a3b8;"><?= date('H:i', strtotime($d['created_at'])) ?></span>
+                <span style="color:#94a3b8;"><?= date('h:i A', strtotime($d['created_at'])) ?></span>
             </td>
             <td style="font-size:.75rem;">
                 <?php if (!empty($d['verified_by_name'])): ?>
@@ -3180,8 +3180,8 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
             </td>
             <td style="font-size:.75rem;color:#555;white-space:nowrap;">
                 <?php echo !empty($v['updated_at'])
-                    ? date('M j, Y H:i', strtotime($v['updated_at']))
-                    : date('M j, Y H:i', strtotime($v['created_at'])); ?>
+                    ? date('M j, Y h:i A', strtotime($v['updated_at']))
+                    : date('M j, Y h:i A', strtotime($v['created_at'])); ?>
             </td>
             <td class="col-actions" style="white-space:nowrap;">
                 <?php if ($st !== 'Resolved'): ?>
@@ -3295,7 +3295,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 <?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : ' - '; ?>
             </td>
             <td style="font-size:.78rem;white-space:nowrap;">
-                <?php echo !empty($h['validated_at']) ? date('M j H:i',strtotime($h['validated_at'])) : ' - '; ?>
+                <?php echo !empty($h['validated_at']) ? date('M j, h:i A',strtotime($h['validated_at'])) : ' - '; ?>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -3686,7 +3686,7 @@ $vr_pending = $vr_open + $vr_inv; // pending = not yet resolved
                 <?php endif; ?>
             </td>
             <td>?<?php echo number_format($f['price_per_liter']??0,2); ?></td>
-            <td style="font-size:.8rem;color:#555;"><?php echo date('M j, Y H:i',strtotime($f['last_updated'])); ?></td>
+            <td style="font-size:.8rem;color:#555;"><?php echo date('M j, Y h:i A',strtotime($f['last_updated'])); ?></td>
             <td>
                 <button class="act-btn adjust"
                     onclick="openCalEditModal(

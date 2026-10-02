@@ -678,7 +678,7 @@ include __DIR__ . '/../partials/header.php';
                     <td style="font-weight:bold; color:var(--petron-blue);">₱<?php echo number_format($t['total'], 2); ?></td>
                     <td><span class="badge"><?php echo htmlspecialchars($t['payment_method']); ?></span></td>
                     <td><?php echo htmlspecialchars($t['staff_name']); ?></td>
-                    <td><?php echo date('M d, H:i', strtotime($t['finalized_at'] ?? $t['created_at'])); ?></td>
+                    <td><?php echo date('M d, h:i A', strtotime($t['finalized_at'] ?? $t['created_at'])); ?></td>
                     <td>
                         <button type="button" class="btn small primary" onclick="openUnlockModal('<?php echo htmlspecialchars($t['id']); ?>', '<?php echo htmlspecialchars($t['customer']); ?>')">
                             <i class="fas fa-unlock"></i> Unlock

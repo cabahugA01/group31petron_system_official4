@@ -618,7 +618,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             number_format($r['liters_sold'], 2) . ' L',
             getStatusLabel($r['status']),
             $r['validator_name'] ?? '—',
-            $r['validated_at'] ? date('Y-m-d H:i', strtotime($r['validated_at'])) : '—'
+            $r['validated_at'] ? date('Y-m-d h:i A', strtotime($r['validated_at'])) : '—'
         ];
     }
     $filename = 'calibration_review_' . ($date_filter ?: 'all');

@@ -281,7 +281,7 @@ include __DIR__ . '/../partials/header.php';
                     <?php foreach ($price_changes as $change): ?>
                         <tr data-fuel-type="<?php echo htmlspecialchars($change['fuel_type']); ?>" 
                             data-date="<?php echo date('Y-m-d', strtotime($change['change_timestamp'])); ?>">
-                            <td><?php echo date('M j, Y H:i', strtotime($change['change_timestamp'])); ?></td>
+                            <td><?php echo date('M j, Y h:i A', strtotime($change['change_timestamp'])); ?></td>
                             <td><strong><?php echo htmlspecialchars($change['fuel_type']); ?></strong></td>
                             <td>₱<?php echo number_format($change['old_price'], 2); ?></td>
                             <td>₱<?php echo number_format($change['new_price'], 2); ?></td>

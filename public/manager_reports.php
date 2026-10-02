@@ -1978,7 +1978,6 @@ function openCustomerModal(customerId) {
                     <div class="row text-muted small">
                         <div class="col-md-3"><strong>ID:</strong> ${info.customer_id || 'N/A'}</div>
                         <div class="col-md-3"><strong>Contact:</strong> ${info.contact_number || info.phone || 'N/A'}</div>
-                        <div class="col-md-3"><strong>Type:</strong> ${info.customer_type || 'Walk-in'}</div>
                         <div class="col-md-3"><strong>Registered:</strong> ${info.registered_at || 'N/A'}</div>
                     </div>
                 </div>

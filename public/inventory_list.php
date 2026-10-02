@@ -269,7 +269,7 @@ include __DIR__ . '/../partials/header.php';
                                     if (!empty($item['last_updated'])) {
                                         echo date('M d, Y', strtotime($item['last_updated']));
                                         echo '<br>';
-                                        echo date('H:i', strtotime($item['last_updated']));
+                                        echo date('h:i A', strtotime($item['last_updated']));
                                     } else {
                                         echo 'Never';
                                     }

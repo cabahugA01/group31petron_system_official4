@@ -195,8 +195,8 @@ class SimpleReportPdf {
             $sigX = $this->width - $this->margin - $sigWidth;
             $developed_by_name = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')) ?: ($u['username'] ?? 'System User');
 
-            // Label: SYSTEM DEVELOPED BY:
-            $label = 'SYSTEM DEVELOPED BY:';
+            // Label: PREPARED BY:
+            $label = 'PREPARED BY:';
             $labelSize = 9;
             $labelX = $sigX + ($sigWidth - strlen($label) * $labelSize * 0.48) / 2;
             $this->append($this->pdfText($labelX, $this->y, $label, $labelSize, 'F2', [0.2, 0.2, 0.2]));

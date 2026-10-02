@@ -824,7 +824,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 </style></head><body>';
                     echo '<h1 style="color:#003d7a">Fuel Variance Report</h1>';
-                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('Y-m-d H:i:s') . "</p>";
+                    echo "<p><strong>Station ID:</strong> {$station_id} &nbsp;|&nbsp; <strong>Period:</strong> {$date_from} to {$date_to} &nbsp;|&nbsp; <strong>Generated:</strong> " . date('M d, Y h:i A') . "</p>";
                     echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel Type</th><th>Expected (L)</th><th>Actual (L)</th><th>Variance (L)</th><th>Variance %</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
                     foreach ($variances as $v) {
                         $cls = abs($v['variance_percent']) > 5 ? 'high' : 'ok';
@@ -1398,7 +1398,7 @@ function adjustColor($hex,$pct) {
                 <span class="audit-badge"><i class="fas fa-user"></i> <?php echo htmlspecialchars($r['staff_name']); ?></span>
             </td>
             <td style="font-size:.75rem;color:#666;white-space:nowrap;">
-                <?php echo $submitted_at ? date('M j, Y<br>H:i', strtotime($submitted_at)) : '-'; ?>
+                <?php echo $submitted_at ? date('M j, Y<br>h:i A', strtotime($submitted_at)) : '-'; ?>
             </td>
             <td style="text-align:center;">
                 <?php if ($is_flagged): ?>
@@ -1485,7 +1485,7 @@ function adjustColor($hex,$pct) {
                 ?>
             </td>
             <td><?php echo !empty($h['validated_by_name']) ? '<span class="audit-badge"><i class="fas fa-user-tie"></i> '.htmlspecialchars($h['validated_by_name']).'</span>' : '-'; ?></td>
-            <td style="font-size:.78rem;white-space:nowrap;"><?php echo !empty($h['validated_at']) ? date('M j H:i',strtotime($h['validated_at'])) : '-'; ?></td>
+            <td style="font-size:.78rem;white-space:nowrap;"><?php echo !empty($h['validated_at']) ? date('M j, h:i A',strtotime($h['validated_at'])) : '-'; ?></td>
         </tr>
         <?php endforeach; ?>
         </tbody>
@@ -1763,7 +1763,7 @@ foreach ($reconciliation_data as $rec) {
             <td style="font-size:.78rem;">
                 <?php if ($last_rdg): ?>
                     <strong><?php echo number_format($last_rdg['last_pump_reading'], 2); ?></strong>
-                    <span style="color:#aaa;font-size:.7rem;display:block;"><?php echo date('M j H:i', strtotime($last_rdg['last_reading_date'])); ?></span>
+                    <span style="color:#aaa;font-size:.7rem;display:block;"><?php echo date('M j, h:i A', strtotime($last_rdg['last_reading_date'])); ?></span>
                 <?php else: ?>
                     <span style="color:#bbb;">-</span>
                 <?php endif; ?>
@@ -1875,8 +1875,8 @@ foreach ($reconciliation_data as $rec) {
             </td>
             <td style="font-size:.75rem;color:#555;white-space:nowrap;">
                 <?php echo !empty($v['updated_at'])
-                    ? date('M j H:i', strtotime($v['updated_at']))
-                    : date('M j H:i', strtotime($v['created_at'])); ?>
+                    ? date('M j, h:i A', strtotime($v['updated_at']))
+                    : date('M j, h:i A', strtotime($v['created_at'])); ?>
             </td>
             <td style="white-space:nowrap;">
                 <?php if ($st !== 'Resolved'): ?>

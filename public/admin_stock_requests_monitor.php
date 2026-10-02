@@ -129,7 +129,7 @@ table.reqs tbody tr:hover td{background:#eff6ff;}
         ?>
           <tr class="merch-row" data-p="<?= strtolower(htmlspecialchars($r['item_name'])) ?>" data-s="<?= strtolower(htmlspecialchars($r['item_sku']??'')) ?>" data-x="<?= $st ?>">
             <td style="color:var(--gray);">#<?= $r['id'] ?></td>
-            <td><?= date('M d, Y H:i', strtotime($r['created_at'])) ?></td>
+            <td><?= date('M d, Y h:i A', strtotime($r['created_at'])) ?></td>
             <td><?= htmlspecialchars($r['staff_name']) ?></td>
             <td title="<?= htmlspecialchars($r['item_name']) ?>"><strong><?= htmlspecialchars($r['item_name']) ?></strong></td>
             <td><?= (int)$r['requested_quantity'] ?></td>
@@ -187,7 +187,7 @@ table.reqs tbody tr:hover td{background:#eff6ff;}
         ?>
           <tr class="fuel-row" data-f="<?= strtolower(htmlspecialchars($r['fuel_type'])) ?>" data-x="<?= $st ?>">
             <td style="color:var(--gray);">#<?= $r['id'] ?></td>
-            <td><?= date('M d, Y H:i', strtotime($r['created_at'])) ?></td>
+            <td><?= date('M d, Y h:i A', strtotime($r['created_at'])) ?></td>
             <td><?= htmlspecialchars($r['staff_name']) ?></td>
             <td><strong><?= htmlspecialchars($r['fuel_type']) ?></strong></td>
             <td><?= number_format((float)$r['requested_liters'],2) ?></td>

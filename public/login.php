@@ -615,6 +615,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $_login_base = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/\\');
 if ($_login_base === '' || $_login_base === '.') $_login_base = '';
 $_asset_base = $_login_base . '/assets';
+
+// Dynamic domain computation for OpenGraph, Google SEO, & Social Sharing
+$_cur_proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$_cur_host  = $_SERVER['HTTP_HOST'] ?? 'yangch-stationms.online';
+$_cur_domain_url = $_cur_proto . $_cur_host;
+
+// System logo computation for top header navbar and login card
+$logo_rel = function_exists('get_system_logo_url') ? get_system_logo_url(0) : 'assets/img/petron_logo.png';
+$logo_segs = explode('/', ltrim($logo_rel, '/'));
+$logo_abs  = $_login_base . '/' . implode('/', array_map('rawurlencode', $logo_segs));
+$logo_fallback = $_asset_base . '/img/petron_logo.png';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -622,7 +633,51 @@ $_asset_base = $_login_base . '/assets';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '') ?>">
-    <title>Login | Petron Management System</title>
+    <meta name="google-site-verification" content="reimiN5lmt--9TTETlTArYevvOJfE73eqJSX8shpGv8">
+    
+    <!-- ── SEO & Search Engine Word Clues (Petron Station Management System) ── -->
+    <meta name="description" content="Petron Station & Service Center Management System — Official management, POS, inventory, and sales portal for Petron fuel stations (Group 31).">
+    <meta name="keywords" content="Petron, Petron Station, Petron Station Management System, Petron POS, Group 31 Petron, Petron System, yangch-stationms.online, yangch stationms, steelblue-ostrich-121603, Petron Management Portal">
+    <meta name="author" content="Group 31 - Petron Station Management">
+    <meta name="robots" content="index, follow">
+    
+    <!-- ── Open Graph / Social Media & Google Rich Snippets (Logo & Site Identity) ── -->
+    <meta property="og:title" content="Login | Station MS">
+    <meta property="og:description" content="Official management, POS, inventory, and sales portal for Petron stations.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<?= htmlspecialchars($_cur_domain_url . $_SERVER['REQUEST_URI']) ?>">
+    <meta property="og:image" content="<?= htmlspecialchars($_cur_domain_url . $_asset_base . '/img/petron_logo.png') ?>">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:image:alt" content="Petron Official Logo">
+
+    <!-- ── Mobile App / Chrome Shortcut Branding ── -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Station MS">
+    <meta name="application-name" content="Station MS">
+    <meta name="theme-color" content="#00264D">
+
+    <!-- ── Favicon & Tab Logo (Instant Base64 Fallback + Multi-Resolution ICO & PNG) ── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAEJElEQVRYw+WXbUxbZRTHf719hTLa8o6M8DKQMIGJQYObfnBxTLe5kGhCFkMWJ8bFJYqJH7Y5Z3TE+GEm09jFqcDYwnxjavhggm664eSlQyVTNmUVmANaVqCFthRKe+uHLYStveXFkpj4fDv3nud/fvc8zz3Pc+D/PmQhn+bsyQFOAg8AQgTiiIAJqMRsNM9/oZCYcHLnxECpQ1DSEpOCOiCyfmqMMreVjNmpIGe7XEWXxsBZbRK9qlWh9ASg9NZHPbiYDPg/tHYJj7us2OUqPtBn87E+G69MoGTazjOOfra5LAgEgqb+qjFwxJDL99qk0JkwG+V3kkkRA2Dwe9k39gfNgxdI83no0hjYk3IfW9If4rI6Nmhi8bSdBouJWstFdOKspO5CAEHjnplJPhtqnxPtUesoX72B9qj4kP5l7hFODXWiDohhdZe0wTJmp3h5vHfO9sjkvJhcjFcWWqZoxsEuR3/kAADKnUO32VaFhm6NXtJ/q8sSWYB4vzcorT6JvQwQJ3ojCzCg1DIzL+Uxoo91MxOS/mZlTGQBjIac2+xXxv9EK/ok/U/oMiIHcNSwhk9j0+fs5xx9PBtmk53QZXJGmxxWU7GYwAHgUMJaPtJnz9WGGtvvbHcNS9RdGe8bcjgcn7eg9qIADiYWcFyXCcATrmHetPWQ4J8JveaqGF5NLKRNoj4sGeBwXB7HdZloAn7evvEbTzoHQ/rZ5GrejculMTYDn0y26GUNC9CiTeG9uFwMfi8NFhPF044gnzG5imP6NTToMpkS5Es+JiUB/Mg4lJCPVvTRONxJ4R2/mltQYDTkUKvLWlbgBQFaoxO5rozmmPXnoOBfr0qjJj6fEYXmX18UJAHOaJMpc4+wZV4vaaMZm9SEReiEiJ2I5IEsMnVVDn65uy2qASqUktwCgoiOSTV7vJ5KPWMAXBVFcOu1BLcEQ4ethJuco/MHTEHEwpWJHjYDJyPTqQifQNKhZw2RSwhbl8rCzCg1PLJF6+TnqpHFANUvFRH6b1ZyGRgG3eRnmoAoPvyIOvy05hweqg/3cHT2+9HpZRTf7qD3Tsepq6pnfJNRWLDl53CUq7lAYArLa9RXdMk7n2+TBDFgKhSyYVvf7wi/vRLn7B/92Y6uvtJTdIxMupk28YCevtuiPbJKcHpnsbnF6ne+QjGxlYeXZ8nFm596yaA2Shb0ml45MBTwl9/2/iho1dQqxTE67XCuc6rXBse55zJzKRrmrU5KaJj0sPImFP45nwPX313ibRkPbZxFxtL70YQBGFZx/Gg1cGO6nqq9p+i9aKZKLWSkqIMMWt1PLZxF57pWUbtLuqa2lHIBbH57CXxwAuPcfSNCmo/b6NvcFTc904z1y32JXdG/gh1RMvuC0wr1AqaFrsElUDHrZ4uMl9+U6/yP9cd/wMZ2nU8I3Z10QAAAABJRU5ErkJggg==">
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=2.2">
+    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($_login_base) ?>/favicon.ico?v=2.2">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=2.2">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=2.2">
+    <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png?v=2.2">
+    <link rel="icon" type="image/png" href="<?= htmlspecialchars($_asset_base) ?>/img/petron_logo.png?v=2.2">
+    <link rel="shortcut icon" type="image/png" href="<?= htmlspecialchars($_asset_base) ?>/img/petron_logo.png?v=2.2">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico?v=2.2">
+    
+    <!-- ── Apple Touch & Chrome Android App Icons (Circle Shortcut & Homescreen) ── -->
+    <link rel="apple-touch-icon" sizes="180x180" href="<?= htmlspecialchars($_asset_base) ?>/img/petron_logo.png?v=2.2">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2.2">
+    <link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png?v=2.2">
+    <link rel="icon" type="image/png" sizes="512x512" href="android-chrome-512x512.png?v=2.2">
+    <link rel="manifest" href="manifest.json?v=2.2">
+
+    <title>Login | Station MS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Great+Vibes&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">

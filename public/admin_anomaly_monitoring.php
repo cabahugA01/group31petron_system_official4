@@ -274,7 +274,7 @@ include __DIR__ . '/../partials/header.php';
                                         <?php echo ucfirst($anomaly['status']); ?>
                                     </span>
                                 </td>
-                                <td><?php echo date('M d, H:i', strtotime($anomaly['created_at'])); ?></td>
+                                <td><?php echo date('M d, h:i A', strtotime($anomaly['created_at'])); ?></td>
                                 <td><?php echo htmlspecialchars($anomaly['created_by_name'] ?? 'System'); ?></td>
                                 <td>
                                     <div style="display: flex; flex-direction: column; gap: 5px;">

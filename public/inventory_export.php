@@ -40,7 +40,7 @@ try {
     $output = fopen('php://output', 'w');
     
     // Write header
-    fputcsv($output, ['Inventory Report - ' . date('Y-m-d H:i:s')]);
+    fputcsv($output, ['Inventory Report - ' . date('M d, Y h:i A')]);
     fputcsv($output, []);
     
     // Fuel Inventory
@@ -87,7 +87,7 @@ try {
             $request['product_name'],
             $request['quantity'],
             $request['staff_name'],
-            date('M j, Y H:i', strtotime($request['created_at'])),
+            date('M j, Y h:i A', strtotime($request['created_at'])),
             ucfirst($request['status'])
         ]);
     }

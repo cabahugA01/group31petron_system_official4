@@ -398,7 +398,7 @@ if (in_array($export, ['excel', 'csv'])) {
                 '₱' . number_format($r['amount_difference'], 2),
                 $r['adjustment_reason'],
                 $r['adjusted_by_name'],
-                date('M d, Y H:i', strtotime($r['adjustment_date']))
+                date('M d, Y h:i A', strtotime($r['adjustment_date']))
             ]);
         }
     }

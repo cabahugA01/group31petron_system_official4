@@ -859,7 +859,7 @@ include __DIR__ . '/../partials/header.php';
                                             <?php echo ucfirst($service_status_display); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo date('M j, Y H:i', strtotime($service['updated_at'] ?? ($service['updated_at'] ?? null))); ?></td>
+                                    <td><?php echo date('M j, Y h:i A', strtotime($service['updated_at'] ?? ($service['updated_at'] ?? null))); ?></td>
                                     <td>
                                         <div class="action-buttons">
                                             <button class="btn-icon edit" onclick="editService(<?php echo $service['id']; ?>)">

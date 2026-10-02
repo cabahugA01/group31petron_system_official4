@@ -262,7 +262,7 @@ function exportToPDF($data, $filename, $title) {
 </head>
 <body>
     <h1>' . $title . '</h1>
-    <p>Generated on: ' . date('Y-m-d H:i:s') . '</p>
+    <p>Generated on: ' . date('M d, Y h:i A') . '</p>
     <table>';
     
     // Headers

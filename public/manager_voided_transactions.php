@@ -119,7 +119,7 @@ if(in_array($export,['excel','csv'])) {
     else { header('Content-Type: text/csv; charset=utf-8'); header("Content-Disposition: attachment; filename=\"{$fn}.csv\""); }
     $out=fopen('php://output','w');
     fputcsv($out,['Void ID','Transaction ID','Customer','Type','Amount','Void Reason','Voided By','Void Date']);
-    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y H:i',strtotime($r['void_date']))]);
+    foreach($rows as $r) fputcsv($out,['VOID-'.$r['void_id'],$r['transaction_id'],$r['customer'],ucwords(str_replace('_',' ',$r['transaction_type'])),'₱'.number_format($r['amount'],2),$r['void_reason'],$r['voided_by_name'],date('M d, Y h:i A',strtotime($r['void_date']))]);
     fclose($out); exit;
 }
 

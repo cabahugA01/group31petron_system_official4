@@ -50,7 +50,6 @@ if (!function_exists('customer_ensure_optional_columns')) {
             'contact_number'         => "VARCHAR(50) NULL DEFAULT NULL",
             'address'                => "TEXT NULL DEFAULT NULL",
             'email'                  => "VARCHAR(100) NULL DEFAULT NULL",
-            'customer_type'          => "VARCHAR(30) NOT NULL DEFAULT 'walk-in'",
             'status'                 => "VARCHAR(30) NOT NULL DEFAULT 'active'",
             'vehicle_plate'          => "VARCHAR(50) NULL DEFAULT NULL",
             'vehicle_make'           => "VARCHAR(100) NULL DEFAULT NULL",
@@ -90,8 +89,12 @@ if (!function_exists('customer_ensure_optional_columns')) {
             }
         }
 
+        // Permanently drop customer_type column if it exists in customers or customer_requests
         try {
-            $pdo->exec("ALTER TABLE customers MODIFY COLUMN customer_type VARCHAR(30) NOT NULL DEFAULT 'walk-in'");
+            $pdo->exec("ALTER TABLE customers DROP COLUMN customer_type");
+        } catch (Exception $e) {}
+        try {
+            $pdo->exec("ALTER TABLE customer_requests DROP COLUMN customer_type");
         } catch (Exception $e) {}
 
         try {
@@ -145,7 +148,6 @@ if (!function_exists('customer_ensure_request_table')) {
                     last_name VARCHAR(100) NOT NULL,
                     contact_number VARCHAR(50) NOT NULL,
                     address TEXT NULL DEFAULT NULL,
-                    customer_type VARCHAR(30) NOT NULL DEFAULT 'walk-in',
                     vehicle_plate VARCHAR(50) NULL DEFAULT NULL,
                     vehicle_make VARCHAR(100) NULL DEFAULT NULL,
                     vehicle_model VARCHAR(100) NULL DEFAULT NULL,
@@ -258,14 +260,17 @@ if (!function_exists('customer_contact_expr')) {
 
 if (!function_exists('customer_type_expr')) {
     function customer_type_expr(PDO $pdo, string $alias = 'c'): string {
-        $type = customer_expr_col($pdo, $alias, 'customer_type');
-        if ($type === "NULL") {
-            return "'walk-in'";
+        $hasType = customer_has_column($pdo, 'type');
+        $hasCredit = customer_has_column($pdo, 'credit_limit');
+        $conditions = [];
+        if ($hasType) {
+            $conditions[] = "LOWER(COALESCE({$alias}.type, '')) = 'credit'";
         }
-        return "CASE
-            WHEN LOWER(COALESCE($type,'')) IN ('walk-in', 'regular', 'credit', 'fleet', 'corporate') THEN LOWER(COALESCE($type,''))
-            ELSE 'walk-in'
-        END";
+        if ($hasCredit) {
+            $conditions[] = "COALESCE({$alias}.credit_limit, 0) > 0";
+        }
+        $creditCheck = $conditions ? implode(' OR ', $conditions) : '1=0';
+        return "CASE WHEN ($creditCheck) THEN 'credit' ELSE 'regular' END";
     }
 }
 

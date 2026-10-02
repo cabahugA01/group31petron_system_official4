@@ -235,7 +235,7 @@ if (in_array($export, ['excel', 'csv', 'pdf'])) {
             echo '<style>body{font-family:Arial,sans-serif;margin:20px}h1{color:#002F70}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:11px}th{background:#002F70;color:#fff}tr:nth-child(even){background:#f9f9f9}.header-info{margin:15px 0;font-size:13px}.high{color:#dc3545;font-weight:700}.ok{color:#28a745}</style>';
             echo '</head><body>';
             echo '<h1>Fuel Reconciliation Report</h1>';
-            echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('Y-m-d H:i:s') . '</div>';
+            echo '<div class="header-info"><strong>Station ID:</strong> ' . $station_id . ' | <strong>Period:</strong> ' . $date_from . ' to ' . $date_to . ' | <strong>Generated:</strong> ' . date('M d, Y h:i A') . '</div>';
             echo '<table><thead><tr><th>ID</th><th>Date</th><th>Fuel</th><th>Expected</th><th>Actual</th><th>Variance</th><th>%</th><th>Status</th><th>Resolved By</th></tr></thead><tbody>';
             foreach ($export_data as $v) {
                 $cls = abs($v['variance_percent']) > 5 ? 'high' : 'ok';

@@ -58,7 +58,6 @@ function staff_customer_report_query(array $filters, array $extra = []): string 
     return http_build_query(array_merge([
         'date_start' => $filters['date_start'],
         'date_end' => $filters['date_end'],
-        'customer_type' => $filters['customer_type'],
         'transaction_type' => $filters['transaction_type'],
         'staff_id' => $filters['staff_id'] ?: 'all',
     ], $extra));
@@ -425,14 +424,6 @@ require_once __DIR__ . '/../partials/header.php';
         <div class="filter-group">
             <label for="date_end">To</label>
             <input type="date" id="date_end" name="date_end" value="<?= staff_customer_report_h($filters['date_end']) ?>" required>
-        </div>
-        <div class="filter-group">
-            <label for="customer_type">Customer Type</label>
-            <select id="customer_type" name="customer_type">
-                <option value="all" <?= $filters['customer_type'] === 'all' ? 'selected' : '' ?>>All Customers</option>
-                <option value="walkin" <?= $filters['customer_type'] === 'walkin' ? 'selected' : '' ?>>Walk-in</option>
-                <option value="registered" <?= $filters['customer_type'] === 'registered' ? 'selected' : '' ?>>Registered</option>
-            </select>
         </div>
         <div class="filter-group">
             <label for="transaction_type">Transaction Type</label>

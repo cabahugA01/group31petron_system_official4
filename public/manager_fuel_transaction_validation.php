@@ -881,7 +881,7 @@ if (in_array($export, ['excel', 'pdf'])) {
         $shift_display = !empty($tx['shift_name']) ? $tx['shift_name'] : (strtolower($tx['shift_period'] ?? '') === 'second' ? 'Second Shift' : ($tx['shift_period'] ?? '—'));
         $rows_fmt[] = [
             $tx['transaction_id'],
-            date('M d, Y H:i', strtotime($tx['transaction_date'])),
+            date('M d, Y h:i A', strtotime($tx['transaction_date'])),
             $shift_display,
             $tx['fuel_type'],
             number_format($tx['previous_reading'], 2),
@@ -892,7 +892,7 @@ if (in_array($export, ['excel', 'pdf'])) {
             '₱' . number_format($tx['total_amount'], 2),
             $tx['staff_name'] ?? '—',
             getStatusLabel($tx['status'] ?? ''),
-            $tx['validated_at'] ? date('M d, Y H:i', strtotime($tx['validated_at'])) : '—',
+            $tx['validated_at'] ? date('M d, Y h:i A', strtotime($tx['validated_at'])) : '—',
             $tx['reject_reason'] ?? '—'
         ];
     }
@@ -979,7 +979,7 @@ body.sidebar-collapsed .modal,
     if ($export === 'pdf') {
         header('Content-Type: text/html; charset=UTF-8');
         $logo_url = '../assets/img/Petron%20Logo.png';
-        $generated = date('M d, Y H:i');
+        $generated = date('M d, Y h:i A');
         
         $tbody = '';
         foreach ($transactions as $tx) {

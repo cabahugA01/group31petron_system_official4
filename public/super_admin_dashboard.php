@@ -353,13 +353,27 @@ include __DIR__ . '/../partials/header.php';
     display: grid;
     gap: 18px;
     margin-bottom: 18px;
+    min-width: 0;
 }
 .dev-row-2 {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 @media (max-width: 991px) {
     .dev-row-2 {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+.dev-row-3 {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
+}
+@media (max-width: 1100px) {
+    .dev-row-3 {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+}
+@media (max-width: 768px) {
+    .dev-row-3 {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -371,6 +385,9 @@ include __DIR__ . '/../partials/header.php';
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .dev-panel-header {
@@ -391,13 +408,16 @@ include __DIR__ . '/../partials/header.php';
 /* table-layout: fixed enforces exact width distribution, preventing cutoffs */
 .dev-inner-table {
     width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     border-collapse: collapse;
     font-size: 13px;
     table-layout: fixed !important;
+    box-sizing: border-box !important;
 }
 
 .dev-inner-table th {
-    padding: 9px 12px;
+    padding: 10px 14px;
     text-align: left;
     font-size: 11px;
     font-weight: 800;
@@ -406,16 +426,17 @@ include __DIR__ . '/../partials/header.php';
     letter-spacing: 0.4px;
     background: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
-    box-sizing: border-box;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
 }
 
 .dev-inner-table td {
-    padding: 9px 12px;
+    padding: 10px 14px;
     color: #1e293b;
     border-bottom: 1px solid #f1f5f9;
     font-size: 12.5px;
     vertical-align: middle;
-    box-sizing: border-box;
+    box-sizing: border-box !important;
 }
 
 .dev-inner-table tr:last-child td {
@@ -433,12 +454,39 @@ include __DIR__ . '/../partials/header.php';
 .badge-orange { background: #fff7ed; color: #c2410c; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 
 /* ── Resource Bars ────────────────────────────────────────────────── */
-.res-bar-wrap { display: flex; align-items: center; gap: 10px; }
-.res-bar-track { flex: 1; height: 7px; background: #e2e8f0; border-radius: 10px; overflow: hidden; }
-.res-bar-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, #0057b8, #00264D); }
+.res-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+.res-bar-track {
+    flex: 1 1 auto;
+    min-width: 50px;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.res-bar-fill {
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #0057b8, #00264D);
+    transition: width 0.3s ease;
+}
 .res-bar-fill.warn { background: linear-gradient(90deg, #f59e0b, #d97706); }
 .res-bar-fill.crit { background: linear-gradient(90deg, #ef4444, #dc2626); }
-.res-bar-pct { font-size: 12px; font-weight: 800; color: #00264D; min-width: 34px; text-align: right; }
+.res-bar-pct {
+    font-size: 12px;
+    font-weight: 800;
+    color: #00264D;
+    min-width: 44px;
+    text-align: right;
+    flex: 0 0 44px;
+    white-space: nowrap;
+}
 
 /* ── Quick Actions ────────────────────────────────────────────────── */
 .qa-btn {
@@ -628,15 +676,15 @@ include __DIR__ . '/../partials/header.php';
             <div class="dev-panel-header">
                 <i class="fas fa-heartbeat"></i> System Health
             </div>
-            <table class="dev-inner-table">
+            <table class="dev-inner-table no-min-width">
                 <colgroup>
-                    <col style="width: 65%;">
-                    <col style="width: 35%;">
+                    <col style="width: 58%;">
+                    <col style="width: 42%;">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style="width: 65%;">Component</th>
-                        <th style="width: 35%; text-align: right;">Status</th>
+                        <th style="width: 58%;">Component</th>
+                        <th style="width: 42%; text-align: right;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -665,15 +713,15 @@ include __DIR__ . '/../partials/header.php';
             <div class="dev-panel-header">
                 <i class="fas fa-chart-bar"></i> Resource Usage
             </div>
-            <table class="dev-inner-table">
+            <table class="dev-inner-table no-min-width">
                 <colgroup>
-                    <col style="width: 40%;">
-                    <col style="width: 60%;">
+                    <col style="width: 42%;">
+                    <col style="width: 58%;">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style="width: 40%;">Resource</th>
-                        <th style="width: 60%;">Usage</th>
+                        <th style="width: 42%;">Resource</th>
+                        <th style="width: 58%; text-align: right;">Usage</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -682,7 +730,7 @@ include __DIR__ . '/../partials/header.php';
                         <td>
                             <div class="res-bar-wrap">
                                 <div class="res-bar-track">
-                                    <div class="res-bar-fill <?php echo $cpu_usage>=80?'crit':($cpu_usage>=60?'warn':''); ?>" style="width:<?php echo $cpu_usage; ?>%"></div>
+                                    <div class="res-bar-fill <?php echo $cpu_usage>=80?'crit':($cpu_usage>=60?'warn':''); ?>" style="width:<?php echo min(100, max(0, $cpu_usage)); ?>%"></div>
                                 </div>
                                 <div class="res-bar-pct"><?php echo $cpu_usage; ?>%</div>
                             </div>
@@ -693,7 +741,7 @@ include __DIR__ . '/../partials/header.php';
                         <td>
                             <div class="res-bar-wrap">
                                 <div class="res-bar-track">
-                                    <div class="res-bar-fill <?php echo $memory_usage>=80?'crit':($memory_usage>=60?'warn':''); ?>" style="width:<?php echo $memory_usage; ?>%"></div>
+                                    <div class="res-bar-fill <?php echo $memory_usage>=80?'crit':($memory_usage>=60?'warn':''); ?>" style="width:<?php echo min(100, max(0, $memory_usage)); ?>%"></div>
                                 </div>
                                 <div class="res-bar-pct"><?php echo $memory_usage; ?>%</div>
                             </div>
@@ -704,7 +752,7 @@ include __DIR__ . '/../partials/header.php';
                         <td>
                             <div class="res-bar-wrap">
                                 <div class="res-bar-track">
-                                    <div class="res-bar-fill <?php echo $storage_usage>=80?'crit':($storage_usage>=60?'warn':''); ?>" style="width:<?php echo $storage_usage; ?>%"></div>
+                                    <div class="res-bar-fill <?php echo $storage_usage>=80?'crit':($storage_usage>=60?'warn':''); ?>" style="width:<?php echo min(100, max(0, $storage_usage)); ?>%"></div>
                                 </div>
                                 <div class="res-bar-pct"><?php echo $storage_usage; ?>%</div>
                             </div>
@@ -712,7 +760,11 @@ include __DIR__ . '/../partials/header.php';
                     </tr>
                     <tr>
                         <td><i class="fas fa-database" style="color:#d97706;margin-right:7px;"></i> Database Size</td>
-                        <td style="text-align: right;"><strong style="color:#00264D; font-size: 13.5px;"><?php echo htmlspecialchars($db_size_formatted); ?></strong></td>
+                        <td style="text-align: right;">
+                            <span class="badge-blue" style="font-size: 12px; font-weight: 800; padding: 4px 12px; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fas fa-hdd" style="font-size: 10px;"></i> <?php echo htmlspecialchars($db_size_formatted); ?>
+                            </span>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -728,7 +780,7 @@ include __DIR__ . '/../partials/header.php';
             <div class="dev-panel-header">
                 <i class="fas fa-database"></i> Database Summary
             </div>
-            <table class="dev-inner-table">
+            <table class="dev-inner-table no-min-width">
                 <colgroup>
                     <col style="width: 50%;">
                     <col style="width: 50%;">
@@ -769,15 +821,15 @@ include __DIR__ . '/../partials/header.php';
                 <span style="font-size:11px;opacity:0.85;margin-left:auto;font-weight:600;text-transform:none;"><?php echo $active_modules_count; ?> Enabled</span>
             </div>
             <div class="dev-scroll-wrap" style="max-height: 250px;">
-                <table class="dev-inner-table">
+                <table class="dev-inner-table no-min-width">
                     <colgroup>
-                        <col style="width: 65%;">
-                        <col style="width: 35%;">
+                        <col style="width: 60%;">
+                        <col style="width: 40%;">
                     </colgroup>
                     <thead>
                         <tr>
-                            <th style="width: 65%;">Module</th>
-                            <th style="width: 35%; text-align: right;">Status</th>
+                            <th style="width: 60%;">Module</th>
+                            <th style="width: 40%; text-align: right;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -803,7 +855,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
 
     <!-- ── Row 3: Recent Activities + System Alerts + Quick Actions ── -->
-    <div class="dev-row" style="grid-template-columns: 1.6fr 1fr 0.8fr;">
+    <div class="dev-row dev-row-3">
 
         <!-- Recent System Activities (Compressed Columns - Activity Is NEVER Cut Off) -->
         <div class="dev-panel">
@@ -812,7 +864,7 @@ include __DIR__ . '/../partials/header.php';
                 <span style="font-size:11px;opacity:0.85;margin-left:auto;font-weight:600;text-transform:none;">(Last 8 Records)</span>
             </div>
             <div class="dev-scroll-wrap" style="max-height: 320px;">
-                <table class="dev-inner-table">
+                <table class="dev-inner-table no-min-width">
                     <colgroup>
                         <col style="width: 140px;">
                         <col style="width: 85px;">
@@ -856,7 +908,7 @@ include __DIR__ . '/../partials/header.php';
                 <i class="fas fa-exclamation-triangle"></i> System Alerts
             </div>
             <div class="dev-scroll-wrap" style="max-height: 320px;">
-                <table class="dev-inner-table">
+                <table class="dev-inner-table no-min-width">
                     <colgroup>
                         <col style="width: 72%;">
                         <col style="width: 28%;">

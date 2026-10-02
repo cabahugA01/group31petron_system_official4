@@ -543,7 +543,7 @@ try {
     $fi_lookup = [];
     $fi_lookup_by_id = [];
     $fi_status_by_id = [];
-    $s = $pdo->prepare("SELECT id, fuel_type, ugt_no, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ?");
+    $s = $pdo->prepare("SELECT id, fuel_type, ugt_no, current_level, current_stock, capacity, price_per_liter, latest_calibration, status, last_updated, reorder_level, critical_level FROM fuel_inventory WHERE station_id = ? ORDER BY CAST(REGEXP_REPLACE(COALESCE(ugt_no,'0'), '[^0-9]', '') AS UNSIGNED) ASC, id ASC");
     $s->execute([$target_sid]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -658,24 +658,63 @@ try {
     } catch (Exception $e) {}
 
     // Preload pumps for each tank and UGT to compute pump counts
-    $pumps_by_tank = [];
-    $pumps_by_ugt = [];
+    // Keyed by fuel_inventory record id for exact 1:1 matching (same logic as fuel management)
+    $pumps_by_fi_id = [];
     try {
-        $p_stmt = $pdo->prepare("SELECT id, tank_id, ugt_no, fuel_type_id FROM fuel_pumps WHERE station_id = ?");
+        // Build a lookup: fi_id => [pumps] using fuel_type_id + ugt_no matching
+        // This mirrors fetch_pumps_for_fuel_product() to stay in sync with fuel management
+        $fi_ft_map = []; // fi_id => [fuel_type_id, ugt_no]
+        foreach ($fi_raw as $_r) {
+            $fi_ft_map[(int)$_r['id']] = [
+                'fuel_type_id' => (int)($_r['fuel_type_id'] ?? 0),
+                'ugt_no'       => trim($_r['ugt_no'] ?? ''),
+            ];
+        }
+
+        $p_stmt = $pdo->prepare("SELECT id, tank_id, ugt_no, fuel_type_id, pump_number
+                                  FROM fuel_pumps
+                                  WHERE station_id = ?
+                                    AND LOWER(COALESCE(status,'active')) = 'active'");
         $p_stmt->execute([$target_sid]);
-        foreach ($p_stmt->fetchAll(PDO::FETCH_ASSOC) as $pr) {
-            if (!empty($pr['tank_id'])) {
-                $pumps_by_tank[(int)$pr['tank_id']][] = $pr;
-            }
-            $u_clean = strtolower(trim($pr['ugt_no'] ?? ''));
-            if ($u_clean) {
-                $pumps_by_ugt[$u_clean][] = $pr;
-                $u_num = preg_replace('/[^0-9]/', '', $u_clean);
-                if ($u_num) {
-                    $pumps_by_ugt['ugt_' . (int)$u_num][] = $pr;
-                    $pumps_by_ugt['ugt #' . (int)$u_num][] = $pr;
-                    $pumps_by_ugt['ugt-' . (int)$u_num][] = $pr;
-                    $pumps_by_ugt['ugt-' . sprintf('%02d', (int)$u_num)][] = $pr;
+        $all_pumps = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($fi_ft_map as $_fi_id => $_fi_info) {
+            $_ft_id  = $_fi_info['fuel_type_id'];
+            $_ugt    = strtolower(trim($_fi_info['ugt_no']));
+            $_ugt_num = (int)preg_replace('/[^0-9]/', '', $_ugt);
+
+            $seen_pump_ids = [];
+            foreach ($all_pumps as $pr) {
+                $pr_id = (int)$pr['id'];
+                if (isset($seen_pump_ids[$pr_id])) continue;
+
+                $matched = false;
+                // Direct match by tank_id (guarantees exact 1:1 match with fuel management)
+                if (!empty($pr['tank_id']) && (int)$pr['tank_id'] === $_fi_id) {
+                    $matched = true;
+                }
+                // Match by fuel_type_id
+                if (!$matched && $_ft_id && (int)$pr['fuel_type_id'] === $_ft_id) {
+                    $matched = true;
+                }
+                // Match by ugt_no (canonical number comparison)
+                if (!$matched && $_ugt_num > 0) {
+                    $pr_ugt_num = (int)preg_replace('/[^0-9]/', '', strtolower(trim($pr['ugt_no'] ?? '')));
+                    if ($pr_ugt_num && $pr_ugt_num === $_ugt_num) {
+                        $matched = true;
+                    }
+                }
+                // Match by pump_number pattern (e.g. "Diesel 1", "UGT-01")
+                if (!$matched && $_ugt_num > 0) {
+                    $pn = strtoupper(trim($pr['pump_number'] ?? ''));
+                    if (preg_match('/UGT[-_ #]*0*' . $_ugt_num . '\b/i', $pn)) {
+                        $matched = true;
+                    }
+                }
+
+                if ($matched) {
+                    $pumps_by_fi_id[$_fi_id][] = $pr;
+                    $seen_pump_ids[$pr_id] = true;
                 }
             }
         }
@@ -725,13 +764,8 @@ try {
             $price = (float)$price_lookup[$ft_key];
         }
 
-        // Pump count computation
-        $p_count = 0;
-        if (isset($pumps_by_tank[$r_id])) {
-            $p_count = count($pumps_by_tank[$r_id]);
-        } elseif ($ugt_key && isset($pumps_by_ugt[$ugt_key])) {
-            $p_count = count($pumps_by_ugt[$ugt_key]);
-        }
+        // Pump count — directly from the deduplicated fuel management lookup
+        $p_count = count($pumps_by_fi_id[$r_id] ?? []);
 
         // Pending approval check
         $app = null;
@@ -769,6 +803,14 @@ try {
             'pump_count'     => $p_count
         ];
     }
+
+    // Sort by UGT number (numeric) so display order matches Fuel Management
+    usort($fuel_products, function($a, $b) {
+        $an = (int)preg_replace('/[^0-9]/', '', $a['ugt_no'] ?? '');
+        $bn = (int)preg_replace('/[^0-9]/', '', $b['ugt_no'] ?? '');
+        return $an - $bn;
+    });
+
 } catch (Exception $e) {
     $fuel_products = [];
     error_log('[admin_set_prices] fuel error: ' . $e->getMessage());
@@ -1889,7 +1931,7 @@ table.pricing-table tbody tr:hover {
                         <td style="vertical-align:middle;text-align:center;">
                             <?php if (!empty($f['last_updated'])): ?>
                                 <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?php echo date('M d, Y', strtotime($f['last_updated'])); ?></div>
-                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('H:i', strtotime($f['last_updated'])); ?></div>
+                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($f['last_updated'])); ?></div>
                             <?php else: ?>
                                 <span style="color:#94a3b8;font-size:12px;">&mdash;</span>
                             <?php endif; ?>
@@ -2146,7 +2188,7 @@ table.pricing-table tbody tr:hover {
                         <td style="vertical-align:middle;text-align:center;padding:8px 4px;">
                             <?php if (!empty($item['last_updated'])): ?>
                                 <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;"><?php echo date('M d, Y', strtotime($item['last_updated'])); ?></div>
-                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('H:i', strtotime($item['last_updated'])); ?></div>
+                                <div style="font-size:11px;color:#64748b;white-space:nowrap;"><?php echo date('h:i A', strtotime($item['last_updated'])); ?></div>
                             <?php else: ?>
                                 <span style="color:#94a3b8;font-size:12px;">&mdash;</span>
                             <?php endif; ?>
@@ -3734,6 +3776,10 @@ function openViewFuelModalAdmin(id) {
     if (cBody) cBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading configuration history...</td></tr>';
     var sBody = document.getElementById('adm_statusHistoryBody');
     if (sBody) sBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading status history...</td></tr>';
+    var vpBadge = document.getElementById('adm_view_pump_count_badge');
+    if (vpBadge) vpBadge.textContent = '...';
+    var vpCont = document.getElementById('adm_view_pumps_container');
+    if (vpCont) vpCont.innerHTML = '<div style="grid-column:1/-1;color:#64748b;font-size:13px;font-style:italic;padding:8px 0;"><i class="fas fa-spinner fa-spin"></i> Loading assigned pumps...</div>';
 
     fetch('admin_set_prices_handler.php?action=get_fuel_details_admin&id=' + id)
         .then(function(r) { return r.json(); })
@@ -3786,6 +3832,42 @@ function openViewFuelModalAdmin(id) {
             el = document.getElementById('adm_viewPriceRequestStatus'); if (el) el.textContent = (req && req.status === 'pending') ? 'Pending Admin Approval' : 'No Pending Request';
             el = document.getElementById('adm_viewLastUpdated'); if (el) el.textContent = lastUpd;
             el = document.getElementById('adm_viewUpdatedBy'); if (el) el.textContent = f.updated_by_name || f.last_updated_by || 'Admin';
+
+            // Populate Assigned Pumps Section (from Fuel Management)
+            var pumps = data.pumps || [];
+            if (vpBadge) vpBadge.textContent = pumps.length + (pumps.length === 1 ? ' Pump Assigned' : ' Pumps Assigned');
+            if (vpCont) {
+                if (pumps.length === 0) {
+                    vpCont.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:#64748b;font-size:13px;font-style:italic;background:#fff;border-radius:6px;border:1px dashed #cbd5e1;"><i class="fas fa-info-circle"></i> No pumps currently assigned to this fuel product in Fuel Management.</div>';
+                } else {
+                    vpCont.innerHTML = pumps.map(function(pm) {
+                        var isAct = (pm.status || 'Active').toLowerCase() === 'active';
+                        var bgBadge = isAct ? '#dcfce7' : '#fee2e2';
+                        var txtBadge = isAct ? '#166534' : '#991b1b';
+                        var borderBadge = isAct ? '#86efac' : '#fca5a5';
+                        var rawLabel = (pm.pump_number || pm.pump_name || ('Pump #' + pm.id)).trim();
+                        var meterLabel = rawLabel.replace(/\b[a-zA-Z]+/g, function(w) {
+                            var up = w.toUpperCase();
+                            if (up === 'XCS' || up === 'UGT' || up === 'UNL') return up;
+                            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+                        });
+                        return '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,0.04);">' +
+                            '<div style="display:flex;align-items:center;gap:8px;min-width:0;">' +
+                                '<div style="width:28px;height:28px;border-radius:6px;background:#e0f2fe;color:#002F6C;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">' +
+                                    '<i class="fas fa-gas-pump"></i>' +
+                                '</div>' +
+                                '<div>' +
+                                    '<strong style="font-size:13.5px;color:#0f172a;display:block;line-height:1.2;">' + meterLabel + '</strong>' +
+                                    '<span style="font-size:11px;color:#64748b;">Nozzle: ' + (pm.nozzle_number || 'Nozzle 1') + '</span>' +
+                                '</div>' +
+                            '</div>' +
+                            '<span style="background:' + bgBadge + ';color:' + txtBadge + ';border:1px solid ' + borderBadge + ';font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap;">' +
+                                (isAct ? 'Active' : 'Inactive') +
+                            '</span>' +
+                        '</div>';
+                    }).join('');
+                }
+            }
 
             // Pending request banner
             if (pendingCont) {
@@ -4632,6 +4714,7 @@ safeAddListener('addProductForm', 'submit', function(e) {
     fd.append('capacity',       capacity);
     fd.append('critical_level', critical);
     fd.append('reorder_level',  reorder);
+    fd.append('current_volume', parseFloat((document.getElementById('newCurrentVolume') || {}).value || 0) || 0);
     fd.append('status',         status);
     fd.append('remarks',        remarks);
     fd.append('num_pumps',      numPumps);
@@ -5278,6 +5361,21 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                 </div>
             </div>
 
+            <!-- Assigned Fuel Pumps / Nozzles (Synced with Fuel Management) -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:20px;width:100%;box-sizing:border-box;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+                    <h4 style="margin:0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-gas-pump" style="color:#002F6C;"></i> Assigned Pumps &amp; Nozzles (Fuel Management)
+                    </h4>
+                    <span id="adm_view_pump_count_badge" style="background:#e0f2fe;color:#0369a1;padding:2px 10px;border-radius:10px;font-size:11.5px;font-weight:700;">
+                        0 Pumps Assigned
+                    </span>
+                </div>
+                <div id="adm_view_pumps_container" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:8px;">
+                    <div style="grid-column:1/-1;color:#64748b;font-size:13px;font-style:italic;padding:6px 0;"><i class="fas fa-spinner fa-spin"></i> Loading assigned pumps...</div>
+                </div>
+            </div>
+
             <!-- Price Change History -->
             <div style="margin-bottom:20px;width:100%;box-sizing:border-box;">
                 <h4 style="margin:0 0 10px 0;font-size:14px;color:#002F6C;font-weight:700;display:flex;align-items:center;gap:8px;">
@@ -5716,6 +5814,22 @@ safeAddListener('addServiceForm', 'submit', function(e) {
                            style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
                            onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
                            placeholder="5000">
+                </div>
+            </div>
+
+            <!-- Row 3b: Current Volume (Liters) -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;">
+                <div>
+                    <label style="display:block;font-size:13.5px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:4px;">
+                        Current Volume (Liters) <span style="color:#94a3b8;font-weight:400;text-transform:none;">(Optional)</span>
+                    </label>
+                    <input type="number" id="newCurrentVolume" step="0.01" min="0" value="0"
+                           style="width:100%;padding:7px 12px;border:1.5px solid #d1d5db;border-radius:7px;font-size:15px;box-sizing:border-box;"
+                           onfocus="this.style.borderColor='#002F6C'" onblur="this.style.borderColor='#d1d5db'"
+                           placeholder="0.00">
+                    <small style="font-size:11px;color:#64748b;display:block;margin-top:2px;">
+                        <i class="fas fa-info-circle"></i> Initial fuel volume currently in the tank (0 = empty).
+                    </small>
                 </div>
             </div>
 

@@ -295,7 +295,7 @@ if (!empty($query)) {
             );
             $stmt->execute([$like, $like, $like, $audit_like_id]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $ts = date('M d, Y h:i A', strtotime($r['created_at']));
                 $results[] = [
                     'type'     => 'Audit Log',
                     'title'    => "[{$r['audit_ref']}] {$r['action']}",
@@ -324,7 +324,7 @@ if (!empty($query)) {
             );
             $stmt->execute([$like, $like, $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                $ts = date('M d, Y h:i A', strtotime($r['created_at']));
                 $results[] = [
                     'type'     => 'System Alert',
                     'title'    => "[{$r['alert_ref']}] Alert: {$r['action']}",
@@ -386,7 +386,7 @@ if (!empty($query)) {
                 $stmt->execute([$like, $like, $like, $like, $like, $like, $like, $like, $like, $txn_num, $like, $date_like]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                     $txn_id   = $r['transaction_id'] ?? ('#' . $r['id']);
-                    $ts       = date('M d, Y H:i', strtotime($r['created_at']));
+                    $ts       = date('M d, Y h:i A', strtotime($r['created_at']));
                     $txn_q    = urlencode($txn_id);
                     $amt_str  = $r['total_amount'] ? '₱' . number_format((float)$r['total_amount'], 2) : '';
                     $raw_type = strtolower((string)($r['transaction_type'] ?? ''));
@@ -446,7 +446,7 @@ if (!empty($query)) {
                 );
                 $stmt->execute([$like, $like, $like, $like, $like, $like, $ftxn_num, $date_like]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                    $ts       = date('M d, Y H:i', strtotime($r['transaction_date']));
+                    $ts       = date('M d, Y h:i A', strtotime($r['transaction_date']));
                     $fuel_ref = $r['transaction_id'] ?: ('#' . $r['id']);
                     $fuel_q   = urlencode($fuel_ref);
                     $amt_str  = $r['total_amount'] ? '₱' . number_format((float)$r['total_amount'], 2) : '';
@@ -1044,7 +1044,7 @@ if (!empty($query)) {
                 );
                 $stmt->execute([$like, $like, $station_id]);
                 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                    $ts = date('M d, Y H:i', strtotime($r['created_at']));
+                    $ts = date('M d, Y h:i A', strtotime($r['created_at']));
                     if ($is_admin) {
                         $report_link = 'admin_reports.php';
                     } elseif ($role === 'manager') {

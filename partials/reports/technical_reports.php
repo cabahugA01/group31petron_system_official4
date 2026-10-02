@@ -291,7 +291,7 @@ $available_modules = $stmt_modules->fetchAll(PDO::FETCH_COLUMN);
                                         <?php echo strtoupper($error['status']); ?>
                                     </span>
                                 </td>
-                                <td><?php echo date('Y-m-d H:i', strtotime($error['created_at'])); ?></td>
+                                <td><?php echo date('M d, Y h:i A', strtotime($error['created_at'])); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -351,7 +351,7 @@ $available_modules = $stmt_modules->fetchAll(PDO::FETCH_COLUMN);
                                 <td><?php echo gmdate('H:i:s', $health['uptime_seconds']); ?></td>
                                 <td><?php echo gmdate('H:i:s', $health['downtime_seconds']); ?></td>
                                 <td><?php echo number_format($health['response_time_ms'] ?? 0, 2); ?></td>
-                                <td><?php echo date('Y-m-d H:i', strtotime($health['last_check'])); ?></td>
+                                <td><?php echo date('M d, Y h:i A', strtotime($health['last_check'])); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

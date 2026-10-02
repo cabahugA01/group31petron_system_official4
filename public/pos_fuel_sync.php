@@ -371,7 +371,7 @@ $unsynced = getUnSyncedReconciliations($pdo, $station_id);
                     <?php foreach ($history as $item): ?>
                     <div class="history-item">
                         <div class="history-date">
-                            <?php echo date('M d, Y H:i', strtotime($item['synced_at'])); ?>
+                            <?php echo date('M d, Y h:i A', strtotime($item['synced_at'])); ?>
                         </div>
                         <div class="history-details">
                             <span class="fuel-type-badge" style="margin-right: 10px;"><?php echo htmlspecialchars($item['fuel_type']); ?></span>

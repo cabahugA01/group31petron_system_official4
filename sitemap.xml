@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <!-- Main Login / Landing Page -->
+  <url>
+    <loc>https://yangch-stationms.online/public/login.php</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Root redirect -->
+  <url>
+    <loc>https://yangch-stationms.online/</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+</urlset>

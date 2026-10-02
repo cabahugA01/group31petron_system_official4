@@ -440,7 +440,7 @@ include __DIR__ . '/../partials/header.php';
                         </div>
                         
                         <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #059669; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-check-circle"></i> Received on <?php echo date('M d, Y H:i', strtotime($batch['received_at'])); ?>
+                            <i class="fas fa-check-circle"></i> Received on <?php echo date('M d, Y h:i A', strtotime($batch['received_at'])); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>

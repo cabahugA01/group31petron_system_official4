@@ -531,7 +531,7 @@ include __DIR__ . '/../partials/header.php';
                                         </span>
                                     </td>
                                     <td><?php echo htmlspecialchars($access['ip_address'] ?? 'N/A'); ?></td>
-                                    <td><?php echo date('Y-m-d H:i:s', strtotime($access['created_at'])); ?></td>
+                                    <td><?php echo date('M d, Y h:i A', strtotime($access['created_at'])); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

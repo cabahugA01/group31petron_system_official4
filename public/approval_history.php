@@ -123,7 +123,7 @@ $rejected = $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE log_type='approva
           </td>
           <td style="padding:12px;"><?php echo htmlspecialchars($approval['entity_type'] ?? '-'); ?></td>
           <td style="padding:12px; font-size:12px; color:#666;">
-            <?php echo date('M d, Y H:i', strtotime($approval['created_at'])); ?>
+            <?php echo date('M d, Y h:i A', strtotime($approval['created_at'])); ?>
           </td>
         </tr>
         <?php endforeach; ?>

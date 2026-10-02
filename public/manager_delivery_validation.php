@@ -265,7 +265,7 @@ include __DIR__ . "/../partials/header.php";
               </td>
               <td><span class="afto-badge <?= $flag_cls ?>"><?= htmlspecialchars($flag) ?></span></td>
               <td><?= htmlspecialchars($po['validated_by_name'] ?? '—') ?></td>
-              <td style="font-size:12px;"><?= $po['delivery_validated_at'] ? date('M d, Y H:i', strtotime($po['delivery_validated_at'])) : '—' ?></td>
+              <td style="font-size:12px;"><?= $po['delivery_validated_at'] ? date('M d, Y h:i A', strtotime($po['delivery_validated_at'])) : '—' ?></td>
               <td style="font-size:12px;color:#6c757d;max-width:160px;"><?= htmlspecialchars($po['delivery_notes'] ?? '') ?: '<span style="color:#adb5bd;">—</span>' ?></td>
               <td>
                 <?php if ($po['stock_in_done']): ?>

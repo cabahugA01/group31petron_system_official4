@@ -511,7 +511,7 @@ try {
                             <tr>
                                 <td>
                                     <div class="timestamp">
-                                        <?php echo date('M d, Y H:i:s', strtotime($entry['performed_at'])); ?>
+                                        <?php echo date('M d, Y h:i:s A', strtotime($entry['performed_at'])); ?>
                                     </div>
                                 </td>
                                 <td>

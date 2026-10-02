@@ -242,12 +242,12 @@ function getAdjustmentTypeTextColor($type) {
                         <h4><i class="fas fa-clock"></i> Timestamps</h4>
                         <div class="info-row">
                             <span class="info-label">Recorded</span>
-                            <span class="info-value"><?php echo $adjustment['created_at'] ? date('M d, H:i', strtotime($adjustment['created_at'])) : 'N/A'; ?></span>
+                            <span class="info-value"><?php echo $adjustment['created_at'] ? date('M d, h:i A', strtotime($adjustment['created_at'])) : 'N/A'; ?></span>
                         </div>
                         <?php if ($adjustment['approved_at']): ?>
                         <div class="info-row">
                             <span class="info-label">Approved</span>
-                            <span class="info-value" style="color: #059669;"><?php echo date('M d, H:i', strtotime($adjustment['approved_at'])); ?></span>
+                            <span class="info-value" style="color: #059669;"><?php echo date('M d, h:i A', strtotime($adjustment['approved_at'])); ?></span>
                         </div>
                         <?php endif; ?>
                     </div>

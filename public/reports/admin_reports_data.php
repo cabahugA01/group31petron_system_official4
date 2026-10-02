@@ -2142,7 +2142,7 @@ if (!function_exists('getAdminReportData')) {
                 $c_params['filter_cname'] = '%' . $filter_cname . '%';
             }
             if (!empty($filter_ctype)) {
-                $c_where .= " AND (LOWER(COALESCE(c.customer_type, c.type, '')) LIKE LOWER(:filter_ctype)) ";
+                $c_where .= " AND (LOWER(COALESCE(c.type, '')) LIKE LOWER(:filter_ctype)) ";
                 $c_params['filter_ctype'] = '%' . $filter_ctype . '%';
             }
             if (!empty($filter_plate)) {
@@ -2161,7 +2161,7 @@ if (!function_exists('getAdminReportData')) {
                                  COALESCE(NULLIF(c.customer_id,''), CONCAT('CUST-', LPAD(c.id, 4, '0'))) as customer_id_code,
                                  c.name as customer_name,
                                  COALESCE(NULLIF(c.contact_number,''), NULLIF(c.phone,''), 'N/A') as contact_no,
-                                 COALESCE(NULLIF(c.customer_type,''), NULLIF(c.type,''), 'Walk-in') as customer_type,
+                                 COALESCE(NULLIF(c.type,''), 'cash') as billing_type,
                                  (SELECT COUNT(DISTINCT DATE(transaction_date)) FROM merchandise_transactions mt WHERE mt.customer_id = c.id) as total_visits,
                                  (SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.customer_id = c.id) as total_transactions,
                                  (SELECT COUNT(*) FROM merchandise_transactions mt WHERE mt.customer_id = c.id AND LOWER(COALESCE(mt.transaction_type,'')) IN ('job_order','service')) as total_job_orders,
@@ -3568,8 +3568,8 @@ function getAdminCustomerDetails(PDO $pdo, int $customer_id): array {
         }
     }
 
-    // 6. Accounts Receivable History (Credit/Fleet only)
-    $ctype = strtolower(trim($details['info']['customer_type'] ?? $details['info']['type'] ?? ''));
+    // 6. Accounts Receivable History (Credit only based on legacy type field)
+    $ctype = strtolower(trim($details['info']['type'] ?? ''));
     $ar_rows = [];
     if (str_contains($ctype, 'credit') || str_contains($ctype, 'fleet')) {
         $stmt_ar = $pdo->prepare(

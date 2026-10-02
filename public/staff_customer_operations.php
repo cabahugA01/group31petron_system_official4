@@ -64,7 +64,6 @@ function staff_customer_exprs(): array {
         'middle_name' => customer_middle_name_expr($pdo, 'c'),
         'last_name' => customer_last_name_expr($pdo, 'c'),
         'contact' => customer_contact_expr($pdo, 'c'),
-        'type' => customer_type_expr($pdo, 'c'),
         'status' => customer_status_expr($pdo, 'c'),
         'vehicle_plate' => customer_vehicle_expr($pdo, 'vehicle_plate', 'c'),
         'vehicle_make' => customer_vehicle_expr($pdo, 'vehicle_make', 'c'),
@@ -86,7 +85,6 @@ function staff_search_customers(): void {
     }
 
     $search = trim($_GET['search'] ?? $_GET['q'] ?? '');
-    $type = trim($_GET['type'] ?? '');
     $expr = staff_customer_exprs();
     $where = ["{$expr['status']} = 'active'"];
     $params = [];
@@ -96,10 +94,6 @@ function staff_search_customers(): void {
         $where[] = "({$expr['customer_id']} LIKE ? OR {$expr['display_name']} LIKE ? OR {$expr['contact']} LIKE ? OR {$expr['vehicle_plate']} LIKE ?)";
         $s = "%$search%";
         array_push($params, $s, $s, $s, $s);
-    }
-    if (in_array($type, ['walk-in', 'regular', 'credit'], true)) {
-        $where[] = "{$expr['type']} = ?";
-        $params[] = $type;
     }
 
     $stmt = $pdo->prepare("
@@ -111,7 +105,6 @@ function staff_search_customers(): void {
             {$expr['middle_name']} AS middle_name,
             {$expr['last_name']} AS last_name,
             {$expr['contact']} AS contact_number,
-            {$expr['type']} AS customer_type,
             {$expr['vehicle_plate']} AS plate_number,
             {$expr['vehicle_make']} AS vehicle_make,
             {$expr['vehicle_model']} AS vehicle_model,
@@ -138,13 +131,9 @@ function staff_request_new_customer(): void {
     $middleName = trim($_POST['middle_name'] ?? '');
     $lastName   = trim($_POST['last_name'] ?? '');
     $contact    = trim($_POST['contact_number'] ?? '');
-    $type       = trim($_POST['customer_type'] ?? 'walk-in');
 
     if ($firstName === '' || $lastName === '' || $contact === '') {
         throw new Exception('First name, last name, and contact number are required.');
-    }
-    if (!in_array($type, ['walk-in', 'regular', 'credit'], true)) {
-        $type = 'walk-in';
     }
 
     // ── Prevent Duplicate Submissions (double click, rapid retry) ──
@@ -182,7 +171,6 @@ function staff_request_new_customer(): void {
                 last_name,
                 contact_number,
                 address,
-                customer_type,
                 vehicle_plate,
                 vehicle_make,
                 vehicle_model,
@@ -190,7 +178,7 @@ function staff_request_new_customer(): void {
                 request_reason,
                 status,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
         ");
         $stmt->execute([
             $station_id,
@@ -200,7 +188,6 @@ function staff_request_new_customer(): void {
             $lastName,
             $contact,
             trim($_POST['address'] ?? ''),
-            $type,
             strtoupper(trim($_POST['plate_no'] ?? $_POST['vehicle_plate'] ?? '')),
             trim($_POST['vehicle_make'] ?? ''),
             trim($_POST['vehicle_model'] ?? ''),

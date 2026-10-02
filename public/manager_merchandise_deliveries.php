@@ -1053,7 +1053,7 @@ function dtFull(s) {
     var d = new Date(s.replace(' ','T'));
     if (isNaN(d.getTime())) return s;
     return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})
-         + ' ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+         + ' ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
 }
 
 

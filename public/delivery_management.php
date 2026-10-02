@@ -660,7 +660,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <div class="col-md-6">
                                             <strong>Supplier Invoice:</strong> <?= htmlspecialchars($delivery['supplier_invoice']) ?><br>
                                             <strong>Encoded By:</strong> <?= htmlspecialchars($delivery['encoded_by_name']) ?><br>
-                                            <strong>Encoded At:</strong> <?= date('M j, Y H:i', strtotime($delivery['encoded_at'])) ?>
+                                            <strong>Encoded At:</strong> <?= date('M j, Y h:i A', strtotime($delivery['encoded_at'])) ?>
                                         </div>
                                     </div>
                                     
@@ -673,7 +673,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <h6><i class="fas fa-edit me-2"></i>Step 1: Encode Delivery Receipt</h6>
                                                 <p class="mb-0">Auto-fetched data from PO #<?= $delivery['po_number'] ?>. Delivery receipt encoded successfully.</p>
                                                 <?php if ($delivery['encoded_at']): ?>
-                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['encoded_by_name'] ?> at <?= date('M j, H:i', strtotime($delivery['encoded_at'])) ?></small>
+                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['encoded_by_name'] ?> at <?= date('M j, h:i A', strtotime($delivery['encoded_at'])) ?></small>
                                                 <?php endif; ?>
                                             </div>
                                             
@@ -681,7 +681,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <h6><i class="fas fa-check-double me-2"></i>Step 2: Confirm Delivery</h6>
                                                 <p class="mb-0">Verify actual quantities vs ordered quantities. Check for shortages or excess.</p>
                                                 <?php if ($delivery['confirmed_at']): ?>
-                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['confirmed_by_name'] ?> at <?= date('M j, H:i', strtotime($delivery['confirmed_at'])) ?></small>
+                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['confirmed_by_name'] ?> at <?= date('M j, h:i A', strtotime($delivery['confirmed_at'])) ?></small>
                                                 <?php else: ?>
                                                     <button class="btn btn-sm btn-light" onclick="confirmDelivery(<?= $delivery['id'] ?>)">
                                                         <i class="fas fa-check me-1"></i>Confirm Delivery
@@ -693,7 +693,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <h6><i class="fas fa-boxes me-2"></i>Step 3: Update Inventory</h6>
                                                 <p class="mb-0">Automatic stock adjustment based on confirmed quantities.</p>
                                                 <?php if ($delivery['inventory_updated_at']): ?>
-                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['inventory_updated_by_name'] ?> at <?= date('M j, H:i', strtotime($delivery['inventory_updated_at'])) ?></small>
+                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['inventory_updated_by_name'] ?> at <?= date('M j, h:i A', strtotime($delivery['inventory_updated_at'])) ?></small>
                                                 <?php else: ?>
                                                     <button class="btn btn-sm btn-light" onclick="updateInventory(<?= $delivery['id'] ?>)">
                                                         <i class="fas fa-boxes me-1"></i>Update Inventory
@@ -717,7 +717,7 @@ $recent_deliveries = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <h6><i class="fas fa-lock me-2"></i>Step 5: Close Delivery</h6>
                                                 <p class="mb-0">Final step - complete workflow and update PO status.</p>
                                                 <?php if ($delivery['closed_at']): ?>
-                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['closed_by_name'] ?> at <?= date('M j, H:i', strtotime($delivery['closed_at'])) ?></small>
+                                                    <small><i class="fas fa-check me-1"></i>Completed by <?= $delivery['closed_by_name'] ?> at <?= date('M j, h:i A', strtotime($delivery['closed_at'])) ?></small>
                                                 <?php else: ?>
                                                     <button class="btn btn-sm btn-light" onclick="closeDelivery(<?= $delivery['id'] ?>)">
                                                         <i class="fas fa-lock me-1"></i>Close Delivery

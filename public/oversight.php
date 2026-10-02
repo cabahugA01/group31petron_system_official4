@@ -303,7 +303,7 @@ $displayReadings = array_slice($filteredReadings, 0, 50);
                         </td>
                         <td><?php echo htmlspecialchars($log['action']); ?></td>
                         <td><small><?php echo htmlspecialchars($log['details']); ?></small></td>
-                        <td><?php echo date('M d H:i', strtotime($log['created_at'])); ?></td>
+                        <td><?php echo date('M d, h:i A', strtotime($log['created_at'])); ?></td>
                     </tr>
                     <?php endforeach; ?>
                     <?php if(empty($auditLogs)): ?><tr><td colspan="4">No logs available.</td></tr><?php endif; ?>

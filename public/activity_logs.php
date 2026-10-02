@@ -194,7 +194,7 @@ require_once __DIR__ . '/../partials/header.php';
           <tr>
             <td>
               <?php echo date('M d, Y', strtotime($log['timestamp'])); ?><br>
-              <small><?php echo date('H:i:s', strtotime($log['timestamp'])); ?></small>
+              <small><?php echo date('h:i:s A', strtotime($log['timestamp'])); ?></small>
             </td>
             <td>
               <?php echo htmlspecialchars($log['user_name'] ?? 'System'); ?><br>

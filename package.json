@@ -1,0 +1,10 @@
+{
+  "name": "group31petron_system_official4",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Petron Station Management System",
+  "scripts": {
+    "start": "cd nodejs_service && npm start",
+    "dev": "cd nodejs_service && npm run dev"
+  }
+}

@@ -586,7 +586,7 @@ include __DIR__ . '/../partials/header.php';
                                 <?php echo ucfirst(htmlspecialchars($user['status'])); ?>
                             </span>
                         </td>
-                        <td><?php echo isset($user['last_login']) && $user['last_login'] ? date('M d, Y H:i', strtotime($user['last_login'])) : 'Never'; ?></td>
+                        <td><?php echo isset($user['last_login']) && $user['last_login'] ? date('M d, Y h:i A', strtotime($user['last_login'])) : 'Never'; ?></td>
                         <td>
                             <div class="action-buttons">
                                 <button class="action-btn view" onclick="viewUser(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars($user['name']); ?>', '<?php echo htmlspecialchars($user['username']); ?>', '<?php echo htmlspecialchars($user['role']); ?>', '<?php echo htmlspecialchars($user['station_name'] ?? 'Head Office'); ?>')" title="View">

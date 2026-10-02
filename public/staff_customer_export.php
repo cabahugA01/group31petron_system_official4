@@ -26,7 +26,6 @@ if (!customer_can_view_all_stations($role) && !$station_id) {
 
 // 1. Get filter inputs
 $search   = trim($_GET['search'] ?? '');
-$type     = trim($_GET['type'] ?? '');
 $status   = trim($_GET['status'] ?? '');
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo   = trim($_GET['date_to'] ?? '');
@@ -43,7 +42,6 @@ $firstNameExpr = customer_first_name_expr($pdo, 'c');
 $middleNameExpr = customer_middle_name_expr($pdo, 'c');
 $lastNameExpr = customer_last_name_expr($pdo, 'c');
 $contactExpr = customer_contact_expr($pdo, 'c');
-$typeExpr = customer_type_expr($pdo, 'c');
 $statusExpr = customer_status_expr($pdo, 'c');
 $registeredExpr = customer_registered_at_expr($pdo, 'c');
 
@@ -52,7 +50,6 @@ if ($search !== '') {
     $s = "%$search%";
     array_push($params, $s, $s, $s);
 }
-if ($type !== '' && $type !== 'registered') { $type = ''; }
 if ($status !== '') {
     $where[] = "$statusExpr = ?";
     $params[] = $status;
@@ -77,7 +74,6 @@ $stmt = $pdo->prepare("
         $middleNameExpr AS middle_name,
         $lastNameExpr AS last_name,
         $contactExpr AS contact_number,
-        $typeExpr AS customer_type,
         $statusExpr AS status,
         $registeredExpr AS registered_at,
         (
@@ -137,9 +133,9 @@ if ($format === 'csv') {
             $c['contact_number'],
             'Registered',
             $c['total_transactions'],
-            $c['last_transaction'] ? date('Y-m-d H:i', strtotime($c['last_transaction'])) : 'Never',
+            $c['last_transaction'] ? date('Y-m-d h:i A', strtotime($c['last_transaction'])) : 'Never',
             ucfirst($c['status']),
-            date('Y-m-d H:i', strtotime($c['registered_at'])),
+            date('Y-m-d h:i A', strtotime($c['registered_at'])),
         ]);
     }
     fclose($output);
@@ -162,7 +158,7 @@ if ($format === 'excel') {
     echo '<h1>PETRON CUSTOMER LIST REPORT</h1>';
     echo '<p><strong>Station Name:</strong> ' . htmlspecialchars($station_name) . '<br>';
     echo '<strong>Branch/Address:</strong> ' . htmlspecialchars($station_location) . '<br>';
-    echo '<strong>Export Date:</strong> ' . date('Y-m-d H:i:s') . '<br>';
+    echo '<strong>Export Date:</strong> ' . date('M d, Y h:i A') . '<br>';
     echo '<strong>Exported By:</strong> ' . htmlspecialchars($generated_by) . '</p>';
     
     echo '<table><thead><tr>';
@@ -176,9 +172,9 @@ if ($format === 'excel') {
         echo '<td>' . htmlspecialchars($c['contact_number']) . '</td>';
         echo '<td>Registered</td>';
         echo '<td>' . htmlspecialchars($c['total_transactions']) . '</td>';
-        echo '<td>' . ($c['last_transaction'] ? htmlspecialchars(date('Y-m-d H:i', strtotime($c['last_transaction']))) : 'Never') . '</td>';
+        echo '<td>' . ($c['last_transaction'] ? htmlspecialchars(date('Y-m-d h:i A', strtotime($c['last_transaction']))) : 'Never') . '</td>';
         echo '<td>' . htmlspecialchars(ucfirst($c['status'])) . '</td>';
-        echo '<td>' . htmlspecialchars(date('Y-m-d H:i', strtotime($c['registered_at']))) . '</td>';
+        echo '<td>' . htmlspecialchars(date('Y-m-d h:i A', strtotime($c['registered_at']))) . '</td>';
         echo '</tr>';
     }
     echo '</tbody></table></body></html>';
@@ -192,7 +188,6 @@ if ($format === 'pdf') {
     // Build filter summary text
     $filterSummary = [];
     if ($search !== '') $filterSummary[] = "Search: \"$search\"";
-    if ($type !== '') $filterSummary[] = "Registration: Registered";
     if ($status !== '') $filterSummary[] = "Status: " . ucfirst($status);
     if ($dateFrom !== '' && $dateTo !== '') {
         $filterSummary[] = "Date Registered: " . date('M d, Y', strtotime($dateFrom)) . " to " . date('M d, Y', strtotime($dateTo));

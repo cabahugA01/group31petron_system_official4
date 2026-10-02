@@ -308,7 +308,7 @@ $total_job_order_revenue = (float) adm_value($pdo, "
 $fi_raw    = [];
 $fi_lookup = [];
 try {
-    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY id ASC");
+    $s = $pdo->prepare("SELECT id, fuel_type, current_level, current_stock, capacity, price_per_liter, status, reorder_level, COALESCE(ugt_no,'') AS ugt_no FROM fuel_inventory WHERE station_id = ? AND LOWER(COALESCE(status,'active')) = 'active' ORDER BY CAST(REGEXP_REPLACE(COALESCE(ugt_no,'0'), '[^0-9]', '') AS UNSIGNED) ASC, id ASC");
     $s->execute([$station_id]);
     $fi_raw = $s->fetchAll(PDO::FETCH_ASSOC);
     foreach ($fi_raw as $row) {
@@ -1027,8 +1027,8 @@ if (adm_table_exists($pdo, 'inventory_logs')) {
     $m_logs = adm_rows($pdo, "
         SELECT COALESCE(NULLIF(il.reference_no,''), CONCAT('LOG-', LPAD(il.id, 4, '0'))) AS ref_no,
                COALESCE(
-                   NULLIF(p.name,''),
-                   NULLIF(m''),
+                   NULLIF(p.name, ''),
+                   NULLIF(msi.product_name, ''),
                    CONCAT('Product #', il.product_id)
                ) AS product_name,
                CASE
@@ -1201,7 +1201,7 @@ if ($station_id > 0) {
     );
 }
 $current_hour       = (int)date('H');
-$current_shift_name = ($current_hour >= 6 && $current_hour < 14) ? 'Shift 1 (06:00 - 14:00)' : 'Shift 2 (14:00 - 22:00)';
+$current_shift_name = ($current_hour >= 6 && $current_hour < 14) ? 'Shift 1 (06:00 AM - 02:00 PM)' : 'Shift 2 (02:00 PM - 10:00 PM)';
 
 // ── AJAX REAL-TIME POLLING RESPONSE ─────────────────────────────────────────
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
@@ -1238,6 +1238,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             'shift2_status_badge'  => adm_shift_badge_class($shift2_status),
             'shift1_fuel_sales'    => number_format($shift1_fuel_sales, 2),
             'shift2_fuel_sales'    => number_format($shift2_fuel_sales, 2),
+            'current_shift_name'   => $current_shift_name,
         ],
         'charts' => [
             'week_labels'          => $week_labels,
@@ -2513,7 +2514,7 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Current Operational Shift</span>
-                        <span class="adm-metric-value" style="color:var(--petron-blue);"><?= adm_h($current_shift_name) ?></span>
+                        <span class="adm-metric-value" style="color:var(--petron-blue);" id="op_current_shift"><?= adm_h($current_shift_name) ?></span>
                     </div>
                     <div class="adm-metric-item">
                         <span class="adm-metric-label">Shift 1 Fuel Sales</span>
@@ -2932,6 +2933,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (document.getElementById('pm_fleet')) document.getElementById('pm_fleet').innerHTML = '&#8369; ' + data.kpis.payment_fleet;
                 if (document.getElementById('pm_credit_acct')) document.getElementById('pm_credit_acct').innerHTML = '&#8369; ' + data.kpis.payment_credit_acct;
                 if (document.getElementById('op_active_staff') && data.kpis.active_staff_count !== undefined) document.getElementById('op_active_staff').textContent = data.kpis.active_staff_count + ' Active';
+                if (document.getElementById('op_current_shift') && data.kpis.current_shift_name !== undefined) document.getElementById('op_current_shift').textContent = data.kpis.current_shift_name;
 
                 // Shift Fuel Sales & Status — Fuel Management Overview & Branch Operations Status
                 if (document.getElementById('op_shift1_fuel') && data.kpis.shift1_fuel_sales !== undefined) document.getElementById('op_shift1_fuel').innerHTML = '&#8369; ' + data.kpis.shift1_fuel_sales;

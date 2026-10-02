@@ -311,7 +311,7 @@ include __DIR__ . '/../partials/header.php';
             <?php if($rec['status'] === 'finalized'): ?>
               <!-- Finalized Display -->
               <div class="ff-lock-notice">
-                FINALIZED & LOCKED on <?php echo date('M d, Y H:i', strtotime($rec['finalized_at'])); ?>
+                FINALIZED & LOCKED on <?php echo date('M d, Y h:i A', strtotime($rec['finalized_at'])); ?>
                 by <?php echo htmlspecialchars($rec['finalized_by_name']); ?>
               </div>
               

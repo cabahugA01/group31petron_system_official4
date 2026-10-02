@@ -6,10 +6,17 @@ ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
+<<<<<<< HEAD
 $host = "localhost";
 $dbname = "u261539219_petrondbs";
 $user = "u261539219_petron_pos";
 $pass = "P3tr0n@123"; // Replace with actual password
+=======
+$host   = getenv('DB_HOST')   ?: "localhost";
+$dbname = getenv('DB_NAME')   ?: "petron_pos_db_secure";
+$user   = getenv('DB_USER')   ?: "root";
+$pass   = getenv('DB_PASS') !== false ? getenv('DB_PASS') : ""; // XAMPP default is empty
+>>>>>>> acfca20dd920f4eb8b50b105d5951e0e47bcee2f
 
 try {
   $pdo = new PDO(
@@ -261,3 +268,22 @@ try {
 } catch (Throwable $e) {
     // Already exists or duplicate entry present
 }
+
+// ── Self-healing Fuel Pumps Tank Linkage Sync (Station 1253 & All Stations) ──
+try {
+    static $fuel_pumps_tank_synced = false;
+    if (!$fuel_pumps_tank_synced) {
+        $fuel_pumps_tank_synced = true;
+        $pdo->exec("
+            UPDATE fuel_pumps fp
+            JOIN fuel_inventory fi ON fi.station_id = fp.station_id 
+              AND (
+                (fi.fuel_type_id > 0 AND fi.fuel_type_id = fp.fuel_type_id)
+                OR (NULLIF(fp.ugt_no,'') IS NOT NULL AND LOWER(REPLACE(fi.ugt_no,'-','')) = LOWER(REPLACE(fp.ugt_no,'-','')))
+              )
+            SET fp.tank_id = fi.id
+            WHERE fp.tank_id IS NULL OR fp.tank_id = 0
+        ");
+    }
+} catch (Throwable $e) {}
+
