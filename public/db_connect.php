@@ -6,29 +6,79 @@ ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
-<<<<<<< HEAD
-$host = "localhost";
-$dbname = "u261539219_petrondbs";
-$user = "u261539219_petron_pos";
-$pass = "P3tr0n@123"; // Replace with actual password
-=======
-$host   = getenv('DB_HOST')   ?: "localhost";
-$dbname = getenv('DB_NAME')   ?: "petron_pos_db_secure";
-$user   = getenv('DB_USER')   ?: "root";
-$pass   = getenv('DB_PASS') !== false ? getenv('DB_PASS') : ""; // XAMPP default is empty
->>>>>>> acfca20dd920f4eb8b50b105d5951e0e47bcee2f
+// Auto-detect environment: Live Hosting vs. Localhost / XAMPP
+$is_live_hosting = (
+    (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'yangch-stationms.online') !== false) ||
+    (isset($_SERVER['SERVER_NAME']) && strpos($_SERVER['SERVER_NAME'], 'yangch-stationms.online') !== false) ||
+    (isset($_SERVER['DOCUMENT_ROOT']) && (strpos($_SERVER['DOCUMENT_ROOT'], 'u261539219') !== false || strpos($_SERVER['DOCUMENT_ROOT'], 'public_html') !== false))
+);
+
+$pdo_options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false
+];
+
+if ($is_live_hosting) {
+    $db_configs = [
+        [
+            'host'   => getenv('DB_HOST') ?: "localhost",
+            'dbname' => getenv('DB_NAME') ?: "u261539219_petrondbs",
+            'user'   => getenv('DB_USER') ?: "u261539219_petron_pos",
+            'pass'   => getenv('DB_PASS') !== false ? getenv('DB_PASS') : "P3tr0n@123",
+        ],
+        [
+            'host'   => "localhost",
+            'dbname' => "petron_pos_db_secure",
+            'user'   => "root",
+            'pass'   => "",
+        ]
+    ];
+} else {
+    $db_configs = [
+        [
+            'host'   => getenv('DB_HOST') ?: "localhost",
+            'dbname' => getenv('DB_NAME') ?: "petron_pos_db_secure",
+            'user'   => getenv('DB_USER') ?: "root",
+            'pass'   => getenv('DB_PASS') !== false ? getenv('DB_PASS') : "",
+        ],
+        [
+            'host'   => "localhost",
+            'dbname' => "u261539219_petrondbs",
+            'user'   => "u261539219_petron_pos",
+            'pass'   => "P3tr0n@123",
+        ]
+    ];
+}
+
+$pdo = null;
+$last_db_error = null;
+
+foreach ($db_configs as $cfg) {
+    try {
+        $pdo = new PDO(
+            "mysql:host={$cfg['host']};dbname={$cfg['dbname']};charset=utf8mb4",
+            $cfg['user'],
+            $cfg['pass'],
+            $pdo_options
+        );
+        $host   = $cfg['host'];
+        $dbname = $cfg['dbname'];
+        $user   = $cfg['user'];
+        $pass   = $cfg['pass'];
+        break;
+    } catch (PDOException $e) {
+        $last_db_error = $e;
+    }
+}
+
+if (!$pdo) {
+    error_log("Secure DB connection failure: " . ($last_db_error ? $last_db_error->getMessage() : "Unknown error"));
+    http_response_code(500);
+    die("<!DOCTYPE html><html><head><title>System Unavailable</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#f8fafc;color:#1e293b;} .box{max-width:480px;margin:0 auto;background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);border:1px solid #e2e8f0;}</style></head><body><div class='box'><h2 style='color:#002F70;'>Petron Management System</h2><p style='color:#64748b;'>Database service is currently unavailable. Please check back shortly or contact the system administrator.</p></div></body></html>");
+}
 
 try {
-  $pdo = new PDO(
-    "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
-    $user,
-    $pass,
-    [
-      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-      PDO::ATTR_EMULATE_PREPARES => false
-    ]
-  );
   // Explicitly set UTF-8 connection for older MySQL versions
   $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
 
@@ -44,9 +94,7 @@ try {
     }
   } catch (Throwable $e) {}
 } catch (PDOException $e) {
-  error_log("Secure DB connection failure: " . $e->getMessage());
-  http_response_code(500);
-  die("<!DOCTYPE html><html><head><title>System Unavailable</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#f8fafc;color:#1e293b;} .box{max-width:480px;margin:0 auto;background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);border:1px solid #e2e8f0;}</style></head><body><div class='box'><h2 style='color:#002F70;'>Petron Management System</h2><p style='color:#64748b;'>Database service is currently unavailable. Please check back shortly or contact the system administrator.</p></div></body></html>");
+  error_log("Secure DB post-connect failure: " . $e->getMessage());
 }
 
 // ── Self-healing Database schema for pending_price_approvals ────────────────
