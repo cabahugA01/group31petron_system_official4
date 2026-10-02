@@ -6,10 +6,10 @@ ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
-$host = "localhost";
-$dbname = "petron_pos_db_secure";
-$user = "root";
-$pass = ""; // XAMPP default is empty
+$host   = getenv('DB_HOST')   ?: "localhost";
+$dbname = getenv('DB_NAME')   ?: "petron_pos_db_secure";
+$user   = getenv('DB_USER')   ?: "root";
+$pass   = getenv('DB_PASS') !== false ? getenv('DB_PASS') : ""; // XAMPP default is empty
 
 try {
   $pdo = new PDO(

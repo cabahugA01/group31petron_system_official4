@@ -694,7 +694,7 @@ $staff_activity_list = mgr_rows($pdo, "
       AND LOWER(COALESCE(u.role, 'staff')) IN ('staff', 'cashier', 'pump_attendant')
     ORDER BY al.id DESC
     LIMIT 6
-", [$station_id, $user_id]);
+", [$station_id]);
 
 foreach ($staff_activity_list as &$sa) {
     $ref = trim((string)($sa['reference'] ?? ''));

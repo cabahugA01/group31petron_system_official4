@@ -1,0 +1,8 @@
+{
+  "project": "group31petron_system_official4",
+  "installed_modules": {
+    "mpdf": "v8.3.1",
+    "nodejs_service": "1.0.0"
+  },
+  "status": "ready"
+}

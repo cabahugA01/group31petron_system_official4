@@ -40,15 +40,25 @@ $script_name = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
 $public_pos = strpos($script_name, '/public/');
 if ($public_pos !== false) {
     $app_base_path = substr($script_name, 0, $public_pos);
+    $public_base_url = $app_base_path . '/public';
+} elseif (strpos($script_name, '/public') === 0 && (strlen($script_name) === 7 || $script_name[7] === '/')) {
+    $app_base_path = '';
+    $public_base_url = '/public';
 } else {
-    $app_base_path = rtrim(dirname($script_name), '/');
+    // If the script is being accessed directly without /public in the URL (e.g. Hostinger docroot pointed directly to public)
+    $dir = rtrim(dirname($script_name), '/\\');
+    if ($dir === '/' || $dir === '\\' || $dir === '.') {
+        $dir = '';
+    }
+    $app_base_path = $dir;
+    $public_base_url = $dir;
 }
 
-if ($app_base_path === '' || $app_base_path === '.') {
+if ($app_base_path === '.' || $app_base_path === '/') {
     $app_base_path = '';
 }
 
-$public_base_url = $app_base_path . '/public';
+$public_base_url = ($public_base_url !== '') ? rtrim($public_base_url, '/') : '';
 $myStationId = user_station_id();
 
 $header_notifications = [];
@@ -652,6 +662,9 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="<?php echo function_exists('sec_generate_csrf_token') ? sec_generate_csrf_token() : ''; ?>" />
   <title>Petron Management System</title>
+  <link rel="icon" type="image/png" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
+  <link rel="shortcut icon" type="image/png" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
+  <link rel="apple-touch-icon" href="<?php echo $app_base_path; ?>/assets/img/Petron%20Logo.png" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/style.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_table_design.css?v=2.0.2" />
   <link rel="stylesheet" href="<?php echo $app_base_path; ?>/assets/css/manager_customer_management.css?v=2.0.2" />
@@ -663,6 +676,9 @@ $appearance_sidebar_collapsed = (strtolower($appearance_sidebar_mode) === 'colla
     window.PETRON_STATION_ID = <?php echo (int)$myStationId; ?>;
     window.PETRON_USER_ROLE  = <?php echo json_encode($role); ?>;
     window.PETRON_USER_ID    = <?php echo (int)($user['id'] ?? 0); ?>;
+    window.pageData = window.pageData || {};
+    window.pageData.appBasePath = <?php echo json_encode(rtrim($app_base_path, '/')); ?>;
+    window.pageData.publicBasePath = <?php echo json_encode(rtrim($public_base_url, '/')); ?>;
   </script>
   <script src="<?php echo $app_base_path; ?>/assets/js/petron_realtime.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/petron_realtime.js'); ?>"></script>
     <!-- GLOBAL RIGHT-CLICK & TEXT SELECTION ALLOWED -->
@@ -4069,7 +4085,7 @@ window.petronSystemSettings = {
 // Include the new RBAC menu generation
 require_once __DIR__ . '/rbac_menu.php';
 
-  $base_path = '/group31petron_system_official4/public/';
+  $base_path = ($public_base_url !== '') ? (rtrim($public_base_url, '/') . '/') : '/';
   
   if (!function_exists('map_hrefs')) {
       function map_hrefs(&$items, $base_path) {
@@ -4486,7 +4502,7 @@ require_once __DIR__ . '/rbac_menu.php';
         if (in_array($role, ['manager','supervisor','admin','superadmin'])) {
             continue;
         }
-        $dash_href = '/group31petron_system_official4/public/';
+        $dash_href = $base_path;
         if (in_array($role, ['staff','cashier','pump_attendant'])) $dash_href .= 'staff_dashboard.php';
         else $dash_href .= 'dashboard.php';
         $dash_active = in_array($effective_page_id, ['dashboard','staff_dashboard','manager_dashboard','admin_dashboard']) ? 'active' : '';
@@ -4617,7 +4633,7 @@ require_once __DIR__ . '/rbac_menu.php';
   <script>
   // Auto-mark badge modules as seen when this page loads
   (function() {
-      var API = '/group31petron_system_official4/backend/api/badge_seen.php';
+      var API = '<?php echo $app_base_path; ?>/backend/api/badge_seen.php';
       var modules = <?php echo json_encode($badge_modules_to_mark); ?>;
       function markSeen(mod) {
           fetch(API, {
@@ -4639,7 +4655,7 @@ require_once __DIR__ . '/rbac_menu.php';
   // Keep live action badges visible. They represent unresolved work, so clicking
   // a module should not hide a badge until the underlying item is completed.
   document.addEventListener('DOMContentLoaded', function() {
-      var API = '/group31petron_system_official4/backend/api/badge_seen.php';
+      var API = '<?php echo $app_base_path; ?>/backend/api/badge_seen.php';
 
       // Map: filename base (without .php) → badge module keys to mark seen
       var navBadgeMap = {

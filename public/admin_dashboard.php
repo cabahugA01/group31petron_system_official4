@@ -1027,8 +1027,8 @@ if (adm_table_exists($pdo, 'inventory_logs')) {
     $m_logs = adm_rows($pdo, "
         SELECT COALESCE(NULLIF(il.reference_no,''), CONCAT('LOG-', LPAD(il.id, 4, '0'))) AS ref_no,
                COALESCE(
-                   NULLIF(p.name,''),
-                   NULLIF(m''),
+                   NULLIF(p.name, ''),
+                   NULLIF(msi.product_name, ''),
                    CONCAT('Product #', il.product_id)
                ) AS product_name,
                CASE
