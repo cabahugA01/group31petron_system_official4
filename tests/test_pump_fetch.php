@@ -1,7 +1,7 @@
 <?php
 session_start();
 $_SESSION['user'] = ['id' => 1, 'role' => 'superadmin', 'station_id' => 1253];
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../public/db_connect.php';
 
 function fetch_pumps_for_fuel_product_test($pdo, $station_id, $fuel) {
     $pumps = [];

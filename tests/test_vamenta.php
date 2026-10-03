@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../public/db_connect.php';
 header('Content-Type: text/plain');
 
 $s1253 = $pdo->query("SELECT * FROM stations WHERE id = 1253 OR name LIKE '%Vamenta%' OR address LIKE '%Vamenta%'")->fetchAll(PDO::FETCH_ASSOC);

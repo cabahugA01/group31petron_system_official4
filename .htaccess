@@ -29,9 +29,11 @@
     </IfModule>
 </Files>
 
-# 3. Canonical rewrites for favicon, logos & icons to assets/img/
+# 3. Canonical rewrites for login, logout, favicon, logos & icons
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteRule ^login\.php$ public/login.php [QSA,L]
+    RewriteRule ^logout\.php$ public/logout.php [QSA,L]
     RewriteRule ^(public/)?favicon\.ico$ assets/img/favicon.ico [L]
     RewriteRule ^(public/)?favicon-(16x16|32x32|48x48)\.png$ assets/img/favicon-$2.png [L]
     RewriteRule ^(public/)?android-chrome-(192x192|512x512)\.png$ assets/img/android-chrome-$2.png [L]

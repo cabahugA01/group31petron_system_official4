@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../public/db_connect.php';
 
 echo "<pre>\n";
 $stmt = $pdo->prepare("
