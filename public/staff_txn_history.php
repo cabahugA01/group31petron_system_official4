@@ -344,7 +344,7 @@ require_login();
     <label>Payment Method</label>
     <select id="histFilterPayment" name="payment">
       <option value="">All Methods</option>
-      <?php foreach(['Cash','Credit Card','Debit Card','GCash','Maya','Petron Fleet Card','Credit Account'] as $_pm): ?>
+      <?php foreach(['Cash','Card','E-Wallet','Petron Fleet Card','Credit Account','Petron Loyalty Points'] as $_pm): ?>
       <option value="<?= $_pm ?>" <?= $hist_filter_pay===$_pm?'selected':'' ?>><?= $_pm ?></option>
       <?php endforeach; ?>
     </select>
@@ -630,7 +630,11 @@ require_login();
         <td style="padding:10px 8px;vertical-align:middle;box-sizing:border-box;">
           <div style="font-weight:900;font-size:15px;color:#002F70;white-space:nowrap;line-height:1.2;">₱<?= number_format((float)$ht['total_amount'], 2) ?></div>
           <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
-            <span style="color:#0f172a;font-weight:700;font-size:12px;"><?= htmlspecialchars($ht['payment_method'] ?? 'Cash') ?></span>
+            <?php $h_pay = format_payment_for_record($ht); ?>
+            <span style="color:#0f172a;font-weight:700;font-size:12px;"><?= htmlspecialchars($h_pay['payment_type']) ?></span>
+            <?php if ($h_pay['payment_type'] === 'E-Wallet' && !empty($h_pay['provider'])): ?>
+              <span style="font-size:11px;font-weight:700;color:#0284c7;background:#e0f2fe;padding:1px 5px;border-radius:3px;"><?= htmlspecialchars($h_pay['provider']) ?></span>
+            <?php endif; ?>
             <span style="background:<?= $ht_ps==='paid'?'#dcfce7':'#fee2e2' ?>;color:<?= $ht_ps==='paid'?'#15803d':'#b91c1c' ?>;font-weight:800;font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid <?= $ht_ps==='paid'?'#bbf7d0':'#fecaca' ?>;">
               <?= strtoupper(htmlspecialchars($ht['payment_status'] ?? 'PAID')) ?>
             </span>

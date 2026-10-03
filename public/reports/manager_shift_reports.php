@@ -5,11 +5,12 @@
  * Blue theme for Manager role
  */
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 $is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);
 
 if ($is_standalone) {
     if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-    require_once __DIR__ . '/../../backend/lib.php';
     require_once __DIR__ . '/../db_connect.php';
     require_login();
     $current_user = current_user();
@@ -599,25 +600,47 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 $merged = [];
                 $addPayment = static function (array $items) use (&$merged): void {
                     foreach ($items as $r) {
-                        $mode = $r['mode_of_payment'] ?: 'Cash';
-                        if (!isset($merged[$mode])) $merged[$mode] = ['mode_of_payment' => $mode, 'txn_count' => 0, 'amount' => 0];
-                        $merged[$mode]['txn_count'] += (int)$r['txn_count'];
-                        $merged[$mode]['amount'] += (float)$r['amount'];
+                        $norm = function_exists('normalize_payment_type')
+                            ? normalize_payment_type($r['raw_payment_method'] ?? 'Cash', $r['ewallet_provider'] ?? '')
+                            : ['payment_type' => $r['raw_payment_method'] ?? 'Cash', 'provider' => $r['ewallet_provider'] ?? ''];
+                        $mode = $norm['payment_type'] ?? 'Cash';
+                        $prov = $norm['provider'] ?? '';
+                        if (!isset($merged[$mode])) {
+                            $merged[$mode] = [
+                                'mode_of_payment' => $mode,
+                                'txn_count'       => 0,
+                                'amount'          => 0.0,
+                            ];
+                            if ($mode === 'E-Wallet') {
+                                $merged[$mode]['providers'] = [
+                                    'GCash' => ['txn_count' => 0, 'amount' => 0.0],
+                                    'Maya'  => ['txn_count' => 0, 'amount' => 0.0]
+                                ];
+                            }
+                        }
+                        $cnt = (int)($r['txn_count'] ?? 0);
+                        $amt = (float)($r['amount'] ?? 0.0);
+                        $merged[$mode]['txn_count'] += $cnt;
+                        $merged[$mode]['amount']    += $amt;
+
+                        if ($mode === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+                            if (!isset($merged['E-Wallet']['providers'][$prov])) {
+                                $merged['E-Wallet']['providers'][$prov] = ['txn_count' => 0, 'amount' => 0.0];
+                            }
+                            $merged['E-Wallet']['providers'][$prov]['txn_count'] += $cnt;
+                            $merged['E-Wallet']['providers'][$prov]['amount']    += $amt;
+                        }
                     }
                 };
+
                 if (srManagerTableExists($pdo, 'fuel_transactions')) {
                     $shiftCond = srManagerShiftCondition('ft', 'ft.transaction_date', $isShift1);
                     $validWhere = srManagerFuelValidWhere('ft');
+                    $ewCol = srManagerColumnExists($pdo, 'fuel_transactions', 'ewallet_provider') ? "COALESCE(ft.ewallet_provider, '')" : "''";
                     $q = $pdo->prepare("
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
-                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%card%' THEN 'Card'
-                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(ft.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                                WHEN LOWER(COALESCE(ft.payment_method,'')) LIKE '%cash%' OR COALESCE(ft.payment_method,'') = '' THEN 'Cash'
-                                ELSE COALESCE(NULLIF(ft.payment_method,''), 'Cash')
-                            END AS mode_of_payment,
+                            COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewCol} AS ewallet_provider,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(ft.total_amount, 0)) AS amount
                         FROM fuel_transactions ft
@@ -625,7 +648,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                           AND DATE(ft.transaction_date) BETWEEN ? AND ?
                           AND $validWhere
                           AND $shiftCond
-                        GROUP BY mode_of_payment
+                        GROUP BY raw_payment_method, ewallet_provider
                     ");
                     $q->execute([$station_id, $date_start, $date_end]);
                     $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
@@ -635,16 +658,11 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     $dateExpr = 'COALESCE(mt.transaction_date, mt.created_at)';
                     $shiftCond = srManagerShiftCondition('mt', $dateExpr, $isShift1);
                     $nativeJobGuard = srManagerMtNotNativeJobWhere($pdo, 'mt');
+                    $ewCol = srManagerColumnExists($pdo, 'merchandise_transactions', 'ewallet_provider') ? "COALESCE(mt.ewallet_provider, '')" : "''";
                     $q = $pdo->prepare("
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
-                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%card%' THEN 'Card'
-                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(mt.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                                WHEN LOWER(COALESCE(mt.payment_method,'')) LIKE '%cash%' OR COALESCE(mt.payment_method,'') = '' THEN 'Cash'
-                                ELSE COALESCE(NULLIF(mt.payment_method,''), 'Cash')
-                            END AS mode_of_payment,
+                            COALESCE(NULLIF(TRIM(mt.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewCol} AS ewallet_provider,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(mt.total_amount, 0)) AS amount
                         FROM merchandise_transactions mt
@@ -653,7 +671,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                           AND $validWhere
                           AND $nativeJobGuard
                           AND $shiftCond
-                        GROUP BY mode_of_payment
+                        GROUP BY raw_payment_method, ewallet_provider
                     ");
                     $q->execute([$station_id, $date_start, $date_end, $date_start, $date_end]);
                     $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
@@ -661,16 +679,11 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                 if (srManagerTableExists($pdo, 'job_orders')) {
                     $shiftCond = srManagerJobTimeShiftCondition('jo', $isShift1);
                     $validWhere = srManagerJobValidWhere('jo');
+                    $ewCol = srManagerColumnExists($pdo, 'job_orders', 'ewallet_provider') ? "COALESCE(jo.ewallet_provider, '')" : "''";
                     $q = $pdo->prepare("
                         SELECT
-                            CASE
-                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%fleet%' THEN 'Fleet'
-                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%fuel card%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%efuel%' THEN 'E-Fuel'
-                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%card%' THEN 'Card'
-                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%wallet%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%gcash%' OR LOWER(COALESCE(jo.payment_method,'')) LIKE '%maya%' THEN 'E-Wallet'
-                                WHEN LOWER(COALESCE(jo.payment_method,'')) LIKE '%cash%' OR COALESCE(jo.payment_method,'') = '' THEN 'Cash'
-                                ELSE COALESCE(NULLIF(jo.payment_method,''), 'Cash')
-                            END AS mode_of_payment,
+                            COALESCE(NULLIF(TRIM(jo.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewCol} AS ewallet_provider,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(NULLIF(jo.amount_paid, 0), NULLIF(jo.total_cost, 0), NULLIF(jo.estimated_cost, 0), COALESCE(jo.actual_labor_cost,0) + COALESCE(jo.actual_parts_cost,0), 0)) AS amount
                         FROM job_orders jo
@@ -678,7 +691,7 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                           AND DATE(jo.created_at) BETWEEN ? AND ?
                           AND $validWhere
                           AND $shiftCond
-                        GROUP BY mode_of_payment
+                        GROUP BY raw_payment_method, ewallet_provider
                     ");
                     $q->execute([$station_id, $date_start, $date_end]);
                     $addPayment($q->fetchAll(PDO::FETCH_ASSOC) ?: []);
@@ -967,6 +980,13 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                         <td><?=number_format($r['transactions'])?></td>
                         <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                     </tr>
+                    <?php if (!empty($r['providers'])): foreach ($r['providers'] as $provName => $provData): if (($provData['transactions'] ?? 0) > 0 || ($provData['amount'] ?? 0) > 0): ?>
+                    <tr style="background: #f8fafc; font-size: 11px;">
+                        <td style="padding-left: 24px; color: #475569;">&bull; Provider: <strong><?=htmlspecialchars($provName)?></strong></td>
+                        <td style="color: #475569;"><?=number_format($provData['transactions'])?></td>
+                        <td style="color: #475569;">&#x20B1;<?=number_format($provData['amount'],2)?></td>
+                    </tr>
+                    <?php endif; endforeach; endif; ?>
                 <?php endforeach; endif; ?>
                 </tbody>
                 <?php if (!empty($reportData['payment_breakdown'])): ?>
@@ -1122,6 +1142,13 @@ function srFetchManager(PDO $pdo, int $station_id, string $date_start, string $d
                     <td><?=number_format($r['txn_count'])?></td>
                     <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                 </tr>
+                <?php if (!empty($r['providers'])): foreach ($r['providers'] as $provName => $provData): if (($provData['txn_count'] ?? 0) > 0 || ($provData['amount'] ?? 0) > 0): ?>
+                <tr style="background: #f8fafc; font-size: 11px;">
+                    <td style="padding-left: 24px; color: #475569;">&bull; Provider: <strong><?=htmlspecialchars($provName)?></strong></td>
+                    <td style="color: #475569;"><?=number_format($provData['txn_count'])?></td>
+                    <td style="color: #475569;">&#x20B1;<?=number_format($provData['amount'],2)?></td>
+                </tr>
+                <?php endif; endforeach; endif; ?>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if (!empty($rows)): ?>

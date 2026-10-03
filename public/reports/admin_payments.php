@@ -2,15 +2,17 @@
 /**
  * Payments Report — breakdown by mode, vs sales totals variance
  */
+require_once __DIR__ . '/../../backend/lib.php';
 
 // Fuel payments by method
 $fuel_pay = [];
 try {
     $q = $pdo->prepare("SELECT
         COALESCE(NULLIF(TRIM(payment_method),''),'Cash') AS method,
+        COALESCE(ewallet_provider, '') AS provider,
         COUNT(*) AS cnt, COALESCE(SUM(total_amount),0) AS total
-        FROM fuel_transactions WHERE station_id=? AND DATE(transaction_date) BETWEEN ? AND ?
-        GROUP BY method ORDER BY total DESC");
+        FROM fuel_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+        GROUP BY method, provider ORDER BY total DESC");
     $q->execute([$station_id, $date_start, $date_end]); $fuel_pay = $q->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
@@ -19,9 +21,10 @@ $merch_pay = [];
 try {
     $q2 = $pdo->prepare("SELECT
         COALESCE(NULLIF(TRIM(payment_method),''),'Cash') AS method,
+        COALESCE(ewallet_provider, '') AS provider,
         COUNT(*) AS cnt, COALESCE(SUM(total_amount),0) AS total
-        FROM merchandise_transactions WHERE station_id=? AND DATE(created_at) BETWEEN ? AND ?
-        GROUP BY method ORDER BY total DESC");
+        FROM merchandise_transactions WHERE station_id=? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
+        GROUP BY method, provider ORDER BY total DESC");
     $q2->execute([$station_id, $date_start, $date_end]); $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
@@ -30,33 +33,59 @@ $jo_pay = [];
 try {
     $q3 = $pdo->prepare("SELECT
         COALESCE(NULLIF(TRIM(payment_method),''),'Cash') AS method,
+        COALESCE(ewallet_provider, '') AS provider,
         COUNT(*) AS cnt, COALESCE(SUM(total_cost),0) AS total
         FROM job_orders WHERE station_id=? AND status='Completed'
         AND DATE(created_at) BETWEEN ? AND ?
-        GROUP BY method ORDER BY total DESC");
+        GROUP BY method, provider ORDER BY total DESC");
     $q3->execute([$station_id, $date_start, $date_end]); $jo_pay = $q3->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// Normalize method names into canonical buckets
-function normalizeMethod(string $m): string {
+// Normalize method names into canonical taxonomy
+function normalizeMethod(string $m, ?string $provider = null): array {
+    if (function_exists('normalize_payment_type')) {
+        return normalize_payment_type($m, $provider);
+    }
     $m = strtolower(trim($m));
-    if (str_contains($m,'cash'))   return 'Cash';
-    if (str_contains($m,'fleet'))  return 'Fleet Card';
-    if (str_contains($m,'efuel') || str_contains($m,'fuel card')) return 'E-Fuel Card';
-    if (str_contains($m,'card'))   return 'Card (Credit/Debit)';
-    if (str_contains($m,'wallet') || str_contains($m,'gcash') || str_contains($m,'maya')) return 'E-Wallet';
-    return ucwords($m) ?: 'Other';
+    if (str_contains($m,'cash'))   return ['payment_type'=>'Cash', 'provider'=>null];
+    if (str_contains($m,'fleet'))  return ['payment_type'=>'Petron Fleet Card', 'provider'=>null];
+    if (str_contains($m,'card'))   return ['payment_type'=>'Card', 'provider'=>null];
+    if (str_contains($m,'gcash'))  return ['payment_type'=>'E-Wallet', 'provider'=>'GCash'];
+    if (str_contains($m,'maya'))   return ['payment_type'=>'E-Wallet', 'provider'=>'Maya'];
+    if (str_contains($m,'wallet')) return ['payment_type'=>'E-Wallet', 'provider'=>$provider ?: 'GCash'];
+    if (str_contains($m,'credit')) return ['payment_type'=>'Credit Account', 'provider'=>null];
+    if (str_contains($m,'loyalty')) return ['payment_type'=>'Petron Loyalty Points', 'provider'=>null];
+    return ['payment_type'=>ucwords($m) ?: 'Cash', 'provider'=>$provider];
 }
 
 $combined = [];
+$ewallet_providers = ['GCash' => 0, 'Maya' => 0];
+
 foreach ([$fuel_pay, $merch_pay, $jo_pay] as $src => $rows) {
     $label = ['Fuel', 'Merchandise', 'Job Orders'][$src];
     foreach ($rows as $r) {
-        $key = normalizeMethod($r['method']);
+        $norm = normalizeMethod($r['method'] ?? '', $r['provider'] ?? null);
+        $key = $norm['payment_type'];
+        $prov = $norm['provider'];
+        $amt = (float)$r['total'];
+
         if (!isset($combined[$key])) $combined[$key] = ['method'=>$key,'fuel'=>0,'merch'=>0,'jo'=>0,'total'=>0,'cnt'=>0];
-        $combined[$key][$src === 0 ? 'fuel' : ($src === 1 ? 'merch' : 'jo')] += (float)$r['total'];
-        $combined[$key]['total'] += (float)$r['total'];
+        $combined[$key][$src === 0 ? 'fuel' : ($src === 1 ? 'merch' : 'jo')] += $amt;
+        $combined[$key]['total'] += $amt;
         $combined[$key]['cnt']   += (int)$r['cnt'];
+
+        if ($key === 'E-Wallet' && $prov) {
+            $p_key = ($prov === 'Maya') ? 'Maya' : 'GCash';
+            $ewallet_providers[$p_key] = ($ewallet_providers[$p_key] ?? 0) + $amt;
+        }
+    }
+}
+// Reconcile E-Wallet total with provider sum
+if (isset($combined['E-Wallet'])) {
+    $ew_tot = $combined['E-Wallet']['total'];
+    $ew_p_tot = ($ewallet_providers['GCash'] ?? 0) + ($ewallet_providers['Maya'] ?? 0);
+    if ($ew_tot > $ew_p_tot) {
+        $ewallet_providers['GCash'] = ($ewallet_providers['GCash'] ?? 0) + ($ew_tot - $ew_p_tot);
     }
 }
 usort($combined, fn($a,$b) => $b['total'] <=> $a['total']);
@@ -121,7 +150,15 @@ $variance          = $total_collected - $total_sales;
     $pct = $total_collected > 0 ? round($r['total']/$total_collected*100,1) : 0;
   ?>
     <tr>
-      <td><strong><?= htmlspecialchars($r['method']) ?></strong></td>
+      <td>
+        <strong><?= htmlspecialchars($r['method']) ?></strong>
+        <?php if ($r['method'] === 'E-Wallet' && !empty($ewallet_providers)): ?>
+          <div style="font-size:11px;color:#059669;margin-top:2px;font-weight:normal;">
+            <span>• Provider: GCash: ₱<?= number_format($ewallet_providers['GCash'] ?? 0, 2) ?></span>
+            <span style="margin-left:8px;">• Provider: Maya: ₱<?= number_format($ewallet_providers['Maya'] ?? 0, 2) ?></span>
+          </div>
+        <?php endif; ?>
+      </td>
       <td>₱<?= number_format($r['fuel'],2) ?></td>
       <td>₱<?= number_format($r['merch'],2) ?></td>
       <td>₱<?= number_format($r['jo'],2) ?></td>

@@ -139,6 +139,21 @@ try {
     } catch (PDOException $e) {
         // ignore
     }
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN ewallet_provider VARCHAR(50) NULL");
+    } catch (PDOException $e) {}
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN ewallet_reference VARCHAR(100) NULL");
+    } catch (PDOException $e) {}
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN fleet_card_number VARCHAR(100) NULL");
+    } catch (PDOException $e) {}
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN card_reference VARCHAR(100) NULL");
+    } catch (PDOException $e) {}
+    try {
+        $pdo->exec("ALTER TABLE sales ADD COLUMN card_type VARCHAR(50) NULL");
+    } catch (PDOException $e) {}
 } catch (PDOException $e) {}
 
 // Handle New Transaction
@@ -249,12 +264,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              $items = $items_raw;
          }
          
-         $payment_type = $_POST['payment_type'] ?? 'Cash';
+         $raw_payment_type = $_POST['payment_type'] ?? 'Cash';
+         $raw_ew_provider = $_POST['ewallet_provider'] ?? null;
+         $norm_pay = function_exists('normalize_payment_type') ? normalize_payment_type($raw_payment_type, $raw_ew_provider) : ['payment_type'=>$raw_payment_type,'provider'=>$raw_ew_provider];
+         $payment_type = $norm_pay['payment_type'] ?? 'Cash';
+         $ewallet_provider = $norm_pay['provider'] ?? $raw_ew_provider;
+         $ewallet_reference = trim($_POST['ewallet_reference'] ?? '');
+         $fleet_card_number = trim($_POST['fleet_card_number'] ?? '');
          $credit_card_number = trim($_POST['credit_card_number'] ?? '');
          $credit_card_expiry = trim($_POST['credit_card_expiry'] ?? '');
          $ar_customer_id = trim($_POST['customer_id'] ?? '');
          $credit_limit = trim($_POST['credit_limit'] ?? '');
          $discount_percentage = (float)($_POST['discount'] ?? 0);
+         $is_ar = in_array(strtolower($payment_type), ['credit account', 'credit', 'account receivable'], true);
          
          if (empty($items)) {
              $msg = "❌ Error: Please add at least one item to the transaction.";
@@ -342,13 +364,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                    if ($validation_error) {
                        $msg = $validation_error;
                        $pdo->rollBack();
-                   } elseif ($payment_type === 'Credit Card' && (empty($credit_card_number) || empty($credit_card_expiry))) {
-                       $msg = "❌ Error: Credit card details are required for Credit Card payments.";
+                   } elseif (in_array($payment_type, ['Card', 'Credit Card']) && (empty($credit_card_number) || empty($credit_card_expiry))) {
+                       $msg = "❌ Error: Card details are required for Card payments.";
                        $pdo->rollBack();
-                   } elseif ($payment_type === 'Account Receivable' && empty($ar_customer_id)) {
-                        $msg = "❌ Error: Customer ID is required for Account Receivable payments.";
+                   } elseif ($is_ar && empty($ar_customer_id)) {
+                        $msg = "❌ Error: Customer ID is required for Credit Account payments.";
                         $pdo->rollBack();
-                    } elseif ($payment_type === 'Account Receivable' && ($cust_status_check = $pdo->prepare("SELECT status FROM customers WHERE id = ? LIMIT 1")) && $cust_status_check->execute([$ar_customer_id]) && ($cust_status = $cust_status_check->fetchColumn()) && in_array($cust_status, ['locked', 'inactive'])) {
+                    } elseif ($is_ar && ($cust_status_check = $pdo->prepare("SELECT status FROM customers WHERE id = ? LIMIT 1")) && $cust_status_check->execute([$ar_customer_id]) && ($cust_status = $cust_status_check->fetchColumn()) && in_array($cust_status, ['locked', 'inactive'])) {
                         $msg = "❌ Error: Customer account is " . $cust_status . ".";
                         $pdo->rollBack();
                     } else {
@@ -359,16 +381,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $loyalty_points_earned = !empty($_POST['points_earned']) ? (int)$_POST['points_earned'] : null;
                         $loyalty_points_redeemed = !empty($_POST['redeem_points']) ? (int)$_POST['redeem_points'] : null;
 
-                        $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, credit_card_number, credit_card_expiry, ar_customer_id, credit_limit, loyalty_type, loyalty_card_no, loyalty_points_earned, loyalty_points_redeemed, status, created_at) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                        $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, credit_card_number, credit_card_expiry, ar_customer_id, credit_limit, loyalty_type, loyalty_card_no, loyalty_points_earned, loyalty_points_redeemed, ewallet_provider, ewallet_reference, fleet_card_number, status, created_at) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                         $stmt->execute([$sale_id, $station_id, $me['id'], $customer_name, $payment_type, $final_total, 
-                            ($payment_type === 'Credit Card' ? $credit_card_number : null),
-                            ($payment_type === 'Credit Card' ? $credit_card_expiry : null),
-                            ($payment_type === 'Account Receivable' ? $ar_customer_id : null),
-                            ($payment_type === 'Account Receivable' && !empty($credit_limit) ? $credit_limit : null),
+                            (in_array($payment_type, ['Card', 'Credit Card']) ? $credit_card_number : null),
+                            (in_array($payment_type, ['Card', 'Credit Card']) ? $credit_card_expiry : null),
+                            ($is_ar ? $ar_customer_id : null),
+                            ($is_ar && !empty($credit_limit) ? $credit_limit : null),
                             $loyalty_type,
                             $loyalty_card_no,
                             $loyalty_points_earned,
                             $loyalty_points_redeemed,
+                            ($payment_type === 'E-Wallet' ? ($ewallet_provider ?: 'GCash') : null),
+                            ($payment_type === 'E-Wallet' ? $ewallet_reference : null),
+                            ($payment_type === 'Petron Fleet Card' ? $fleet_card_number : null),
                             'Completed'
                         ]);
                        $last_sale_id = $sale_id;
@@ -408,8 +433,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            }
                        }
                        
-                                               // Update customer balance if Account Receivable
-                        if ($payment_type === 'Account Receivable') {
+                        // Update customer balance if Account Receivable / Credit Account
+                        if ($is_ar) {
                             $updateBalanceStmt = $pdo->prepare("
                                 UPDATE customers 
                                 SET balance = balance + ? 
@@ -632,7 +657,18 @@ include __DIR__ . '/../partials/header.php';
                         <td><?php echo htmlspecialchars(mb_strimwidth($t['items_summary'], 0, 40, "...")); ?></td>
                         <td><?php echo number_format($t['total_qty'], 2); ?></td>
                         <td style="font-weight:bold; color:var(--petron-blue);">₱<?php echo number_format($t['total'], 2); ?></td>
-                        <td><span class="badge"><?php echo htmlspecialchars($t['payment_method']); ?></span></td>
+                        <?php 
+                        $pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($t) : ['payment_type'=>$t['payment_method'], 'provider'=>'', 'reference_no'=>''];
+                        ?>
+                        <td>
+                            <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600;"><?php echo htmlspecialchars($pay_info['payment_type']); ?></span>
+                            <?php if (!empty($pay_info['provider'])): ?>
+                                <div style="font-size:11px; color:#059669; font-weight:600; margin-top:2px;">Provider: <?php echo htmlspecialchars($pay_info['provider']); ?></div>
+                            <?php endif; ?>
+                            <?php if (!empty($pay_info['reference_no'])): ?>
+                                <div style="font-size:10px; color:#6b7280;">Ref: <?php echo htmlspecialchars($pay_info['reference_no']); ?></div>
+                            <?php endif; ?>
+                        </td>
                         <td><?php echo htmlspecialchars($t['staff_name']); ?></td>
                         <td><span class="badge" style="background:#d1fae5; color:#065f46;">Completed</span></td>
                         <td>
@@ -676,7 +712,18 @@ include __DIR__ . '/../partials/header.php';
                     <td><b><?php echo htmlspecialchars($t['customer']); ?></b></td>
                     <td><?php echo htmlspecialchars(mb_strimwidth($t['items_summary'], 0, 40, "...")); ?></td>
                     <td style="font-weight:bold; color:var(--petron-blue);">₱<?php echo number_format($t['total'], 2); ?></td>
-                    <td><span class="badge"><?php echo htmlspecialchars($t['payment_method']); ?></span></td>
+                    <?php 
+                    $pay_info_c = function_exists('format_payment_for_record') ? format_payment_for_record($t) : ['payment_type'=>$t['payment_method'], 'provider'=>'', 'reference_no'=>''];
+                    ?>
+                    <td>
+                        <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600;"><?php echo htmlspecialchars($pay_info_c['payment_type']); ?></span>
+                        <?php if (!empty($pay_info_c['provider'])): ?>
+                            <div style="font-size:11px; color:#059669; font-weight:600; margin-top:2px;">Provider: <?php echo htmlspecialchars($pay_info_c['provider']); ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($pay_info_c['reference_no'])): ?>
+                            <div style="font-size:10px; color:#6b7280;">Ref: <?php echo htmlspecialchars($pay_info_c['reference_no']); ?></div>
+                        <?php endif; ?>
+                    </td>
                     <td><?php echo htmlspecialchars($t['staff_name']); ?></td>
                     <td><?php echo date('M d, h:i A', strtotime($t['finalized_at'] ?? $t['created_at'])); ?></td>
                     <td>
@@ -727,12 +774,15 @@ function viewTransaction(t) {
             </div>
              <div>
                  <small class="text-muted">Payment Type</small>
-                 <div>${t.payment_method}</div>
-                 ${t.payment_method === 'Credit Card' && t.credit_card_number ? `<small class="text-muted">Card: ****${t.credit_card_number}</small>` : ''}
-                 ${t.payment_method === 'Credit Card' && t.credit_card_expiry ? `<small class="text-muted">Expires: ${t.credit_card_expiry}</small>` : ''}
-                 ${t.payment_method === 'Account Receivable' && t.ar_customer_id ? `<small class="text-muted">Customer ID: ${t.ar_customer_id}</small>` : ''}
+                 <div style="font-weight:bold;">${t.payment_method || 'Cash'}</div>
+                 ${t.ewallet_provider ? `<div style="font-size:12px; color:#059669; font-weight:600;">Provider: ${t.ewallet_provider}</div>` : ''}
+                 ${t.ewallet_reference ? `<div style="font-size:11px; color:#666;">Ref: ${t.ewallet_reference}</div>` : ''}
+                 ${t.fleet_card_number ? `<div style="font-size:11px; color:#666;">Fleet Card #: ${t.fleet_card_number}</div>` : ''}
+                 ${t.credit_card_number ? `<small class="text-muted">Card: ****${t.credit_card_number}</small><br>` : ''}
+                 ${t.credit_card_expiry ? `<small class="text-muted">Expires: ${t.credit_card_expiry}</small><br>` : ''}
+                 ${t.ar_customer_id ? `<small class="text-muted">Customer ID: ${t.ar_customer_id}</small>` : ''}
              </div>    
-             ${t.payment_method === 'Account Receivable' && t.credit_limit ? `<div><small class="text-muted">Credit Limit: ₱${parseFloat(t.credit_limit).toFixed(2)}</small></div>` : ''}
+             ${t.credit_limit ? `<div><small class="text-muted">Credit Limit: ₱${parseFloat(t.credit_limit).toFixed(2)}</small></div>` : ''}
         </div>
         
         <h4 style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px;">Product Breakdown</h4>
@@ -852,13 +902,30 @@ function closeModal(id) {
                     <select name="payment_type" id="payment_method_pos" class="inp full" onchange="toggleCreditFields(); toggleLoyaltyFields();">
                         <option value="">-- Select Payment Method --</option>
                         <option value="Cash">Cash</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Debit Card">Debit Card</option>
-                        <option value="GCash">GCash</option>
-                        <option value="Maya">Maya</option>
+                        <option value="Card">Card</option>
+                        <option value="E-Wallet">E-Wallet</option>
                         <option value="Petron Fleet Card">Petron Fleet Card</option>
                         <option value="Credit Account">Credit Account</option>
+                        <option value="Petron Loyalty Points">Petron Loyalty Points</option>
                     </select>
+                </div>
+
+                <!-- E-Wallet Fields (GCash / Maya) -->
+                <div class="form-group mb-3" id="ewallet_pos_field" style="display: none; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 6px;">
+                    <label class="lbl" style="font-weight: 600; color: #166534;">E-Wallet Provider</label>
+                    <select name="ewallet_provider" id="ewallet_provider_pos" class="inp full mb-2">
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                    </select>
+                    <label class="lbl" style="font-weight: 600; color: #166534;">Reference Number</label>
+                    <input type="text" name="ewallet_reference" id="ewallet_reference_pos" class="inp full" placeholder="e.g. GC123456789 or MY123456789">
+                    <small class="muted" style="color: #15803d;">Specify the provider and transaction reference</small>
+                </div>
+
+                <!-- Petron Fleet Card Field -->
+                <div class="form-group mb-3" id="fleet_card_pos_field" style="display: none; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px; border-radius: 6px;">
+                    <label class="lbl" style="font-weight: 600; color: #1e40af;">Petron Fleet Card Number</label>
+                    <input type="text" name="fleet_card_number" id="fleet_card_number_pos" class="inp full" placeholder="Enter Fleet Card Number">
                 </div>
 
                 <div class="form-group mb-3">
@@ -869,20 +936,20 @@ function closeModal(id) {
                     </select>
                 </div>
 
-                <!-- Credit Card Field -->
+                <!-- Card Field -->
                 <div class="form-group mb-3" id="credit_card_field" style="display: none;">
-                    <label class="lbl">Credit Card Details</label>
+                    <label class="lbl">Card Details</label>
                     <input type="text" name="credit_card_number" id="credit_card_number" class="inp full mb-2" placeholder="Card Number (last 4 digits)" maxlength="4">
                     <input type="text" name="credit_card_expiry" id="credit_card_expiry" class="inp full" placeholder="MM/YY" maxlength="5">
-                    <small class="muted">Required for Credit Card payments</small>
+                    <small class="muted">Required for Card payments</small>
                 </div>
 
-                <!-- Account Receivable Field -->
+                <!-- Account Receivable / Credit Account Field -->
                 <div class="form-group mb-3" id="account_receivable_field" style="display: none;">
                     <label class="lbl">Customer Credit Details</label>
                     <input type="text" name="customer_id" id="customer_id" class="inp full mb-2" placeholder="Customer ID">
                     <input type="text" name="credit_limit" id="credit_limit" class="inp full" placeholder="Credit Limit (optional)">
-                    <small class="muted">Required for Account Receivable payments</small>
+                    <small class="muted">Required for Credit Account payments</small>
                 </div>
 
                 <!-- Loyalty Fields (shown when Petron Rewards Card selected) -->
@@ -1456,20 +1523,37 @@ function clearAllItems() {
     renderItems();
 }
 
-// Toggle Credit Card and Account Receivable fields
+// Toggle fields based on payment type
 function toggleCreditFields() {
     const paymentType = document.getElementById('payment_method_pos').value;
     const creditCardField = document.getElementById('credit_card_field');
+    const ewalletField = document.getElementById('ewallet_pos_field');
+    const fleetCardField = document.getElementById('fleet_card_pos_field');
     const accountReceivableField = document.getElementById('account_receivable_field');
 
     // Hide all additional fields by default
     if (creditCardField) creditCardField.style.display = 'none';
+    if (ewalletField) ewalletField.style.display = 'none';
+    if (fleetCardField) fleetCardField.style.display = 'none';
     if (accountReceivableField) accountReceivableField.style.display = 'none';
 
     // Show relevant fields based on payment type
-    if (paymentType === 'Credit Card') {
+    if (paymentType === 'Card' || paymentType === 'Credit Card' || paymentType === 'Debit Card') {
         if (creditCardField) creditCardField.style.display = 'block';
-    } else if (paymentType === 'Account Receivable') {
+    } else if (paymentType === 'E-Wallet' || paymentType === 'GCash' || paymentType === 'Maya') {
+        if (ewalletField) {
+            ewalletField.style.display = 'block';
+            if (paymentType === 'Maya') {
+                const prov = document.getElementById('ewallet_provider_pos');
+                if (prov) prov.value = 'Maya';
+            } else if (paymentType === 'GCash') {
+                const prov = document.getElementById('ewallet_provider_pos');
+                if (prov) prov.value = 'GCash';
+            }
+        }
+    } else if (paymentType === 'Petron Fleet Card' || paymentType === 'Fleet Card') {
+        if (fleetCardField) fleetCardField.style.display = 'block';
+    } else if (paymentType === 'Credit Account' || paymentType === 'Account Receivable' || paymentType === 'Credit') {
         if (accountReceivableField) accountReceivableField.style.display = 'block';
     }
 
@@ -1514,28 +1598,46 @@ function validateMultiPayment() {
         return false;
     }
     
-    // Additional validation for Credit Card
-    if (paymentType === 'Credit Card') {
+    // Additional validation for Card
+    if (paymentType === 'Card' || paymentType === 'Credit Card') {
         const cardNumber = document.getElementById('credit_card_number');
         const cardExpiry = document.getElementById('credit_card_expiry');
         
         if (!cardNumber || !cardNumber.value.trim()) {
-            alert('Credit card number is required for Credit Card payments.');
+            alert('Card number is required for Card payments.');
             return false;
         }
         
         if (!cardExpiry || !cardExpiry.value.trim()) {
-            alert('Credit card expiry date is required for Credit Card payments.');
+            alert('Card expiry date is required for Card payments.');
+            return false;
+        }
+    }
+
+    // Additional validation for E-Wallet
+    if (paymentType === 'E-Wallet') {
+        const ewProv = document.getElementById('ewallet_provider_pos');
+        if (!ewProv || !ewProv.value.trim()) {
+            alert('Please select an E-Wallet Provider (GCash or Maya).');
+            return false;
+        }
+    }
+
+    // Additional validation for Petron Fleet Card
+    if (paymentType === 'Petron Fleet Card') {
+        const fc = document.getElementById('fleet_card_number_pos');
+        if (!fc || !fc.value.trim()) {
+            alert('Petron Fleet Card number is required.');
             return false;
         }
     }
     
-    // Additional validation for Account Receivable
-    if (paymentType === 'Account Receivable') {
+    // Additional validation for Credit Account
+    if (paymentType === 'Credit Account' || paymentType === 'Account Receivable') {
         const customerId = document.getElementById('customer_id');
         
         if (!customerId || !customerId.value.trim()) {
-            alert('Customer ID is required for Account Receivable payments.');
+            alert('Customer ID is required for Credit Account payments.');
             return false;
         }
     }

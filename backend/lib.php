@@ -84,6 +84,181 @@ if (!function_exists('sanitize_optional_field')) {
     }
 }
 
+// ── CANONICAL PAYMENT TAXONOMY & HELPERS ────────────────────────────────────
+if (!function_exists('get_allowed_payment_types')) {
+    function get_allowed_payment_types(): array {
+        return [
+            'Cash',
+            'Card',
+            'E-Wallet',
+            'Petron Fleet Card',
+            'Credit Account',
+            'Petron Loyalty Points',
+        ];
+    }
+}
+
+if (!function_exists('get_allowed_ewallet_providers')) {
+    function get_allowed_ewallet_providers(): array {
+        return [
+            'GCash',
+            'Maya',
+        ];
+    }
+}
+
+if (!function_exists('normalize_payment_type')) {
+    /**
+     * Standardizes any payment input or legacy record into the canonical taxonomy:
+     * - Payment Types: Cash, Card, E-Wallet, Petron Fleet Card, Credit Account, Petron Loyalty Points
+     * - E-Wallet Providers: GCash, Maya
+     */
+    function normalize_payment_type(?string $method, ?string $provider = null): array {
+        $rawMethod = trim((string)$method);
+        $rawProvider = trim((string)$provider);
+        $lowerMethod = strtolower($rawMethod);
+        $lowerProvider = strtolower($rawProvider);
+
+        if ($rawMethod === '') {
+            return [
+                'payment_type' => 'Cash',
+                'provider'     => null,
+                'card_type'    => null,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // E-Wallet detection (including legacy GCash / Maya as top-level method)
+        if ($lowerMethod === 'gcash' || $lowerProvider === 'gcash') {
+            return [
+                'payment_type' => 'E-Wallet',
+                'provider'     => 'GCash',
+                'card_type'    => null,
+                'is_ewallet'   => true,
+            ];
+        }
+        if ($lowerMethod === 'maya' || $lowerMethod === 'paymaya' || $lowerProvider === 'maya' || $lowerProvider === 'paymaya') {
+            return [
+                'payment_type' => 'E-Wallet',
+                'provider'     => 'Maya',
+                'card_type'    => null,
+                'is_ewallet'   => true,
+            ];
+        }
+        if ($lowerMethod === 'e-wallet' || $lowerMethod === 'ewallet' || strpos($lowerMethod, 'wallet') !== false) {
+            $resolvedProvider = ($lowerProvider === 'maya' || $lowerProvider === 'paymaya') ? 'Maya' : 'GCash';
+            if (empty($rawProvider)) {
+                if (stripos($rawMethod, 'maya') !== false || stripos($rawMethod, 'paymaya') !== false) {
+                    $resolvedProvider = 'Maya';
+                } elseif (stripos($rawMethod, 'gcash') !== false) {
+                    $resolvedProvider = 'GCash';
+                } else {
+                    $resolvedProvider = null;
+                }
+            }
+            return [
+                'payment_type' => 'E-Wallet',
+                'provider'     => $resolvedProvider,
+                'card_type'    => null,
+                'is_ewallet'   => true,
+            ];
+        }
+
+        // Card detection (including legacy Credit Card / Debit Card)
+        if ($lowerMethod === 'card' || $lowerMethod === 'credit card' || $lowerMethod === 'debit card') {
+            $cardType = ($lowerMethod === 'debit card') ? 'Debit Card' : (($lowerMethod === 'credit card') ? 'Credit Card' : null);
+            return [
+                'payment_type' => 'Card',
+                'provider'     => null,
+                'card_type'    => $cardType,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // Petron Fleet Card
+        if (strpos($lowerMethod, 'fleet') !== false) {
+            return [
+                'payment_type' => 'Petron Fleet Card',
+                'provider'     => null,
+                'card_type'    => null,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // Credit Account
+        if (strpos($lowerMethod, 'credit') !== false || strpos($lowerMethod, 'utang') !== false || strpos($lowerMethod, 'receivable') !== false) {
+            return [
+                'payment_type' => 'Credit Account',
+                'provider'     => null,
+                'card_type'    => null,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // Petron Loyalty Points
+        if (strpos($lowerMethod, 'loyalt') !== false || strpos($lowerMethod, 'reward') !== false || strpos($lowerMethod, 'point') !== false) {
+            return [
+                'payment_type' => 'Petron Loyalty Points',
+                'provider'     => null,
+                'card_type'    => null,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // Cash
+        if ($lowerMethod === 'cash') {
+            return [
+                'payment_type' => 'Cash',
+                'provider'     => null,
+                'card_type'    => null,
+                'is_ewallet'   => false,
+            ];
+        }
+
+        // Fallback
+        return [
+            'payment_type' => $rawMethod,
+            'provider'     => $rawProvider ?: null,
+            'card_type'    => null,
+            'is_ewallet'   => false,
+        ];
+    }
+}
+
+if (!function_exists('format_payment_for_record')) {
+    /**
+     * Formats payment details cleanly for receipts, reports, dashboards, and modals
+     */
+    function format_payment_for_record(array $row): array {
+        $norm = normalize_payment_type($row['payment_method'] ?? null, $row['ewallet_provider'] ?? null);
+        $type = $norm['payment_type'];
+        $provider = $norm['provider'] ?? ($row['ewallet_provider'] ?? null);
+        $ref = $row['ewallet_reference'] ?? $row['card_reference'] ?? $row['fleet_card_number'] ?? $row['ref_no'] ?? null;
+        $amt = (float)($row['total_amount'] ?? $row['amount_paid'] ?? $row['total'] ?? $row['amount'] ?? 0);
+        $sym = function_exists('petron_currency_symbol') ? petron_currency_symbol() : '₱';
+
+        $lines = ["Payment Type: {$type}"];
+        if ($type === 'E-Wallet' && !empty($provider)) {
+            $lines[] = "Provider: {$provider}";
+        }
+        $lines[] = "Amount: {$sym}" . number_format($amt, 2);
+        if (!empty($ref) && $ref !== 'N/A') {
+            $lines[] = "Reference No.: {$ref}";
+        }
+
+        return [
+            'payment_type'     => $type,
+            'provider'         => $provider,
+            'reference_no'     => $ref,
+            'amount'           => $amt,
+            'amount_formatted' => $sym . number_format($amt, 2),
+            'display_text'     => implode("\n", $lines),
+            'display_inline'   => ($type === 'E-Wallet' && $provider) ? "{$type} ({$provider})" : $type,
+        ];
+    }
+}
+
+
 // Simple JSON-based storage helpers (no DB required)
 function data_path($file){ return __DIR__ . '/../data/' . $file; }
 

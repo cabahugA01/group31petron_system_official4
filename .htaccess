@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Petron Station Management System — Master Web Security Configuration
 # ==============================================================================
 
@@ -18,7 +18,30 @@
     </IfModule>
 </FilesMatch>
 
-# 3. Block access to hidden files and directories (starting with a dot)
+# Allow public web app manifest
+<Files "manifest.json">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Allow from all
+    </IfModule>
+</Files>
+
+# 3. Canonical rewrites for favicon, logos & icons to assets/img/
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(public/)?favicon\.ico$ assets/img/favicon.ico [L]
+    RewriteRule ^(public/)?favicon-(16x16|32x32|48x48)\.png$ assets/img/favicon-$2.png [L]
+    RewriteRule ^(public/)?android-chrome-(192x192|512x512)\.png$ assets/img/android-chrome-$2.png [L]
+    RewriteRule ^(public/)?apple-touch-icon(-precomposed)?\.png$ assets/img/apple-touch-icon$2.png [L]
+    RewriteRule ^(public/)?petron_logo\.png$ assets/img/petron_logo.png [L]
+    RewriteRule ^(public/)?logo\.png$ assets/img/logo.png [L]
+    RewriteRule ^public/manifest\.json$ manifest.json [L]
+</IfModule>
+
+# 4. Block access to hidden files and directories (starting with a dot)
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule "(^|/)\.(?!well-known)" - [F]

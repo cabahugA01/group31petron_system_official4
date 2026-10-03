@@ -209,9 +209,10 @@ if ($type === 'job_order') {
                 'amount_tendered'     => $jo_paid,
                 'change_amount'       => 0,
                 'card_reference'      => $jo['card_reference'] ?? '',
-                'card_type'           => '',
-                'ewallet_reference'   => '',
-                'ewallet_provider'    => '',
+                'card_type'           => $jo['card_type'] ?? '',
+                'ewallet_reference'   => $jo['ewallet_reference'] ?? '',
+                'ewallet_provider'    => $jo['ewallet_provider'] ?? '',
+                'fleet_card_number'   => $jo['fleet_card_number'] ?? '',
                 'efuel_card_number'   => '',
                 'remarks'             => $jo['notes'] ?? $jo['remarks'] ?? '',
                 'validation_status'   => $jo['status'] ?? 'Pending',
@@ -287,7 +288,11 @@ if ($type === 'job_order') {
                 'vat_amount'          => round((float)$ft['total_amount'] - ((float)$ft['total_amount'] / 1.12), 2),
                 'amount_tendered'     => (float)($ft['total_amount'] ?? 0),
                 'change_amount'       => 0.0,
-                'card_reference'      => '',
+                'card_reference'      => $ft['card_reference'] ?? '',
+                'card_type'           => $ft['card_type'] ?? '',
+                'ewallet_reference'   => $ft['ewallet_reference'] ?? '',
+                'ewallet_provider'    => $ft['ewallet_provider'] ?? '',
+                'fleet_card_number'   => $ft['fleet_card_number'] ?? '',
                 'remarks'             => $ft['notes'] ?? '',
                 'validation_status'   => $ft['status'] ?? 'Completed',
                 'station_name'        => $ft['station_name'],
@@ -872,7 +877,8 @@ if ($stored_subtotal > 0 && $stored_vat > 0 && abs(($stored_subtotal + $stored_v
 $vatable   = $subtotal_display;
 $vat_amt   = $vat_display;
 $items     = $sale['items'] ?? [];
-$pm_lc     = strtolower($pay_method);
+$norm_pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($sale) : ['payment_type'=>$pay_method,'provider'=>$sale['ewallet_provider']??''];
+$pm_lc     = strtolower($norm_pay_info['payment_type'] ?? $pay_method);
 $job_order = $sale['job_order'] ?? null;
 $has_jo    = !empty($job_order);
 
@@ -1443,10 +1449,20 @@ $paper_width_val = match($paper_size ?? 'thermal_80mm') {
   <?php if ($show_payment_details): ?>
   <div class="jo-r-lbl">Totals & Payment</div>
 
+  <?php
+    $pay_type_disp = $norm_pay_info['payment_type'] ?? $pay_method;
+    $provider_disp = $norm_pay_info['provider'] ?? ($sale['ewallet_provider'] ?? '');
+  ?>
   <div class="jo-r-row">
-    <span class="jo-r-key">Payment Method</span>
-    <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars(strtoupper($pay_method)); ?></span>
+    <span class="jo-r-key">Payment Type</span>
+    <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars(strtoupper($pay_type_disp)); ?></span>
   </div>
+  <?php if ($pay_type_disp === 'E-Wallet' && !empty($provider_disp)): ?>
+  <div class="jo-r-row">
+    <span class="jo-r-key">E-Wallet Provider</span>
+    <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars(strtoupper($provider_disp)); ?></span>
+  </div>
+  <?php endif; ?>
 
   <?php if ($pay_status_norm === 'partial'): ?>
     <!-- ── PARTIAL PAYMENT ── -->
@@ -1506,11 +1522,12 @@ $paper_width_val = match($paper_size ?? 'thermal_80mm') {
 
     <?php elseif (in_array($pm_lc, ['e-wallet', 'gcash', 'maya'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Amount Transferred</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
-      <?php if (!empty($sale['ewallet_reference'])): ?>
-      <div class="jo-r-row"><span class="jo-r-key">E-Wallet Ref</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_reference']); ?></span></div>
+      <?php $actProv = $provider_disp ?: ($sale['ewallet_provider'] ?? ''); ?>
+      <?php if (!empty($actProv)): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Provider</span><span class="jo-r-val"><?php echo htmlspecialchars($actProv); ?></span></div>
       <?php endif; ?>
-      <?php if (!empty($sale['ewallet_provider'])): ?>
-      <div class="jo-r-row"><span class="jo-r-key">Provider</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_provider']); ?></span></div>
+      <?php if (!empty($sale['ewallet_reference'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Reference No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['ewallet_reference']); ?></span></div>
       <?php endif; ?>
 
     <?php elseif (in_array($pm_lc, ['fleet card', 'petron fleet card'])): ?>
@@ -1547,6 +1564,15 @@ $paper_width_val = match($paper_size ?? 'thermal_80mm') {
       <?php endif; ?>
       <?php if (!empty($sale['credit_due_date'])): ?>
       <div class="jo-r-row"><span class="jo-r-key">Due Date</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['credit_due_date']); ?></span></div>
+      <?php endif; ?>
+
+    <?php elseif (in_array($pm_lc, ['petron loyalty points', 'loyalty points'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Amount Deducted</span><span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span></div>
+      <?php if (!empty($sale['loyalty_card_no'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Loyalty Card No.</span><span class="jo-r-val"><?php echo htmlspecialchars($sale['loyalty_card_no']); ?></span></div>
+      <?php endif; ?>
+      <?php if (!empty($sale['loyalty_points_redeemed'])): ?>
+      <div class="jo-r-row"><span class="jo-r-key">Points Redeemed</span><span class="jo-r-val"><?php echo number_format((int)$sale['loyalty_points_redeemed']); ?> pts</span></div>
       <?php endif; ?>
     <?php endif; ?>
 

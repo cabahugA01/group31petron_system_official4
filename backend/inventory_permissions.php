@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 /**
  * Inventory Permission Helper Functions
  * Provides centralized permission checking for inventory operations
  */
 
-require_once __DIR__ . '/../app/master_data/roles_permissions/rbac.php';
+require_once __DIR__ . '/rbac.php';
 
 /**
  * Check if current user can view inventory

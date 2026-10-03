@@ -107,6 +107,20 @@ function stf_h(?string $str): string {
     return htmlspecialchars((string)$str, ENT_QUOTES, 'UTF-8');
 }
 
+function stf_column_exists(PDO $pdo, string $table, string $column): bool {
+    static $cache = [];
+    $k = $table . '.' . $column;
+    if (isset($cache[$k])) return $cache[$k];
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $stmt->execute([$table, $column]);
+        $cache[$k] = (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        $cache[$k] = false;
+    }
+    return $cache[$k];
+}
+
 // ── Date Range Filters ──────────────────────────────────────────────────────
 $date_from = trim($_GET['date_from'] ?? date('Y-m-d'));
 $date_to   = trim($_GET['date_to'] ?? date('Y-m-d'));
@@ -626,44 +640,60 @@ $latest_job_orders = stf_rows($pdo, "
 
 // ── 7. CHARTS DATA (Payment Types, JO Status, Daily Trend) ───────────────────
 
-// Chart 1: Payment Type Distribution (Exact 7 System Payment Types)
-$all_7_pms = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
-$payment_map = array_fill_keys($all_7_pms, 0.0);
+// Chart 1: Payment Type Distribution (Canonical Payment Types)
+$canonical_pms = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
+$payment_map = array_fill_keys($canonical_pms, 0.0);
+$payment_ewallet_map = ['GCash' => 0.0, 'Maya' => 0.0];
+
+$ewColMt = stf_column_exists($pdo, 'merchandise_transactions', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
+$ewColJo = stf_column_exists($pdo, 'job_orders', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
+$ewColFt = stf_column_exists($pdo, 'fuel_transactions', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
 
 $pm_rows = stf_rows($pdo, "
-    SELECT TRIM(payment_method) AS pm, COALESCE(SUM(total_amount), 0) AS amt
-    FROM (
-        SELECT payment_method, total_amount FROM merchandise_transactions 
-        WHERE {$st_sql} AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
-        UNION ALL
-        SELECT payment_method, COALESCE(total_cost, estimated_cost, 0) AS total_amount FROM job_orders 
-        WHERE {$st_sql} AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
-        UNION ALL
-        SELECT payment_method, total_amount FROM fuel_transactions 
-        WHERE {$st_sql} AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
-    ) AS all_pms
-    WHERE payment_method IS NOT NULL AND TRIM(payment_method) != ''
-    GROUP BY TRIM(payment_method)
+    SELECT TRIM(payment_method) AS pm, {$ewColMt} AS ewallet_provider, COALESCE(SUM(total_amount), 0) AS amt
+    FROM merchandise_transactions 
+    WHERE {$st_sql} AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColMt}
+    
+    UNION ALL
+    
+    SELECT TRIM(payment_method) AS pm, {$ewColJo} AS ewallet_provider, COALESCE(SUM(COALESCE(total_cost, estimated_cost, 0)), 0) AS amt
+    FROM job_orders 
+    WHERE {$st_sql} AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColJo}
+    
+    UNION ALL
+    
+    SELECT TRIM(payment_method) AS pm, {$ewColFt} AS ewallet_provider, COALESCE(SUM(total_amount), 0) AS amt
+    FROM fuel_transactions 
+    WHERE {$st_sql} AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColFt}
 ", [$station_id, $station_id, $station_id]);
 
 foreach ($pm_rows as $pr) {
-    $pm_name = strtolower(trim((string)$pr['pm']));
-    $amt = (float)$pr['amt'];
-    if (str_contains($pm_name, 'debit')) {
-        $payment_map['Debit Card'] += $amt;
-    } elseif (str_contains($pm_name, 'credit card') || ($pm_name === 'card' && !str_contains($pm_name, 'fleet'))) {
-        $payment_map['Credit Card'] += $amt;
-    } elseif (str_contains($pm_name, 'gcash')) {
-        $payment_map['GCash'] += $amt;
-    } elseif (str_contains($pm_name, 'maya') || str_contains($pm_name, 'paymaya')) {
-        $payment_map['Maya'] += $amt;
-    } elseif (str_contains($pm_name, 'fleet')) {
-        $payment_map['Petron Fleet Card'] += $amt;
-    } elseif (str_contains($pm_name, 'credit account') || str_contains($pm_name, 'credit') || str_contains($pm_name, 'account') || str_contains($pm_name, 'ar') || str_contains($pm_name, 'utang')) {
-        $payment_map['Credit Account'] += $amt;
-    } else {
-        $payment_map['Cash'] += $amt;
+    $norm = normalize_payment_type($pr['pm'] ?? 'Cash', $pr['ewallet_provider'] ?? '');
+    $pt   = $norm['payment_type'] ?? 'Cash';
+    $prov = $norm['provider'] ?? '';
+    $amt  = (float)$pr['amt'];
+
+    if (!isset($payment_map[$pt])) {
+        $payment_map[$pt] = 0.0;
     }
+    $payment_map[$pt] += $amt;
+
+    if ($pt === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+        $payment_ewallet_map[$prov] = ($payment_ewallet_map[$prov] ?? 0.0) + $amt;
+    }
+}
+
+// Reconcile E-Wallet total with provider sum if any unassigned
+$ew_tot = $payment_map['E-Wallet'] ?? 0.0;
+$ew_p_tot = ($payment_ewallet_map['GCash'] ?? 0.0) + ($payment_ewallet_map['Maya'] ?? 0.0);
+if ($ew_tot > $ew_p_tot) {
+    $payment_ewallet_map['GCash'] += ($ew_tot - $ew_p_tot);
 }
 
 $payment_types = array_keys($payment_map);
@@ -769,6 +799,7 @@ $recent_consolidated_txns = stf_rows($pdo, "
         COALESCE(NULLIF(TRIM(t.customer_name), ''), 'Walk-in Customer') AS customer_name,
         COALESCE(t.total_amount, 0) AS total_amount,
         COALESCE(t.payment_method, 'Cash') AS payment_method,
+        {$ewColMt} AS ewallet_provider,
         COALESCE(t.workflow_status, t.validation_status, 'Completed') AS status,
         COALESCE(t.transaction_date, t.created_at) AS created_at
     FROM merchandise_transactions t
@@ -782,6 +813,7 @@ $recent_consolidated_txns = stf_rows($pdo, "
         CONCAT(ft.fuel_type, ' - Pump #', COALESCE(ft.pump_id, 1)) AS customer_name,
         COALESCE(ft.total_amount, 0) AS total_amount,
         COALESCE(ft.payment_method, 'Internal') AS payment_method,
+        {$ewColFt} AS ewallet_provider,
         COALESCE(ft.status, 'Completed') AS status,
         COALESCE(ft.transaction_date, ft.created_at) AS created_at
     FROM fuel_transactions ft
@@ -794,7 +826,8 @@ $recent_consolidated_txns = stf_rows($pdo, "
         'Job Order' AS txn_type,
         COALESCE(NULLIF(TRIM(jo.customer_name), ''), 'Walk-in Customer') AS customer_name,
         COALESCE(jo.total_cost, jo.estimated_cost, 0) AS total_amount,
-        'Cash' AS payment_method,
+        COALESCE(jo.payment_method, 'Cash') AS payment_method,
+        {$ewColJo} AS ewallet_provider,
         COALESCE(jo.status, 'Completed') AS status,
         COALESCE(jo.created_at, jo.updated_at) AS created_at
     FROM job_orders jo
@@ -803,6 +836,13 @@ $recent_consolidated_txns = stf_rows($pdo, "
     ORDER BY created_at DESC
     LIMIT 7
 ", [$station_id, $station_id, $station_id]);
+
+foreach ($recent_consolidated_txns as &$rt) {
+    $norm = normalize_payment_type($rt['payment_method'] ?? 'Cash', $rt['ewallet_provider'] ?? '');
+    $rt['payment_type']     = $norm['payment_type'];
+    $rt['payment_provider'] = $norm['provider'];
+}
+unset($rt);
 
 // ── 11. SECTION 14: RECENT INVENTORY MOVEMENTS ──────────────────────────────
 $recent_inventory_movements = stf_rows($pdo, "
@@ -1859,7 +1899,7 @@ require_once __DIR__ . '/../partials/header.php';
                 <h2><i class="fas fa-chart-pie" style="color:#10B981;"></i> Payment Type Distribution</h2>
             </div>
             <div class="stf-card-body">
-                <p style="font-size:12px; color:#475569; font-weight:600; margin:0 0 8px 0;">Breakdown of payments encoded (Cash, Card, E-Fuel, E-Wallet, Credit, Fleet).</p>
+                <p style="font-size:12px; color:#475569; font-weight:600; margin:0 0 8px 0;">Breakdown of payments encoded (Cash, Card, E-Wallet, Petron Fleet Card, Credit Account, Petron Loyalty Points).</p>
                 <div class="stf-chart-wrap">
                     <canvas id="paymentTypeChart"></canvas>
                 </div>
@@ -1934,7 +1974,12 @@ require_once __DIR__ . '/../partials/header.php';
                                         <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-<?= $rt['txn_type'] === 'Fuel' ? 'danger' : ($rt['txn_type'] === 'Job Order' ? 'warning' : 'info') ?>"><?= stf_h($rt['txn_type']) ?></span></td>
                                         <td class="text-left" style="text-align:left;"><strong><?= stf_h($rt['customer_name']) ?></strong></td>
                                         <td class="text-right" style="text-align:right; font-weight:700; color:#15803D;"><?= stf_money((float)$rt['total_amount']) ?></td>
-                                        <td class="text-center" style="text-align:center;"><span class="stf-badge stf-badge-neutral"><?= stf_h($rt['payment_method']) ?></span></td>
+                                        <td class="text-center" style="text-align:center;">
+                                            <span class="stf-badge stf-badge-neutral"><?= stf_h($rt['payment_type'] ?? $rt['payment_method']) ?></span>
+                                            <?php if (($rt['payment_type'] ?? '') === 'E-Wallet' && !empty($rt['payment_provider'])): ?>
+                                                <div style="font-size:10px; color:#0d6efd; font-weight:600; margin-top:2px;">• <?= stf_h($rt['payment_provider']) ?></div>
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -2574,7 +2619,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 labels: <?= json_encode($payment_types) ?>,
                 datasets: [{
                     data: <?= json_encode($payment_data, JSON_NUMERIC_CHECK) ?>,
-                    backgroundColor: ['#10B981', '#002F6C', '#0284C7', '#06B6D4', '#8B5CF6', '#475569', '#F59E0B'],
+                    backgroundColor: ['#10B981', '#002F6C', '#0284C7', '#1E293B', '#F59E0B', '#8B5CF6'],
                     borderWidth: 2,
                     borderColor: '#FFFFFF'
                 }]

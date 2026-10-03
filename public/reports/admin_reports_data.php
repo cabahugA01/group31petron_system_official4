@@ -8,6 +8,8 @@ if (!defined('PETRON_SYSTEM')) {
     define('PETRON_SYSTEM', true);
 }
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 if (!function_exists('ard_table_exists')) {
     function ard_table_exists(PDO $pdo, string $tbl): bool {
         try {
@@ -578,8 +580,18 @@ if (!function_exists('getAdminReportData')) {
                     $m_params = ['date_from' => $date_from, 'date_to' => $date_to];
 
                     if (!empty($filter_pm)) {
-                        $m_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_pm) ";
-                        $m_params['filter_pm'] = $filter_pm;
+                        $norm_f = function_exists('normalize_payment_type') ? normalize_payment_type($filter_pm) : ['type' => $filter_pm, 'provider' => ''];
+                        if ($norm_f['type'] === 'E-Wallet') {
+                            if (!empty($norm_f['provider'])) {
+                                $m_where .= " AND (LOWER(COALESCE(mt.ewallet_provider,'')) = LOWER(:filter_prov) OR LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_prov)) ";
+                                $m_params['filter_prov'] = $norm_f['provider'];
+                            } else {
+                                $m_where .= " AND (LOWER(COALESCE(mt.payment_method,'')) IN ('e-wallet', 'ewallet', 'gcash', 'maya') OR (mt.ewallet_provider IS NOT NULL AND mt.ewallet_provider != '')) ";
+                            }
+                        } else {
+                            $m_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_pm) ";
+                            $m_params['filter_pm'] = $norm_f['type'];
+                        }
                     }
                     if (!empty($filter_cust)) {
                         $m_where .= " AND (LOWER(mt.customer_name) LIKE LOWER(:filter_cust) OR LOWER(mt.customer_first_name) LIKE LOWER(:filter_cust) OR LOWER(mt.customer_last_name) LIKE LOWER(:filter_cust)) ";
@@ -599,7 +611,9 @@ if (!function_exists('getAdminReportData')) {
                                     COALESCE(mti.quantity, mt.quantity, 1) as quantity,
                                     COALESCE(mti.unit_price, mt.unit_price, 0) as unit_price,
                                     COALESCE(mti.subtotal, mt.total_amount, 0) as amount,
-                                    COALESCE(mt.payment_method, 'Cash') as payment_method
+                                    COALESCE(mt.payment_method, 'Cash') as payment_method,
+                                    COALESCE(mt.ewallet_provider, '') as ewallet_provider,
+                                    COALESCE(mt.ewallet_reference, '') as ewallet_reference
                                   FROM merchandise_transactions mt
                                   LEFT JOIN merchandise_transaction_items mti ON mt.id = mti.transaction_id AND (mti.item_type IS NULL OR mti.item_type = 'merchandise')
                                   WHERE DATE(mt.transaction_date) BETWEEN :date_from AND :date_to
@@ -618,8 +632,18 @@ if (!function_exists('getAdminReportData')) {
                     $j_params = ['date_from' => $date_from, 'date_to' => $date_to];
 
                     if (!empty($filter_pm)) {
-                        $j_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:j_filter_pm) ";
-                        $j_params['j_filter_pm'] = $filter_pm;
+                        $norm_jf = function_exists('normalize_payment_type') ? normalize_payment_type($filter_pm) : ['type' => $filter_pm, 'provider' => ''];
+                        if ($norm_jf['type'] === 'E-Wallet') {
+                            if (!empty($norm_jf['provider'])) {
+                                $j_where .= " AND (LOWER(COALESCE(mt.ewallet_provider,'')) = LOWER(:j_filter_prov) OR LOWER(COALESCE(mt.payment_method,'')) = LOWER(:j_filter_prov)) ";
+                                $j_params['j_filter_prov'] = $norm_jf['provider'];
+                            } else {
+                                $j_where .= " AND (LOWER(COALESCE(mt.payment_method,'')) IN ('e-wallet', 'ewallet', 'gcash', 'maya') OR (mt.ewallet_provider IS NOT NULL AND mt.ewallet_provider != '')) ";
+                            }
+                        } else {
+                            $j_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:j_filter_pm) ";
+                            $j_params['j_filter_pm'] = $norm_jf['type'];
+                        }
                     }
                     if (!empty($filter_cust)) {
                         $j_where .= " AND (LOWER(mt.customer_name) LIKE LOWER(:j_filter_cust) OR LOWER(mt.customer_first_name) LIKE LOWER(:j_filter_cust) OR LOWER(mt.customer_last_name) LIKE LOWER(:j_filter_cust)) ";
@@ -646,6 +670,8 @@ if (!function_exists('getAdminReportData')) {
                                 GREATEST(COALESCE(mt.total_amount,0) - COALESCE(mt.subtotal_amount,0) - COALESCE(mt.vat_amount,0), 0) as parts_cost,
                                 COALESCE(mt.total_amount, 0) as total_amount,
                                 COALESCE(mt.payment_method, 'Cash') as payment_method,
+                                COALESCE(mt.ewallet_provider, '') as ewallet_provider,
+                                COALESCE(mt.ewallet_reference, '') as ewallet_reference,
                                 COALESCE(mt.workflow_status, mt.validation_status, 'Completed') as status
                                FROM merchandise_transactions mt
                                WHERE DATE(mt.transaction_date) BETWEEN :date_from AND :date_to
@@ -677,16 +703,46 @@ if (!function_exists('getAdminReportData')) {
                 // 4. PAYMENT METHOD SUMMARY
                 $pm_map = [];
                 foreach ($data['merchandise'] as $m) {
-                    $pm = $m['payment_method'] ?: 'Cash';
-                    if (!isset($pm_map[$pm])) $pm_map[$pm] = ['count' => 0, 'amount' => 0];
-                    $pm_map[$pm]['count']++;
-                    $pm_map[$pm]['amount'] += (float)$m['amount'];
+                    $pm_raw = $m['payment_method'] ?: 'Cash';
+                    $prov = !empty($m['ewallet_provider']) ? trim($m['ewallet_provider']) : '';
+                    $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm_raw, $prov) : ['type' => $pm_raw, 'provider' => $prov];
+                    $pm_type = $norm['type'];
+                    $prov_name = $norm['provider'];
+
+                    if (!isset($pm_map[$pm_type])) {
+                        $pm_map[$pm_type] = ['count' => 0, 'amount' => 0, 'providers' => []];
+                    }
+                    $pm_map[$pm_type]['count']++;
+                    $pm_map[$pm_type]['amount'] += (float)$m['amount'];
+
+                    if ($pm_type === 'E-Wallet' && !empty($prov_name)) {
+                        if (!isset($pm_map[$pm_type]['providers'][$prov_name])) {
+                            $pm_map[$pm_type]['providers'][$prov_name] = ['count' => 0, 'amount' => 0];
+                        }
+                        $pm_map[$pm_type]['providers'][$prov_name]['count']++;
+                        $pm_map[$pm_type]['providers'][$prov_name]['amount'] += (float)$m['amount'];
+                    }
                 }
                 foreach ($data['job_orders'] as $j) {
-                    $pm = $j['payment_method'] ?: 'Cash';
-                    if (!isset($pm_map[$pm])) $pm_map[$pm] = ['count' => 0, 'amount' => 0];
-                    $pm_map[$pm]['count']++;
-                    $pm_map[$pm]['amount'] += (float)$j['total_amount'];
+                    $pm_raw = $j['payment_method'] ?: 'Cash';
+                    $prov = !empty($j['ewallet_provider']) ? trim($j['ewallet_provider']) : '';
+                    $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm_raw, $prov) : ['type' => $pm_raw, 'provider' => $prov];
+                    $pm_type = $norm['type'];
+                    $prov_name = $norm['provider'];
+
+                    if (!isset($pm_map[$pm_type])) {
+                        $pm_map[$pm_type] = ['count' => 0, 'amount' => 0, 'providers' => []];
+                    }
+                    $pm_map[$pm_type]['count']++;
+                    $pm_map[$pm_type]['amount'] += (float)$j['total_amount'];
+
+                    if ($pm_type === 'E-Wallet' && !empty($prov_name)) {
+                        if (!isset($pm_map[$pm_type]['providers'][$prov_name])) {
+                            $pm_map[$pm_type]['providers'][$prov_name] = ['count' => 0, 'amount' => 0];
+                        }
+                        $pm_map[$pm_type]['providers'][$prov_name]['count']++;
+                        $pm_map[$pm_type]['providers'][$prov_name]['amount'] += (float)$j['total_amount'];
+                    }
                 }
                 $data['payment_summary'] = $pm_map;
 
@@ -2039,8 +2095,18 @@ if (!function_exists('getAdminReportData')) {
                 $col_params = ['date_from' => $date_from, 'date_to' => $date_to];
 
                 if (!empty($filter_pm)) {
-                    $col_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_pm) ";
-                    $col_params['filter_pm'] = $filter_pm;
+                    $norm_col_f = function_exists('normalize_payment_type') ? normalize_payment_type($filter_pm) : ['type' => $filter_pm, 'provider' => ''];
+                    if ($norm_col_f['type'] === 'E-Wallet') {
+                        if (!empty($norm_col_f['provider'])) {
+                            $col_where .= " AND (LOWER(COALESCE(mt.ewallet_provider,'')) = LOWER(:filter_prov) OR LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_prov)) ";
+                            $col_params['filter_prov'] = $norm_col_f['provider'];
+                        } else {
+                            $col_where .= " AND (LOWER(COALESCE(mt.payment_method,'')) IN ('e-wallet', 'ewallet', 'gcash', 'maya') OR (mt.ewallet_provider IS NOT NULL AND mt.ewallet_provider != '')) ";
+                        }
+                    } else {
+                        $col_where .= " AND LOWER(COALESCE(mt.payment_method,'')) = LOWER(:filter_pm) ";
+                        $col_params['filter_pm'] = $norm_col_f['type'];
+                    }
                 }
                 if (!empty($filter_cust)) {
                     $col_where .= " AND (LOWER(mt.customer_name) LIKE LOWER(:filter_cust) OR LOWER(mt.customer_first_name) LIKE LOWER(:filter_cust) OR LOWER(mt.customer_last_name) LIKE LOWER(:filter_cust)) ";
@@ -2052,6 +2118,8 @@ if (!function_exists('getAdminReportData')) {
                                 COALESCE(NULLIF(mt.customer_name,''), NULLIF(CONCAT(COALESCE(mt.customer_first_name,''),' ',COALESCE(mt.customer_last_name,'')),''), 'Walk-in') as customer,
                                 COALESCE(mt.credit_po_number, mt.transaction_id) as invoice_no,
                                 COALESCE(mt.payment_method, 'Cash') as payment_method,
+                                COALESCE(mt.ewallet_provider, '') as ewallet_provider,
+                                COALESCE(mt.ewallet_reference, '') as ewallet_reference,
                                 COALESCE(mt.amount_paid, mt.total_amount, 0) as amount_paid,
                                 COALESCE(u.name, 'Cashier Staff') as collected_by,
                                 mt.transaction_date as payment_date
@@ -2142,8 +2210,14 @@ if (!function_exists('getAdminReportData')) {
                 $c_params['filter_cname'] = '%' . $filter_cname . '%';
             }
             if (!empty($filter_ctype)) {
-                $c_where .= " AND (LOWER(COALESCE(c.type, '')) LIKE LOWER(:filter_ctype)) ";
-                $c_params['filter_ctype'] = '%' . $filter_ctype . '%';
+                if (in_array(strtolower($filter_ctype), ['petron fleet card', 'fleet card', 'fleet'])) {
+                    $c_where .= " AND (LOWER(COALESCE(c.type, '')) LIKE '%fleet%') ";
+                } elseif (in_array(strtolower($filter_ctype), ['credit account', 'credit'])) {
+                    $c_where .= " AND (LOWER(COALESCE(c.type, '')) LIKE '%credit%') ";
+                } else {
+                    $c_where .= " AND (LOWER(COALESCE(c.type, '')) LIKE LOWER(:filter_ctype)) ";
+                    $c_params['filter_ctype'] = '%' . $filter_ctype . '%';
+                }
             }
             if (!empty($filter_plate)) {
                 $c_where .= " AND (LOWER(COALESCE(c.vehicle_plate,'')) LIKE LOWER(:filter_plate) OR EXISTS (SELECT 1 FROM customer_vehicles cv WHERE cv.customer_id = c.id AND LOWER(cv.plate_number) LIKE LOWER(:filter_plate2))) ";

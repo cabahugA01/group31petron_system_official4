@@ -178,6 +178,12 @@ try {
 
         // Format response for merchandise transaction
         $is_jo_type = (in_array(strtolower($row['transaction_type'] ?? ''), ['job_order', 'combined']) || !empty(trim($row['job_order_service'] ?? '')));
+        $pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($row) : [
+            'payment_type' => $row['payment_method'],
+            'provider' => $row['ewallet_provider'] ?? '',
+            'reference_no' => $row['ewallet_reference'] ?? '',
+            'display_inline' => $row['payment_method']
+        ];
         echo json_encode([
             'success' => true,
             'type' => $is_jo_type ? 'job_order' : 'merchandise',
@@ -188,7 +194,9 @@ try {
             'quantity' => $row['quantity'],
             'unit_price' => number_format((float)$row['unit_price'], 2),
             'total_amount' => number_format((float)$row['total_amount'], 2),
-            'payment_method' => $row['payment_method'],
+            'payment_method' => $pay_info['payment_type'],
+            'payment_type' => $pay_info['payment_type'],
+            'payment_display' => $pay_info['display_inline'] ?? $pay_info['payment_type'],
             'payment_status' => $row['validation_status'] ?: 'Paid',
             'transaction_date' => date('M d, Y h:i A', strtotime($row['transaction_date'] > '2000-01-01' ? $row['transaction_date'] : $row['created_at'])),
             'validation_status' => $row['validation_status'],
@@ -211,7 +219,7 @@ try {
             'card_reference' => $row['card_reference'] ?: 'N/A',
             'card_type' => $row['card_type'] ?: 'N/A',
             'ewallet_reference' => $row['ewallet_reference'] ?: 'N/A',
-            'ewallet_provider' => $row['ewallet_provider'] ?: 'N/A',
+            'ewallet_provider' => $pay_info['provider'] ?: ($row['ewallet_provider'] ?: 'N/A'),
             'subtotal_amount' => $row['subtotal_amount'] ? number_format((float)$row['subtotal_amount'], 2) : 'N/A',
             'vat_amount' => $row['vat_amount'] ? number_format((float)$row['vat_amount'], 2) : 'N/A',
             'transaction_type' => $row['transaction_type'] ?? 'merchandise',
@@ -277,6 +285,8 @@ try {
                 jo.amount_paid,
                 jo.sukli,
                 jo.payment_method,
+                COALESCE(jo.ewallet_provider, '') AS ewallet_provider,
+                COALESCE(jo.ewallet_reference, '') AS ewallet_reference,
                 jo.payment_status,
                 jo.validation_status,
                 jo.created_at,
@@ -357,6 +367,13 @@ try {
             ? $row['additional_notes']
             : ($pending_jo_void['remarks'] ?? ($row['notes'] ?? ''));
 
+        $jo_pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($row) : [
+            'payment_type' => $row['payment_method'],
+            'provider' => $row['ewallet_provider'] ?? '',
+            'reference_no' => $row['ewallet_reference'] ?? '',
+            'display_inline' => $row['payment_method']
+        ];
+
         // Format response for job order
         echo json_encode([
             'success' => true,
@@ -373,7 +390,11 @@ try {
             'total_amount' => number_format($jo_total, 2),
             'amount_paid' => number_format($jo_paid, 2),
             'change_amount' => number_format($jo_sukli, 2),
-            'payment_method' => $row['payment_method'],
+            'payment_method' => $jo_pay_info['payment_type'],
+            'payment_type' => $jo_pay_info['payment_type'],
+            'payment_display' => $jo_pay_info['display_inline'] ?? $jo_pay_info['payment_type'],
+            'ewallet_provider' => $jo_pay_info['provider'] ?: ($row['ewallet_provider'] ?: 'N/A'),
+            'ewallet_reference' => $row['ewallet_reference'] ?: 'N/A',
             'payment_status' => $row['payment_status'],
             'validation_status' => $row['validation_status'],
             'job_status' => $row['status'] ?: 'Pending',

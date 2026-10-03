@@ -100,8 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $items = $items_raw;
     }
     
-    $payment_type = $_POST['payment_type'] ?? 'Cash';
-    $gcash_ref_number = trim($_POST['gcash_ref_number'] ?? '');
+    $raw_payment_type = trim($_POST['payment_type'] ?? 'Cash');
+    $raw_ew_provider = trim($_POST['ewallet_provider'] ?? '');
+    $norm_pay = function_exists('normalize_payment_type') ? normalize_payment_type($raw_payment_type, $raw_ew_provider) : ['payment_type'=>$raw_payment_type,'provider'=>$raw_ew_provider];
+    $payment_type = $norm_pay['payment_type'] ?? 'Cash';
+    $ewallet_provider = $norm_pay['provider'] ?? ($payment_type === 'E-Wallet' ? 'GCash' : null);
+    $ewallet_reference = trim($_POST['ewallet_reference'] ?? $_POST['gcash_ref_number'] ?? '');
+    $fleet_card_number = trim($_POST['fleet_card_number'] ?? '');
+    $card_reference = trim($_POST['card_reference'] ?? '');
     $discount = (float)($_POST['discount'] ?? 0);
     
     if (empty($items)) {
@@ -213,8 +219,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      // Column already exists, ignore
                  }
                  
-                 $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, sale_date, sale_time, payment_method, total, status, pump_id, created_at, gcash_ref_number) VALUES (?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, NOW(), ?)");
-                 $stmt->execute([$sale_id, $station_id, $me['id'], $payment_type, $final_total, $initial_status, $item_details[0]['pump_id'] ?? null, $gcash_ref_number]);
+                 // Ensure sales columns exist
+                 foreach ([
+                     'customer' => 'VARCHAR(255) NULL',
+                     'ewallet_provider' => 'VARCHAR(50) NULL',
+                     'ewallet_reference' => 'VARCHAR(100) NULL',
+                     'fleet_card_number' => 'VARCHAR(100) NULL',
+                     'gcash_ref_number' => 'VARCHAR(100) NULL'
+                 ] as $col => $def) {
+                     try {
+                         $pdo->exec("ALTER TABLE sales ADD COLUMN {$col} {$def}");
+                     } catch (PDOException $e) {}
+                 }
+
+                 $stmt = $pdo->prepare("INSERT INTO sales (id, station_id, user_id, customer, sale_date, sale_time, payment_method, total, status, pump_id, created_at, gcash_ref_number, ewallet_provider, ewallet_reference, fleet_card_number) VALUES (?, ?, ?, ?, CURDATE(), CURTIME(), ?, ?, ?, ?, NOW(), ?, ?, ?, ?)");
+                 $stmt->execute([
+                     $sale_id,
+                     $station_id,
+                     $me['id'],
+                     $customer_name,
+                     $payment_type,
+                     $final_total,
+                     $initial_status,
+                     $item_details[0]['pump_id'] ?? null,
+                     ($payment_type === 'E-Wallet' ? $ewallet_reference : null),
+                     ($payment_type === 'E-Wallet' ? ($ewallet_provider ?: 'GCash') : null),
+                     ($payment_type === 'E-Wallet' ? $ewallet_reference : null),
+                     ($payment_type === 'Petron Fleet Card' ? $fleet_card_number : null)
+                 ]);
                  $last_sale_id = $sale_id;
                  
                  // Add name column if it doesn't exist
@@ -404,19 +436,44 @@ include __DIR__ . '/../partials/header.php';
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
             <div>
                 <div class="form-group mb-3">
-                    <label class="lbl">Payment Type</label>
-                    <select name="payment_type" id="payment_method_pos" class="inp full" onchange="toggleGcashRef()">
+                    <label class="lbl">Payment Type <span style="color: red;">*</span></label>
+                    <select name="payment_type" id="payment_method_pos" class="inp full" onchange="togglePosMultiPayment()">
                         <option value="">Select payment type</option>
                         <option value="Cash">Cash</option>
-                        <option value="GCash">GCash</option>
+                        <option value="Card">Card</option>
+                        <option value="E-Wallet">E-Wallet</option>
+                        <option value="Petron Fleet Card">Petron Fleet Card</option>
+                        <option value="Credit Account">Credit Account</option>
+                        <option value="Petron Loyalty Points">Petron Loyalty Points</option>
                     </select>
                 </div>
                 
-                <!-- GCash Reference Number Field -->
-                <div class="form-group mb-3" id="gcash_ref_field" style="display: none;">
-                    <label class="lbl">GCash Reference Number</label>
-                    <input type="text" name="gcash_ref_number" id="gcash_ref_number" class="inp full" placeholder="e.g., 1234567890">
-                    <small class="muted">Required for GCash payments</small>
+                <!-- E-Wallet Provider and Reference Fields -->
+                <div id="ewallet_pos_multi_field" style="display: none;">
+                    <div class="form-group mb-3">
+                        <label class="lbl">E-Wallet Provider <span style="color: red;">*</span></label>
+                        <select name="ewallet_provider" id="ewallet_provider" class="inp full">
+                            <option value="GCash">GCash</option>
+                            <option value="Maya">Maya</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="lbl">Reference Number <span style="color: red;">*</span></label>
+                        <input type="text" name="ewallet_reference" id="ewallet_reference" class="inp full" placeholder="e.g., GC123456789 or MY123456789">
+                        <small class="muted">Enter the transaction reference from the e-wallet app</small>
+                    </div>
+                </div>
+
+                <!-- Card Details -->
+                <div class="form-group mb-3" id="card_pos_multi_field" style="display: none;">
+                    <label class="lbl">Card / Auth Reference</label>
+                    <input type="text" name="card_reference" id="card_reference" class="inp full" placeholder="e.g., Auth / Ref #">
+                </div>
+
+                <!-- Fleet Card Details -->
+                <div class="form-group mb-3" id="fleet_pos_multi_field" style="display: none;">
+                    <label class="lbl">Petron Fleet Card Number <span style="color: red;">*</span></label>
+                    <input type="text" name="fleet_card_number" id="fleet_card_number" class="inp full" placeholder="e.g., PFC-1234-5678">
                 </div>
             </div>
             
@@ -460,7 +517,18 @@ include __DIR__ . '/../partials/header.php';
         </div>
         <div class="modal-body">
             <div style="font-size: 48px; color: #28a745; margin-bottom: 10px;"><i class="fas fa-check-circle"></i></div>
-            <p>Transaction #<?php echo $last_sale_id; ?> saved.</p>
+            <p style="font-weight: 600; font-size: 1.1em;">Transaction #<?php echo htmlspecialchars($last_sale_id); ?> saved.</p>
+            <div style="margin: 12px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; text-align: left; font-size: 14px;">
+                <div><strong>Payment Type:</strong> <?php echo htmlspecialchars($payment_type ?? 'Cash'); ?></div>
+                <?php if (($payment_type ?? '') === 'E-Wallet' && !empty($ewallet_provider)): ?>
+                    <div><strong>Provider:</strong> <?php echo htmlspecialchars($ewallet_provider); ?></div>
+                <?php endif; ?>
+                <?php if (!empty($ewallet_reference)): ?>
+                    <div><strong>Reference No.:</strong> <?php echo htmlspecialchars($ewallet_reference); ?></div>
+                <?php elseif (!empty($fleet_card_number)): ?>
+                    <div><strong>Card No.:</strong> <?php echo htmlspecialchars($fleet_card_number); ?></div>
+                <?php endif; ?>
+            </div>
             <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
                 <button class="btn ghost" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
                 <button class="btn ghost" onclick="alert('Email sent!')"><i class="fas fa-envelope"></i> Email</button>
@@ -905,26 +973,25 @@ function calculateGrandTotal() {
     document.getElementById('displayTotal').innerText = '₱' + grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
-function toggleGcashRef() {
+function togglePosMultiPayment() {
     const paymentType = document.getElementById('payment_method_pos').value;
-    const gcashRefField = document.getElementById('gcash_ref_field');
-    const gcashRefInput = document.getElementById('gcash_ref_number');
+    const ewField = document.getElementById('ewallet_pos_multi_field');
+    const cardField = document.getElementById('card_pos_multi_field');
+    const fleetField = document.getElementById('fleet_pos_multi_field');
     
-    if (paymentType === 'GCash') {
-        gcashRefField.style.display = 'block';
-        gcashRefInput.required = true;
-    } else {
-        gcashRefField.style.display = 'none';
-        gcashRefInput.required = false;
-        gcashRefInput.value = '';
-    }
+    if (ewField) ewField.style.display = (paymentType === 'E-Wallet') ? 'block' : 'none';
+    if (cardField) cardField.style.display = (paymentType === 'Card') ? 'block' : 'none';
+    if (fleetField) fleetField.style.display = (paymentType === 'Petron Fleet Card') ? 'block' : 'none';
+}
+
+function toggleGcashRef() {
+    togglePosMultiPayment();
 }
 
 function validateForm() {
     const form = document.getElementById('posMultiForm');
     const customerName = document.querySelector('input[name="customer_name"]').value.trim();
     const paymentType = document.getElementById('payment_method_pos').value;
-    const gcashRefInput = document.getElementById('gcash_ref_number');
     
     if (!customerName) {
         alert('Customer name is required. Please enter a customer name or "Walk-in".');
@@ -937,13 +1004,24 @@ function validateForm() {
     }
     
     if (!paymentType) {
-        alert('Payment type is required. Please select Cash or GCash.');
+        alert('Payment type is required.');
         return false;
     }
     
-    if (paymentType === 'GCash' && !gcashRefInput.value.trim()) {
-        alert('GCash reference number is required for GCash payments.');
-        return false;
+    if (paymentType === 'E-Wallet') {
+        const ewRef = document.getElementById('ewallet_reference');
+        if (!ewRef || !ewRef.value.trim()) {
+            alert('Reference number is required for E-Wallet payments.');
+            return false;
+        }
+    }
+    
+    if (paymentType === 'Petron Fleet Card') {
+        const fleetNum = document.getElementById('fleet_card_number');
+        if (!fleetNum || !fleetNum.value.trim()) {
+            alert('Fleet card number is required for Petron Fleet Card payments.');
+            return false;
+        }
     }
     
     // Serialize items array into hidden input field

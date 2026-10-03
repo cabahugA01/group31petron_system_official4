@@ -4,11 +4,12 @@
  * Matches staff_reports.php professional design with centered header + section tabs
  */
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 $is_standalone = !isset($date_start) || !isset($date_end) || !isset($pdo) || !isset($station_id);
 
 if ($is_standalone) {
     if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-    require_once __DIR__ . '/../../backend/lib.php';
     require_once __DIR__ . '/../db_connect.php';
     require_login();
     $current_user = current_user();
@@ -111,9 +112,16 @@ function srAdminCompletedServiceWhere(string $alias, string $workflow_col = 'wor
 
 function srAdminPaymentMethodCase(string $expr): string {
     return "CASE
-        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fleet%' THEN 'Fleet'
-        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fuel card%'
-          OR LOWER(COALESCE({$expr},'')) LIKE '%efuel%' THEN 'E-Fuel'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%fleet%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%fuel card%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%efuel%' THEN 'Petron Fleet Card'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%credit account%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%receivable%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%utang%'
+          OR (LOWER(COALESCE({$expr},'')) LIKE '%credit%' AND LOWER(COALESCE({$expr},'')) NOT LIKE '%credit card%') THEN 'Credit Account'
+        WHEN LOWER(COALESCE({$expr},'')) LIKE '%loyalt%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%reward%'
+          OR LOWER(COALESCE({$expr},'')) LIKE '%point%' THEN 'Petron Loyalty Points'
         WHEN LOWER(COALESCE({$expr},'')) LIKE '%card%' THEN 'Card'
         WHEN LOWER(COALESCE({$expr},'')) LIKE '%wallet%'
           OR LOWER(COALESCE({$expr},'')) LIKE '%gcash%'
@@ -575,56 +583,84 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                 $m_shift_cond = srAdminShiftCondition('mt', 'COALESCE(mt.transaction_date, mt.created_at)', $shift_start_t);
                 $jo_shift_cond = srAdminShiftCondition('jo', 'jo.created_at', $shift_start_t);
 
-                $q = $pdo->prepare("
-                    SELECT
-                        " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
-                        COUNT(*) AS txn_count,
-                        SUM(COALESCE(total_amount, 0)) AS amount
-                    FROM fuel_transactions ft
-                    WHERE ft.station_id = ?
-                      AND DATE(ft.transaction_date) BETWEEN ? AND ?
-                      AND $shift_cond
-                      AND LOWER(COALESCE(ft.status,'')) IN ('verified','approved','validated')
-                      AND EXISTS (
-                          SELECT 1 FROM fuel_sales_closing fsc
-                          WHERE fsc.station_id = ft.station_id
-                            AND fsc.report_date = DATE(ft.transaction_date)
-                            AND (
-                                fsc.shift_period = ft.shift_period
-                                OR fsc.shift = ft.shift_name
-                                OR fsc.shift = ft.shift_period
-                                OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
-                                OR ft.shift_period IS NULL OR ft.shift_period = ''
-                            )
-                            AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
-                      )
-                    GROUP BY mode_of_payment
-                    ORDER BY amount DESC
-                ");
-                $q->execute([$station_id, $date_start, $date_end]);
-                $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                $all_pay_records = [];
 
-                // Also include merchandise payments
+                // 1. Fuel payments
                 try {
+                    $ewColFt = "''";
+                    try {
+                        $ck = $pdo->query("SHOW COLUMNS FROM fuel_transactions LIKE 'ewallet_provider'");
+                        if ($ck && $ck->rowCount() > 0) $ewColFt = "COALESCE(ft.ewallet_provider, '')";
+                    } catch (Exception $e) {}
+
+                    $q = $pdo->prepare("
+                        SELECT
+                            COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewColFt} AS ewallet_provider,
+                            COUNT(*) AS txn_count,
+                            SUM(COALESCE(ft.total_amount, 0)) AS amount
+                        FROM fuel_transactions ft
+                        WHERE ft.station_id = ?
+                          AND DATE(ft.transaction_date) BETWEEN ? AND ?
+                          AND $shift_cond
+                          AND LOWER(COALESCE(ft.status,'')) IN ('verified','approved','validated')
+                          AND EXISTS (
+                              SELECT 1 FROM fuel_sales_closing fsc
+                              WHERE fsc.station_id = ft.station_id
+                                AND fsc.report_date = DATE(ft.transaction_date)
+                                AND (
+                                    fsc.shift_period = ft.shift_period
+                                    OR fsc.shift = ft.shift_name
+                                    OR fsc.shift = ft.shift_period
+                                    OR LOWER(fsc.shift) LIKE CONCAT('%', LOWER(COALESCE(ft.shift_period, '')), '%')
+                                    OR ft.shift_period IS NULL OR ft.shift_period = ''
+                                )
+                                AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
+                          )
+                        GROUP BY raw_payment_method, ewallet_provider
+                    ");
+                    $q->execute([$station_id, $date_start, $date_end]);
+                    $all_pay_records = array_merge($all_pay_records, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
+
+                // 2. Merchandise payments
+                try {
+                    $ewColMt = "''";
+                    try {
+                        $ck = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'ewallet_provider'");
+                        if ($ck && $ck->rowCount() > 0) $ewColMt = "COALESCE(mt.ewallet_provider, '')";
+                    } catch (Exception $e) {}
+
                     $q2 = $pdo->prepare("
                         SELECT
-                            " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
+                            COALESCE(NULLIF(TRIM(mt.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewColMt} AS ewallet_provider,
                             COUNT(*) AS txn_count,
-                            SUM(COALESCE(total_amount, 0)) AS amount
+                            SUM(COALESCE(mt.total_amount, 0)) AS amount
                         FROM merchandise_transactions mt
                         WHERE mt.station_id = ?
                           AND DATE(COALESCE(mt.transaction_date, mt.created_at)) BETWEEN ? AND ?
                           AND $m_shift_cond
                           AND " . srAdminMtNotNativeJobWhere('mt') . "
                           AND " . srAdminNonRejectedWhere('mt') . "
-                        GROUP BY mode_of_payment
+                        GROUP BY raw_payment_method, ewallet_provider
                     ");
                     $q2->execute([$station_id, $date_start, $date_end]);
-                    $merch_pay = $q2->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $all_pay_records = array_merge($all_pay_records, $q2->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
+
+                // 3. Job order payments
+                try {
+                    $ewColJo = "''";
+                    try {
+                        $ck = $pdo->query("SHOW COLUMNS FROM job_orders LIKE 'ewallet_provider'");
+                        if ($ck && $ck->rowCount() > 0) $ewColJo = "COALESCE(jo.ewallet_provider, '')";
+                    } catch (Exception $e) {}
 
                     $q3 = $pdo->prepare("
                         SELECT
-                            " . srAdminPaymentMethodCase('payment_method') . " AS mode_of_payment,
+                            COALESCE(NULLIF(TRIM(jo.payment_method),''), 'Cash') AS raw_payment_method,
+                            {$ewColJo} AS ewallet_provider,
                             COUNT(*) AS txn_count,
                             SUM(COALESCE(NULLIF(amount_paid, 0), NULLIF(total_cost, 0), NULLIF(estimated_cost, 0), COALESCE(actual_labor_cost,0) + COALESCE(actual_parts_cost,0), 0)) AS amount
                         FROM job_orders jo
@@ -632,22 +668,47 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                           AND DATE(jo.created_at) BETWEEN ? AND ?
                           AND $jo_shift_cond
                           AND " . srAdminNonRejectedWhere('jo', 'status', 'validation_status') . "
-                        GROUP BY mode_of_payment
+                        GROUP BY raw_payment_method, ewallet_provider
                     ");
                     $q3->execute([$station_id, $date_start, $date_end]);
-                    $jo_pay = $q3->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    $all_pay_records = array_merge($all_pay_records, $q3->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                } catch (Exception $e) {}
 
-                    // Merge with fuel payments
-                    $merged = [];
-                    foreach (array_merge($rows, $merch_pay, $jo_pay) as $r) {
-                        $m = $r['mode_of_payment'];
-                        if (!isset($merged[$m])) $merged[$m] = ['mode_of_payment'=>$m,'txn_count'=>0,'amount'=>0];
-                        $merged[$m]['txn_count'] += $r['txn_count'];
-                        $merged[$m]['amount']    += $r['amount'];
+                $merged = [];
+                foreach ($all_pay_records as $r) {
+                    $norm = function_exists('normalize_payment_type')
+                        ? normalize_payment_type($r['raw_payment_method'] ?? 'Cash', $r['ewallet_provider'] ?? '')
+                        : ['payment_type' => $r['raw_payment_method'] ?? 'Cash', 'provider' => $r['ewallet_provider'] ?? ''];
+                    $mode = $norm['payment_type'] ?? 'Cash';
+                    $prov = $norm['provider'] ?? '';
+                    if (!isset($merged[$mode])) {
+                        $merged[$mode] = [
+                            'mode_of_payment' => $mode,
+                            'txn_count'       => 0,
+                            'amount'          => 0.0,
+                        ];
+                        if ($mode === 'E-Wallet') {
+                            $merged[$mode]['providers'] = [
+                                'GCash' => ['txn_count' => 0, 'amount' => 0.0],
+                                'Maya'  => ['txn_count' => 0, 'amount' => 0.0]
+                            ];
+                        }
                     }
-                    usort($merged, fn($a,$b) => $b['amount'] <=> $a['amount']);
-                    $rows = array_values($merged);
-                } catch (Exception $e2) { /* keep fuel-only rows */ }
+                    $cnt = (int)($r['txn_count'] ?? 0);
+                    $amt = (float)($r['amount'] ?? 0.0);
+                    $merged[$mode]['txn_count'] += $cnt;
+                    $merged[$mode]['amount']    += $amt;
+
+                    if ($mode === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+                        if (!isset($merged['E-Wallet']['providers'][$prov])) {
+                            $merged['E-Wallet']['providers'][$prov] = ['txn_count' => 0, 'amount' => 0.0];
+                        }
+                        $merged['E-Wallet']['providers'][$prov]['txn_count'] += $cnt;
+                        $merged['E-Wallet']['providers'][$prov]['amount']    += $amt;
+                    }
+                }
+                usort($merged, fn($a,$b) => $b['amount'] <=> $a['amount']);
+                $rows = array_values($merged);
                 break;
 
             case 'customers':
@@ -1023,28 +1084,79 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
             // Section 4: Payment Breakdown
             $payment_breakdown = [];
             try {
+                $ewColMt = "''";
+                try {
+                    $ck = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'ewallet_provider'");
+                    if ($ck && $ck->rowCount() > 0) $ewColMt = "COALESCE(ewallet_provider, '')";
+                } catch (Exception $e) {}
+
+                $ewColJo = "''";
+                try {
+                    $ck = $pdo->query("SHOW COLUMNS FROM job_orders LIKE 'ewallet_provider'");
+                    if ($ck && $ck->rowCount() > 0) $ewColJo = "COALESCE(ewallet_provider, '')";
+                } catch (Exception $e) {}
+
                 $q = $pdo->prepare("
-                    SELECT COALESCE(NULLIF(payment_method,''),'Cash') AS payment_method,
-                           COUNT(*) AS txn_count,
-                           SUM(COALESCE(total_amount,0)) AS total_amount
+                    SELECT raw_method, ewallet_provider, total_amount
                     FROM (
-                        SELECT payment_method, total_amount FROM merchandise_transactions
+                        SELECT payment_method AS raw_method, {$ewColMt} AS ewallet_provider, total_amount 
+                        FROM merchandise_transactions
                         WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
                           AND LOWER(COALESCE(workflow_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                           AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                         UNION ALL
-                        SELECT payment_method,
+                        SELECT payment_method AS raw_method, {$ewColJo} AS ewallet_provider,
                                COALESCE(total_cost, actual_labor_cost + actual_parts_cost, estimated_cost, 0) AS total_amount
                         FROM job_orders
                         WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ?
                           AND LOWER(COALESCE(status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                           AND LOWER(COALESCE(validation_status, '')) NOT IN ('rejected','cancelled','canceled','voided')
                     ) combined
-                    GROUP BY payment_method
-                    ORDER BY total_amount DESC
                 ");
                 $q->execute([$station_id, $date_start, $date_end, $station_id, $date_start, $date_end]);
-                $payment_breakdown = $q->fetchAll(PDO::FETCH_ASSOC);
+                $raw_pb_rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                $canonical_order = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
+                $pb_map = [];
+                foreach ($canonical_order as $co) {
+                    $pb_map[$co] = [
+                        'payment_method' => $co,
+                        'txn_count'      => 0,
+                        'total_amount'   => 0.0,
+                    ];
+                    if ($co === 'E-Wallet') {
+                        $pb_map[$co]['providers'] = [
+                            'GCash' => ['txn_count' => 0, 'total_amount' => 0.0],
+                            'Maya'  => ['txn_count' => 0, 'total_amount' => 0.0]
+                        ];
+                    }
+                }
+
+                foreach ($raw_pb_rows as $pr) {
+                    $norm = function_exists('normalize_payment_type')
+                        ? normalize_payment_type($pr['raw_method'] ?? 'Cash', $pr['ewallet_provider'] ?? '')
+                        : ['payment_type' => $pr['raw_method'] ?? 'Cash', 'provider' => $pr['ewallet_provider'] ?? ''];
+                    $m = $norm['payment_type'] ?? 'Cash';
+                    $p = $norm['provider'] ?? '';
+                    if (!isset($pb_map[$m])) {
+                        $pb_map[$m] = ['payment_method' => $m, 'txn_count' => 0, 'total_amount' => 0.0];
+                    }
+                    $amt = (float)$pr['total_amount'];
+                    $pb_map[$m]['txn_count']    += 1;
+                    $pb_map[$m]['total_amount'] += $amt;
+
+                    if ($m === 'E-Wallet' && ($p === 'GCash' || $p === 'Maya')) {
+                        if (!isset($pb_map['E-Wallet']['providers'][$p])) {
+                            $pb_map['E-Wallet']['providers'][$p] = ['txn_count' => 0, 'total_amount' => 0.0];
+                        }
+                        $pb_map['E-Wallet']['providers'][$p]['txn_count']    += 1;
+                        $pb_map['E-Wallet']['providers'][$p]['total_amount'] += $amt;
+                    }
+                }
+                $payment_breakdown = array_values(array_filter($pb_map, fn($item) => $item['txn_count'] > 0 || $item['total_amount'] > 0));
+                if (empty($payment_breakdown)) {
+                    $payment_breakdown = array_values($pb_map);
+                }
             } catch (Exception $e) { error_log('Admin payment_breakdown: '.$e->getMessage()); }
             
             // Section 5: Staff Performance
@@ -1411,6 +1523,13 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=number_format($pb['txn_count'])?></td>
                     <td>&#x20B1;<?=number_format($pb['total_amount'],2)?></td>
                 </tr>
+                <?php if (!empty($pb['providers'])): foreach ($pb['providers'] as $provName => $provData): if (($provData['txn_count'] ?? 0) > 0 || ($provData['total_amount'] ?? 0) > 0): ?>
+                <tr style="background: #f8fafc; font-size: 11px;">
+                    <td style="padding-left: 24px; color: #475569;">&bull; Provider: <strong><?=htmlspecialchars($provName)?></strong></td>
+                    <td style="color: #475569;"><?=number_format($provData['txn_count'])?></td>
+                    <td style="color: #475569;">&#x20B1;<?=number_format($provData['total_amount'],2)?></td>
+                </tr>
+                <?php endif; endforeach; endif; ?>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($payment_breakdown)): ?>
@@ -1576,6 +1695,13 @@ function srFetchAdminLegacy($pdo, $station_id, $date_start, $date_end, $shift_st
                     <td><?=number_format($r['txn_count'])?></td>
                     <td>&#x20B1;<?=number_format($r['amount'],2)?></td>
                 </tr>
+                <?php if (!empty($r['providers'])): foreach ($r['providers'] as $provName => $provData): if (($provData['txn_count'] ?? 0) > 0 || ($provData['amount'] ?? 0) > 0): ?>
+                <tr style="background: #f8fafc; font-size: 11px;">
+                    <td style="padding-left: 24px; color: #475569;">&bull; Provider: <strong><?=htmlspecialchars($provName)?></strong></td>
+                    <td style="color: #475569;"><?=number_format($provData['txn_count'])?></td>
+                    <td style="color: #475569;">&#x20B1;<?=number_format($provData['amount'],2)?></td>
+                </tr>
+                <?php endif; endforeach; endif; ?>
             <?php endforeach; endif; ?>
             </tbody>
             <?php if(!empty($rows)): ?>

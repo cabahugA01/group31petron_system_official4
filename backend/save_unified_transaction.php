@@ -31,7 +31,13 @@ try {
     // Customer info
     $customer_name = trim($_POST['customer_name'] ?? '');
     $customer_contact = trim($_POST['customer_contact'] ?? '');
-    $payment_method = trim($_POST['payment_method'] ?? 'Cash');
+    $raw_payment_method = trim($_POST['payment_method'] ?? 'Cash');
+    $raw_ewallet_provider = trim($_POST['ewallet_provider'] ?? '');
+    $norm_pay = function_exists('normalize_payment_type') ? normalize_payment_type($raw_payment_method, $raw_ewallet_provider) : ['payment_type'=>$raw_payment_method, 'provider'=>$raw_ewallet_provider];
+    $payment_method = $norm_pay['payment_type'] ?? 'Cash';
+    $ewallet_provider = $norm_pay['provider'] ?? ($raw_ewallet_provider ?: null);
+    $ewallet_reference = trim($_POST['ewallet_reference'] ?? '');
+    $fleet_card_number = trim($_POST['fleet_card_number'] ?? '');
     
     // Service info (Job Order fields)
     $service_type = trim($_POST['service_type'] ?? '');
@@ -162,64 +168,63 @@ try {
     
     // ========== INSERT MERCHANDISE_TRANSACTIONS RECORD ==========
     
-    $stmt = $pdo->prepare("
-        INSERT INTO merchandise_transactions (
-            transaction_id,
-            station_id,
-            staff_id,
-            customer_name,
-            customer_contact,
-            transaction_type,
-            job_order_service,
-            job_order_vehicle_plate,
-            job_order_vehicle_type,
-            job_order_vehicle_brand,
-            job_order_vehicle_model,
-            job_order_service_category,
-            job_order_mechanic_name,
-            remarks,
-            total_amount,
-            payment_method,
-            payment_status,
-            validation_status,
-            workflow_status,
-            shift_period,
-            shift_name,
-            transaction_date,
-            created_at,
-            updated_at
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW()
-        )
-    ");
-    
-    $payment_status = ($payment_method === 'Credit') ? 'Pending Payment' : 'Paid';
+    $is_credit = in_array(strtolower($payment_method), ['credit account', 'credit', 'account receivable'], true);
+    $payment_status = $is_credit ? 'Pending Payment' : 'Paid';
     $validation_status = 'Pending';
     $workflow_status = ($transaction_type === 'job_order' || $transaction_type === 'combined') ? 'Pending' : 'Completed';
     
-    $stmt->execute([
-        $transaction_id,
-        $station_id,
-        $me['id'],
-        $customer_name,
-        $customer_contact,
-        $transaction_type,
-        $service_type,
-        $vehicle_plate,
-        $vehicle_type,
-        $vehicle_brand,
-        $vehicle_model,
-        $service_category,
-        $mechanic_name,
-        $service_notes,
-        $grand_total,
-        $payment_method,
-        $payment_status,
-        $validation_status,
-        $workflow_status,
-        $shift_period,
-        $shift_name
-    ]);
+    $cols = [
+        'transaction_id', 'station_id', 'staff_id', 'customer_name', 'customer_contact',
+        'transaction_type', 'job_order_service', 'job_order_vehicle_plate', 'job_order_vehicle_type',
+        'job_order_vehicle_brand', 'job_order_vehicle_model', 'job_order_service_category',
+        'job_order_mechanic_name', 'remarks', 'total_amount', 'payment_method',
+        'payment_status', 'validation_status', 'workflow_status', 'shift_period', 'shift_name'
+    ];
+    $vals = [
+        $transaction_id, $station_id, $me['id'], $customer_name, $customer_contact,
+        $transaction_type, $service_type, $vehicle_plate, $vehicle_type,
+        $vehicle_brand, $vehicle_model, $service_category,
+        $mechanic_name, $service_notes, $grand_total, $payment_method,
+        $payment_status, $validation_status, $workflow_status, $shift_period, $shift_name
+    ];
+
+    $existingCols = [];
+    try {
+        $cStmt = $pdo->query("SHOW COLUMNS FROM merchandise_transactions");
+        while ($cRow = $cStmt->fetch(PDO::FETCH_ASSOC)) {
+            $existingCols[strtolower($cRow['Field'])] = true;
+        }
+    } catch (Exception $e) {}
+
+    if (isset($existingCols['ewallet_provider']) && $ewallet_provider) {
+        $cols[] = 'ewallet_provider';
+        $vals[] = $ewallet_provider;
+    }
+    if (isset($existingCols['ewallet_reference']) && $ewallet_reference) {
+        $cols[] = 'ewallet_reference';
+        $vals[] = $ewallet_reference;
+    }
+    if (isset($existingCols['fleet_card_number']) && $fleet_card_number) {
+        $cols[] = 'fleet_card_number';
+        $vals[] = $fleet_card_number;
+    }
+    if (isset($existingCols['transaction_date'])) {
+        $cols[] = 'transaction_date';
+        $vals[] = date('Y-m-d H:i:s');
+    }
+    if (isset($existingCols['created_at'])) {
+        $cols[] = 'created_at';
+        $vals[] = date('Y-m-d H:i:s');
+    }
+    if (isset($existingCols['updated_at'])) {
+        $cols[] = 'updated_at';
+        $vals[] = date('Y-m-d H:i:s');
+    }
+
+    $colSql = implode(', ', array_map(fn($c) => "`$c`", $cols));
+    $phSql = implode(', ', array_fill(0, count($cols), '?'));
+    $stmt = $pdo->prepare("INSERT INTO merchandise_transactions ($colSql) VALUES ($phSql)");
+    $stmt->execute($vals);
     
     $transaction_db_id = $pdo->lastInsertId();
     

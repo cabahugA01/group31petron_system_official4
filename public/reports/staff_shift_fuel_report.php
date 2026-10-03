@@ -250,10 +250,18 @@ foreach ($meter_readings as $reading) {
 // Fetch payment breakdown
 try {
     $where_payment = $where_shift;
+    $has_ew_ft = false;
+    try {
+        $chkCol = $pdo->query("SHOW COLUMNS FROM fuel_transactions LIKE 'ewallet_provider'");
+        $has_ew_ft = ($chkCol && $chkCol->rowCount() > 0);
+    } catch (Exception $e) {}
+    $ewColFt = $has_ew_ft ? "COALESCE(ft.ewallet_provider, '')" : "''";
+
     $sql_payment = "
         SELECT 
-            payment_method,
-            SUM(total_amount) AS total
+            COALESCE(NULLIF(TRIM(ft.payment_method), ''), 'Cash') AS raw_payment_method,
+            {$ewColFt} AS ewallet_provider,
+            SUM(ft.total_amount) AS total
         FROM fuel_transactions ft
         WHERE ft.station_id = :station_id
           AND DATE(ft.transaction_date) = :report_date
@@ -272,7 +280,7 @@ try {
                 AND LOWER(COALESCE(fsc.status, '')) IN ('verified','approved','validated')
           )
           $where_payment
-        GROUP BY payment_method
+        GROUP BY raw_payment_method, {$ewColFt}
     ";
     
     $stmt = $pdo->prepare($sql_payment);
@@ -282,7 +290,55 @@ try {
         $stmt->bindValue(':shift_key', $shift_key, PDO::PARAM_STR);
     }
     $stmt->execute();
-    $payment_breakdown = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw_payments = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $canonical_order = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
+    $payment_breakdown_map = [];
+
+    foreach ($raw_payments as $rp) {
+        $norm = function_exists('normalize_payment_type')
+            ? normalize_payment_type($rp['raw_payment_method'] ?? 'Cash', $rp['ewallet_provider'] ?? '')
+            : ['payment_type' => $rp['raw_payment_method'] ?? 'Cash', 'provider' => $rp['ewallet_provider'] ?? ''];
+        $pt   = $norm['payment_type'] ?? 'Cash';
+        $prov = $norm['provider'] ?? '';
+        $amt  = (float)($rp['total'] ?? 0);
+
+        if (!isset($payment_breakdown_map[$pt])) {
+            $payment_breakdown_map[$pt] = [
+                'payment_method' => $pt,
+                'total'          => 0.0,
+                'providers'      => [
+                    'GCash' => 0.0,
+                    'Maya'  => 0.0,
+                ],
+            ];
+        }
+        $payment_breakdown_map[$pt]['total'] += $amt;
+        if ($pt === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+            $payment_breakdown_map[$pt]['providers'][$prov] = ($payment_breakdown_map[$pt]['providers'][$prov] ?? 0.0) + $amt;
+        }
+    }
+
+    if (isset($payment_breakdown_map['E-Wallet'])) {
+        $ew_tot = $payment_breakdown_map['E-Wallet']['total'];
+        $ew_p_tot = ($payment_breakdown_map['E-Wallet']['providers']['GCash'] ?? 0.0) + ($payment_breakdown_map['E-Wallet']['providers']['Maya'] ?? 0.0);
+        if ($ew_tot > $ew_p_tot) {
+            $payment_breakdown_map['E-Wallet']['providers']['GCash'] += ($ew_tot - $ew_p_tot);
+        }
+    }
+
+    // Sort according to canonical order
+    $payment_breakdown = [];
+    foreach ($canonical_order as $cp) {
+        if (isset($payment_breakdown_map[$cp])) {
+            $payment_breakdown[] = $payment_breakdown_map[$cp];
+        }
+    }
+    foreach ($payment_breakdown_map as $k => $v) {
+        if (!in_array($k, $canonical_order, true)) {
+            $payment_breakdown[] = $v;
+        }
+    }
 } catch (Exception $e) {}
 
 // Fetch fuel inventory movement
@@ -842,6 +898,14 @@ if (isset($_GET['ajax_ssfr']) && $_GET['ajax_ssfr'] == '1') {
                             <td><?= htmlspecialchars($payment['payment_method']) ?></td>
                             <td class="text-right amount">₱<?= number_format($payment['total'], 2) ?></td>
                         </tr>
+                        <?php if (($payment['payment_method'] ?? '') === 'E-Wallet' && !empty($payment['providers'])): ?>
+                            <?php foreach ($payment['providers'] as $prov_name => $prov_amt): if ($prov_amt <= 0) continue; ?>
+                                <tr style="background:#f8fafc; font-size:0.9em;">
+                                    <td style="padding-left:24px; color:#475569;">&bull; Provider: <strong><?= htmlspecialchars($prov_name) ?></strong></td>
+                                    <td class="text-right amount" style="color:#0284c7; font-weight:600;">₱<?= number_format((float)$prov_amt, 2) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                         <?php endforeach; ?>
                         <tr class="total-row">
                             <td><strong>TOTAL COLLECTION</strong></td>

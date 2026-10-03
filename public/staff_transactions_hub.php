@@ -764,6 +764,11 @@ if ($section === 'merchandise') {
                    CONCAT('OR-', YEAR($mh_date_col), '-', LPAD(mt.id, 6, '0')) AS or_number,
                    mt.customer_name,
                    mt.payment_method,
+                   mt.ewallet_provider,
+                   mt.ewallet_reference,
+                   mt.card_type,
+                   mt.card_reference,
+                   mt.fleet_card_number,
                    COALESCE(mt.payment_status, 'Pending') AS payment_status,
                    COALESCE(mt.validation_status, 'Pending') AS validation_status,
                    $mh_date_col AS transaction_date,
@@ -1024,8 +1029,20 @@ if ($section === 'history' || $section === 'fuel_history') {
             }
         }
         if ($hist_filter_pay !== '') {
-            $merch_where2  .= " AND mt.payment_method = ?";
-            $merch_params2[] = $hist_filter_pay;
+            if ($hist_filter_pay === 'E-Wallet') {
+                $merch_where2  .= " AND (mt.payment_method IN ('E-Wallet', 'GCash', 'Maya') OR mt.ewallet_provider IS NOT NULL)";
+            } elseif ($hist_filter_pay === 'Card') {
+                $merch_where2  .= " AND mt.payment_method IN ('Card', 'Credit Card', 'Debit Card')";
+            } elseif ($hist_filter_pay === 'Credit Account') {
+                $merch_where2  .= " AND mt.payment_method IN ('Credit Account', 'Credit', 'Credit (Utang)', 'Account Receivable', 'Accounts Receivable')";
+            } elseif ($hist_filter_pay === 'Petron Fleet Card') {
+                $merch_where2  .= " AND (mt.payment_method IN ('Petron Fleet Card', 'Fleet Card') OR mt.payment_method LIKE '%Fleet%')";
+            } elseif ($hist_filter_pay === 'Petron Loyalty Points') {
+                $merch_where2  .= " AND (mt.payment_method IN ('Petron Loyalty Points', 'Loyalty Points') OR COALESCE(mt.loyalty_points_redeemed, 0) > 0)";
+            } else {
+                $merch_where2  .= " AND mt.payment_method = ?";
+                $merch_params2[] = $hist_filter_pay;
+            }
         }
         if ($hist_filter_pstatus !== '') {
             $merch_where2  .= " AND LOWER($mt_pstat_col) = ?";
@@ -1086,6 +1103,12 @@ if ($section === 'history' || $section === 'fuel_history') {
                    $mt_sub_col    AS subtotal_amount,
                    $mt_vat_col    AS vat_amount,
                    mt.payment_method,
+                   mt.ewallet_provider,
+                   mt.ewallet_reference,
+                   mt.card_type,
+                   mt.card_reference,
+                   mt.fleet_card_number,
+                   COALESCE(mt.loyalty_points_redeemed, 0) AS loyalty_points_redeemed,
                    $mt_pstat_col  AS payment_status,
                    $mt_amtp_col   AS amount_paid,
                    $mt_bal_col    AS balance_due,
@@ -7309,9 +7332,17 @@ setTimeout(function() {
 
                                     <!-- 5. PAYMENT -->
                                     <td style="padding:11px 8px;vertical-align:middle;box-sizing:border-box;">
+                                        <?php
+                                            $mh_pay = format_payment_for_record($txn);
+                                        ?>
                                         <div style="font-weight:700;font-size:13px;color:#1e293b;white-space:nowrap;">
-                                            <?= htmlspecialchars($txn['payment_method'] ?? 'Cash') ?>
+                                            <?= htmlspecialchars($mh_pay['payment_type']) ?>
                                         </div>
+                                        <?php if ($mh_pay['payment_type'] === 'E-Wallet' && !empty($mh_pay['provider'])): ?>
+                                        <div style="font-size:11px;font-weight:700;color:#0284c7;background:#e0f2fe;padding:1px 6px;border-radius:3px;display:inline-block;margin-top:2px;">
+                                            <?= htmlspecialchars($mh_pay['provider']) ?>
+                                        </div>
+                                        <?php endif; ?>
                                         <div style="margin-top:4px;">
                                             <?php
                                                 $mh_pstat_raw = $txn['payment_status'] ?? 'Pending';
@@ -7622,7 +7653,15 @@ setTimeout(function() {
                                         <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:5px;font-size:12.5px;font-weight:800;background:<?= $jpb ?>;color:<?= $jpc ?>;border:1px solid <?= $jpc ?>40;white-space:nowrap;">
                                             <?= strtoupper(htmlspecialchars($jom_pstatus)) ?>
                                         </span>
-                                        <div style="font-size:12px;font-weight:600;color:#475569;margin-top:3px;"><?= htmlspecialchars($jom['payment_method'] ?? '') ?></div>
+                                        <?php
+                                            $jom_pay = format_payment_for_record($jom);
+                                        ?>
+                                        <div style="font-size:12px;font-weight:700;color:#1e293b;margin-top:3px;"><?= htmlspecialchars($jom_pay['payment_type']) ?></div>
+                                        <?php if ($jom_pay['payment_type'] === 'E-Wallet' && !empty($jom_pay['provider'])): ?>
+                                        <div style="font-size:11px;font-weight:700;color:#0284c7;background:#e0f2fe;padding:1px 6px;border-radius:3px;display:inline-block;margin-top:2px;">
+                                            <?= htmlspecialchars($jom_pay['provider']) ?>
+                                        </div>
+                                        <?php endif; ?>
                                     </td>
                                     <!-- 7. STATUS -->
                                     <td style="text-align:center;overflow:hidden;box-sizing:border-box;">
@@ -7987,12 +8026,11 @@ setTimeout(function() {
                         <select id="paymentMethod" class="txn-select" style="font-size:12px;padding:7px 10px;" onchange="onPaymentChange()" required>
                             <option value="">-- Select Payment Method --</option>
                             <option value="Cash">Cash</option>
-                            <option value="Credit Card">Credit Card</option>
-                            <option value="Debit Card">Debit Card</option>
-                            <option value="GCash">GCash</option>
-                            <option value="Maya">Maya</option>
+                            <option value="Card">Card</option>
+                            <option value="E-Wallet">E-Wallet</option>
                             <option value="Petron Fleet Card">Petron Fleet Card</option>
                             <option value="Credit Account">Credit Account</option>
+                            <option value="Petron Loyalty Points">Petron Loyalty Points</option>
                         </select>
                     </div>
 
@@ -8016,18 +8054,27 @@ setTimeout(function() {
                         </div>
                     </div>
 
-                    <!-- Credit Card fields -->
-                    <div id="creditCardFields" style="display:none;margin-bottom:8px;">
+                    <!-- Card fields -->
+                    <div id="cardFields" style="display:none;margin-bottom:8px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                             <div class="txn-field">
                                 <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
-                                <input type="number" id="ccAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                <input type="number" id="cardAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
                                        step="0.01" min="0" placeholder="₱0.00"
-                                       oninput="onPaymentAmountInput('ccAmount')">
+                                       oninput="onPaymentAmountInput('cardAmount')">
                             </div>
                             <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Type</label>
-                                <select id="ccType" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Category</label>
+                                <select id="cardSubType" class="txn-select" style="font-size:12px;padding:7px 10px;">
+                                    <option value="Credit Card">Credit Card</option>
+                                    <option value="Debit Card">Debit Card</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Network</label>
+                                <select id="cardType" class="txn-select" style="font-size:12px;padding:7px 10px;">
                                     <option value="Visa">Visa</option>
                                     <option value="Mastercard">Mastercard</option>
                                     <option value="AMEX">American Express</option>
@@ -8036,40 +8083,14 @@ setTimeout(function() {
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div class="txn-field">
                                 <label style="font-size:10px;font-weight:600;color:#475569;">Last 4 Digits (Opt)</label>
-                                <input type="text" id="ccLastFour" class="txn-input" style="font-size:12px;padding:7px 10px;" maxlength="4" placeholder="e.g. 1234">
-                            </div>
-                            <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
-                                <input type="text" id="ccRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Debit Card fields -->
-                    <div id="debitCardFields" style="display:none;margin-bottom:8px;">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                            <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid</label>
-                                <input type="number" id="dcAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
-                                       step="0.01" min="0" placeholder="₱0.00"
-                                       oninput="onPaymentAmountInput('dcAmount')">
-                            </div>
-                            <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Card Type</label>
-                                <select id="dcType" class="txn-select" style="font-size:12px;padding:7px 10px;">
-                                    <option value="Visa">Visa</option>
-                                    <option value="Mastercard">Mastercard</option>
-                                    <option value="Other">Other</option>
-                                </select>
+                                <input type="text" id="cardLastFour" class="txn-input" style="font-size:12px;padding:7px 10px;" maxlength="4" placeholder="e.g. 1234">
                             </div>
                         </div>
                         <div class="txn-field">
                             <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
-                            <input type="text" id="dcRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                            <input type="text" id="cardRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
                         </div>
                     </div>
 
@@ -8083,19 +8104,32 @@ setTimeout(function() {
                                        oninput="onPaymentAmountInput('ewAmount')">
                             </div>
                             <div class="txn-field">
-                                <label style="font-size:10px;font-weight:600;color:#475569;">Provider</label>
+                                <label style="font-size:10px;font-weight:600;color:#475569;">E-Wallet Provider <span style="color:#dc2626;">*</span></label>
                                 <select id="ewProvider" class="txn-select" style="font-size:12px;padding:7px 10px;">
                                     <option value="GCash">GCash</option>
                                     <option value="Maya">Maya</option>
-                                    <option value="GrabPay">GrabPay</option>
-                                    <option value="ShopeePay">ShopeePay</option>
-                                    <option value="Other">Other</option>
                                 </select>
                             </div>
                         </div>
                         <div class="txn-field">
                             <label style="font-size:10px;font-weight:600;color:#475569;">Reference No.</label>
                             <input type="text" id="ewRefNumber" class="txn-input" style="font-size:12px;padding:7px 10px;" placeholder="Ref #">
+                        </div>
+                    </div>
+
+                    <!-- Petron Loyalty Points fields -->
+                    <div id="loyaltyPaymentFields" style="display:none;margin-bottom:8px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Amount Paid (₱)</label>
+                                <input type="number" id="lpAmount" class="txn-input" style="font-size:12px;padding:7px 10px;"
+                                       step="0.01" min="0" placeholder="₱0.00"
+                                       oninput="onPaymentAmountInput('lpAmount')">
+                            </div>
+                            <div class="txn-field">
+                                <label style="font-size:10px;font-weight:600;color:#475569;">Points to Redeem</label>
+                                <input type="number" id="lpPoints" class="txn-input" style="font-size:12px;padding:7px 10px;" min="0" placeholder="Pts" oninput="if(typeof syncLpPoints === 'function') syncLpPoints();">
+                            </div>
                         </div>
                     </div>
 
@@ -10603,7 +10637,7 @@ setTimeout(function() {
             const pmSel = document.getElementById('paymentMethod');
             if (pmSel) pmSel.selectedIndex = 0;
             if (typeof onPaymentChange === 'function') onPaymentChange();
-            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber'].forEach(id => {
+            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'cardAmount', 'cardLastFour', 'cardRefNumber', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber', 'lpAmount', 'lpPoints'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
@@ -11759,7 +11793,7 @@ setTimeout(function() {
             const pmSel = document.getElementById('paymentMethod');
             if (pmSel) pmSel.selectedIndex = 0;
             if (typeof onPaymentChange === 'function') onPaymentChange();
-            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber'].forEach(id => {
+            ['amountTendered', 'changeAmount', 'cashBalanceDue', 'cardAmount', 'cardLastFour', 'cardRefNumber', 'ccAmount', 'ccLastFour', 'ccRefNumber', 'dcAmount', 'dcRefNumber', 'ewAmount', 'ewRefNumber', 'fcAmount', 'fcNumber', 'fcCompanyName', 'fcAuthNumber', 'lpAmount', 'lpPoints'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
@@ -12197,18 +12231,23 @@ setTimeout(function() {
             if (cashBalanceDue) cashBalanceDue.value = '';
 
             // Credit Card
-            const ccAmount = document.getElementById('ccAmount');
-            if (ccAmount) ccAmount.value = '';
-            const ccLastFour = document.getElementById('ccLastFour');
-            if (ccLastFour) ccLastFour.value = '';
-            const ccRefNumber = document.getElementById('ccRefNumber');
-            if (ccRefNumber) ccRefNumber.value = '';
-
-            // Debit Card
+            // Card
+            const cardAmount = document.getElementById('cardAmount') || document.getElementById('ccAmount');
+            if (cardAmount) cardAmount.value = '';
+            const cardLastFour = document.getElementById('cardLastFour') || document.getElementById('ccLastFour');
+            if (cardLastFour) cardLastFour.value = '';
+            const cardRefNumber = document.getElementById('cardRefNumber') || document.getElementById('ccRefNumber');
+            if (cardRefNumber) cardRefNumber.value = '';
             const dcAmount = document.getElementById('dcAmount');
             if (dcAmount) dcAmount.value = '';
             const dcRefNumber = document.getElementById('dcRefNumber');
             if (dcRefNumber) dcRefNumber.value = '';
+
+            // Loyalty Points
+            const lpAmount = document.getElementById('lpAmount');
+            if (lpAmount) lpAmount.value = '';
+            const lpPoints = document.getElementById('lpPoints');
+            if (lpPoints) lpPoints.value = '';
 
             // E-Wallet
             const ewAmount = document.getElementById('ewAmount');
@@ -12414,43 +12453,79 @@ setTimeout(function() {
             return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         }
 
+        // ── Loyalty points sync helper ─────────────────────────────────────────
+        window.syncLpPoints = function syncLpPoints() {
+            const lpPointsInput = document.getElementById('lpPoints');
+            const lpAmountInput = document.getElementById('lpAmount');
+            if (lpPointsInput && lpAmountInput) {
+                const pts = parseFloat(lpPointsInput.value) || 0;
+                lpAmountInput.value = pts > 0 ? pts.toFixed(2) : '';
+                onPaymentAmountInput('lpAmount');
+            }
+        };
+
         // ── Payment panel ─────────────────────────────────────────────────────
         window.onPaymentChange = function onPaymentChange() {
             const method = document.getElementById('paymentMethod')?.value || '';
-            const isEwallet = (method === 'GCash' || method === 'Maya');
+            const isCard = (method === 'Card' || method === 'Credit Card' || method === 'Debit Card');
+            const isEwallet = (method === 'E-Wallet' || method === 'GCash' || method === 'Maya');
+            const isLoyalty = (method === 'Petron Loyalty Points');
 
             const containers = {
-                'cashFields':          method === 'Cash',
-                'creditCardFields':    method === 'Credit Card',
-                'debitCardFields':     method === 'Debit Card',
-                'ewalletFields':       isEwallet,
-                'fleetCardFields':     method === 'Petron Fleet Card',
-                'efuelCardFields':     false,
-                'creditAccountFields': method === 'Credit Account'
+                'cashFields':           method === 'Cash',
+                'cardFields':           isCard,
+                'creditCardFields':     false,
+                'debitCardFields':      false,
+                'ewalletFields':        isEwallet,
+                'fleetCardFields':      method === 'Petron Fleet Card',
+                'efuelCardFields':      false,
+                'creditAccountFields':  method === 'Credit Account',
+                'loyaltyPaymentFields': isLoyalty
             };
             for (const [id, show] of Object.entries(containers)) {
                 const el = document.getElementById(id);
                 if (el) el.style.display = show ? 'block' : 'none';
             }
 
-            if (isEwallet) {
+            if (method === 'GCash' || method === 'Maya') {
                 const prov = document.getElementById('ewProvider');
                 if (prov) prov.value = method;
             }
 
+            if (isLoyalty) {
+                const lpSel = document.getElementById('loyaltyProgram');
+                if (lpSel && lpSel.value === 'No Loyalty') {
+                    lpSel.value = 'Petron Rewards Card';
+                    if (typeof onLoyaltyChange === 'function') onLoyaltyChange();
+                }
+            }
+
             const generalBalanceWrap = document.getElementById('generalBalanceWrap');
-            const needsBalance = ['Credit Card','Debit Card','GCash','Maya','Petron Fleet Card'].includes(method);
+            const needsBalance = ['Card','Credit Card','Debit Card','E-Wallet','GCash','Maya','Petron Fleet Card','Petron Loyalty Points'].includes(method);
             if (generalBalanceWrap) generalBalanceWrap.style.display = needsBalance ? 'block' : 'none';
 
             const grand = getGrandTotal();
             const prefillMap = {
-                'Credit Card': 'ccAmount', 'Debit Card': 'dcAmount',
-                'GCash': 'ewAmount', 'Maya': 'ewAmount', 'Petron Fleet Card': 'fcAmount'
+                'Card': 'cardAmount', 'Credit Card': 'cardAmount', 'Debit Card': 'cardAmount',
+                'E-Wallet': 'ewAmount', 'GCash': 'ewAmount', 'Maya': 'ewAmount',
+                'Petron Fleet Card': 'fcAmount', 'Petron Loyalty Points': 'lpAmount'
             };
             const fillId = prefillMap[method];
             if (fillId) {
                 const inp = document.getElementById(fillId);
                 if (inp && (!inp.value || parseFloat(inp.value) === 0)) inp.value = grand > 0 ? grand.toFixed(2) : '';
+            }
+
+            if (isLoyalty) {
+                const lpPts = document.getElementById('lpPoints');
+                if (lpPts && (!lpPts.value || parseInt(lpPts.value, 10) === 0)) {
+                    lpPts.value = grand > 0 ? Math.ceil(grand) : '';
+                }
+                const lpr = document.getElementById('loyaltyPointsRedeemed');
+                if (lpr && (!lpr.value || parseInt(lpr.value, 10) === 0)) {
+                    lpr.value = grand > 0 ? Math.ceil(grand) : 0;
+                    if (typeof calcLoyaltyPoints === 'function') calcLoyaltyPoints();
+                }
             }
 
             computeChange();
@@ -12478,11 +12553,22 @@ setTimeout(function() {
 
         function _getAmountPaid(method) {
             const idMap = {
-                'Cash': 'amountTendered', 'Credit Card': 'ccAmount', 'Debit Card': 'dcAmount',
-                'GCash': 'ewAmount', 'Maya': 'ewAmount', 'Petron Fleet Card': 'fcAmount'
+                'Cash': 'amountTendered',
+                'Card': 'cardAmount',
+                'Credit Card': 'cardAmount',
+                'Debit Card': 'cardAmount',
+                'E-Wallet': 'ewAmount',
+                'GCash': 'ewAmount',
+                'Maya': 'ewAmount',
+                'Petron Fleet Card': 'fcAmount',
+                'Petron Loyalty Points': 'lpAmount'
             };
             const id = idMap[method];
-            return id ? parseFloat(document.getElementById(id)?.value || 0) : 0;
+            let val = id ? parseFloat(document.getElementById(id)?.value || 0) : 0;
+            if (!val && (method === 'Card' || method === 'Credit Card' || method === 'Debit Card')) {
+                val = parseFloat(document.getElementById('cardAmount')?.value || document.getElementById('ccAmount')?.value || document.getElementById('dcAmount')?.value || 0);
+            }
+            return isNaN(val) ? 0 : val;
         }
 
         window.onPaymentAmountInput = function onPaymentAmountInput() {
@@ -12553,9 +12639,17 @@ setTimeout(function() {
                 } else {
                     status = 'Paid'; color = '#166534'; border = '#86efac'; bg = '#dcfce7';
                     iconClass = 'fas fa-check-circle';
+                    let viaDesc = method;
+                    if (method === 'E-Wallet') {
+                        const prov = document.getElementById('ewProvider')?.value || 'GCash';
+                        viaDesc = 'E-Wallet (' + prov + ')';
+                    } else if (method === 'Card') {
+                        const cat = document.getElementById('cardSubType')?.value || 'Card';
+                        viaDesc = cat;
+                    }
                     subText = method === 'Cash'
                         ? (amountPaid - grand > 0.009 ? 'Change: ₱' + fmtNum(amountPaid - grand) : 'Exact amount paid.')
-                        : 'Full amount received via ' + method + '.';
+                        : 'Full amount received via ' + viaDesc + '.';
                 }
             }
 
@@ -12688,10 +12782,35 @@ setTimeout(function() {
             const balanceDue = method === 'Credit Account' ? grand
                 : (paymentStatus === 'Paid' ? 0 : Math.max(0, grand - amountPaid));
 
-            const isCard    = method === 'Credit Card' || method === 'Debit Card';
-            const isEwallet = method === 'GCash' || method === 'Maya';
-            const isFleet   = method === 'Petron Fleet Card';
-            const isCredit  = method === 'Credit Account';
+            const isCard          = method === 'Card' || method === 'Credit Card' || method === 'Debit Card';
+            const isEwallet       = method === 'E-Wallet' || method === 'GCash' || method === 'Maya';
+            const isFleet         = method === 'Petron Fleet Card';
+            const isCredit        = method === 'Credit Account';
+            const isLoyaltyPoints = method === 'Petron Loyalty Points';
+
+            // Canonical top-level payment method
+            const canonicalPaymentMethod = isCard ? 'Card'
+                                         : isEwallet ? 'E-Wallet'
+                                         : isLoyaltyPoints ? 'Petron Loyalty Points'
+                                         : method;
+
+            const ewProviderVal = isEwallet ? (
+                document.getElementById('ewProvider')?.value || (method === 'Maya' ? 'Maya' : 'GCash')
+            ) : null;
+
+            const cardSubTypeVal = isCard ? (
+                document.getElementById('cardSubType')?.value || (method === 'Debit Card' ? 'Debit Card' : 'Credit Card')
+            ) : null;
+            const cardNetworkVal = isCard ? (
+                document.getElementById('cardType')?.value || document.getElementById('ccType')?.value || document.getElementById('dcType')?.value || null
+            ) : null;
+            const cardLastFourVal = isCard ? (
+                document.getElementById('cardLastFour')?.value || document.getElementById('ccLastFour')?.value || null
+            ) : null;
+            const cardRefVal = isCard ? (
+                document.getElementById('cardRefNumber')?.value || document.getElementById('ccRefNumber')?.value || document.getElementById('dcRefNumber')?.value || null
+            ) : null;
+
             const subtotal = cart.reduce((s, i) => s + i.quantity * i.unit_price, 0);
             const vat = subtotal * 0.12;
             // grand total is already declared as const grand = getGrandTotal() above
@@ -12706,19 +12825,19 @@ setTimeout(function() {
                 customer_last_name:  lastName  || null,
                 customer_contact:    contactNumber || null,
                 customer_name:       fullName,
-                payment_method:      method,
+                payment_method:      canonicalPaymentMethod,
                 amount_paid:         amountPaid > 0 ? amountPaid : null,
                 amount_tendered:     method === 'Cash' ? (amountPaid > 0 ? amountPaid : null) : null,
                 change_amount:       method === 'Cash' && amountPaid >= grand ? parseFloat((amountPaid - grand).toFixed(2)) : null,
                 balance_due:         balanceDue > 0 ? parseFloat(balanceDue.toFixed(2)) : null,
                 payment_status:      paymentStatus,
 
-                card_type:           isCard ? (document.getElementById(method === 'Credit Card' ? 'ccType' : 'dcType')?.value || null) : null,
-                card_last_four:      method === 'Credit Card' ? (document.getElementById('ccLastFour')?.value || null) : null,
-                card_reference:      method === 'Credit Card' ? (document.getElementById('ccRefNumber')?.value || null)
-                                   : method === 'Debit Card'  ? (document.getElementById('dcRefNumber')?.value || null) : null,
+                card_type:           cardNetworkVal || cardSubTypeVal,
+                card_sub_type:       cardSubTypeVal,
+                card_last_four:      cardLastFourVal,
+                card_reference:      cardRefVal,
 
-                ewallet_provider:    isEwallet ? method : null,
+                ewallet_provider:    ewProviderVal,
                 ewallet_reference:   isEwallet ? (document.getElementById('ewRefNumber')?.value || null) : null,
 
                 fleet_card_number:   isFleet ? (document.getElementById('fcNumber')?.value || null) : null,
@@ -12731,10 +12850,10 @@ setTimeout(function() {
                 credit_po_number:      isCredit ? (document.getElementById('creditPoNumber')?.value || null) : null,
                 credit_due_date:       isCredit ? (document.getElementById('creditDueDate')?.value || null) : null,
                 
-                loyalty_type:            loyaltyProgram !== 'No Loyalty' ? loyaltyProgram : null,
+                loyalty_type:            isLoyaltyPoints ? 'Petron Rewards Card' : (loyaltyProgram !== 'No Loyalty' ? loyaltyProgram : null),
                 loyalty_card_no:         hasLoyaltyCard ? loyaltyCardNo : null,
                 loyalty_points_earned:   hasLoyaltyCard ? loyaltyPointsEarned : null,
-                loyalty_points_redeemed: hasLoyaltyCard ? loyaltyPointsRedeemed : null,
+                loyalty_points_redeemed: isLoyaltyPoints ? (parseInt(document.getElementById('lpPoints')?.value || 0, 10) || loyaltyPointsRedeemed || null) : (hasLoyaltyCard ? loyaltyPointsRedeemed : null),
 
                 items: cart.map(i => ({
                     item_type:    i.item_type,

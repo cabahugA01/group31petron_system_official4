@@ -4,6 +4,8 @@
  * This file contains the complete data fetching and rendering for the new report structure
  */
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 // This function fetches all data needed for the 6 sections
 function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end, $shift_start_t = null) {
     $data = [
@@ -145,24 +147,21 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
         
         // Fuel payments
         try {
+            $fuel_ew_col = "''";
+            try {
+                $cols = $pdo->query("SHOW COLUMNS FROM fuel_transactions LIKE 'ewallet_provider'")->fetchAll();
+                if (!empty($cols)) $fuel_ew_col = "COALESCE(ewallet_provider, '')";
+            } catch (Exception $e) {}
+
             $q = $pdo->prepare("
                 SELECT 
-                    CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
-                    END AS payment_method,
+                    COALESCE(NULLIF(payment_method,''), 'Cash') AS raw_method,
+                    {$fuel_ew_col} AS ewallet_provider,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_amount, 0)) AS amount
                 FROM fuel_transactions
                 WHERE station_id = ? AND DATE(transaction_date) BETWEEN ? AND ?
-                GROUP BY payment_method
+                GROUP BY raw_method, ewallet_provider
             ");
             $q->execute([$station_id, $date_start, $date_end]);
             $payments = array_merge($payments, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
@@ -170,24 +169,21 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
         
         // Merchandise payments
         try {
+            $merch_ew_col = "''";
+            try {
+                $cols = $pdo->query("SHOW COLUMNS FROM merchandise_transactions LIKE 'ewallet_provider'")->fetchAll();
+                if (!empty($cols)) $merch_ew_col = "COALESCE(ewallet_provider, '')";
+            } catch (Exception $e) {}
+
             $q = $pdo->prepare("
                 SELECT 
-                    CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
-                    END AS payment_method,
+                    COALESCE(NULLIF(payment_method,''), 'Cash') AS raw_method,
+                    {$merch_ew_col} AS ewallet_provider,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_amount, 0)) AS amount
                 FROM merchandise_transactions
                 WHERE station_id = ? AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
-                GROUP BY payment_method
+                GROUP BY raw_method, ewallet_provider
             ");
             $q->execute([$station_id, $date_start, $date_end]);
             $payments = array_merge($payments, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
@@ -195,41 +191,61 @@ function fetchMerchandiseServiceReport($pdo, $station_id, $date_start, $date_end
         
         // Job order payments
         try {
+            $jo_ew_col = "''";
+            try {
+                $cols = $pdo->query("SHOW COLUMNS FROM job_orders LIKE 'ewallet_provider'")->fetchAll();
+                if (!empty($cols)) $jo_ew_col = "COALESCE(ewallet_provider, '')";
+            } catch (Exception $e) {}
+
             $q = $pdo->prepare("
                 SELECT 
-                    CASE
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('gcash') THEN 'GCash'
-                        WHEN LOWER(COALESCE(payment_method,'')) IN ('maya','paymaya') THEN 'Maya'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fleet%' THEN 'Fleet Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit card%' THEN 'Credit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%debit%' THEN 'Debit Card'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%fuel%' THEN 'Petron E-Fuel'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%credit account%' OR LOWER(COALESCE(payment_method,'')) IN ('credit') THEN 'Credit Account'
-                        WHEN LOWER(COALESCE(payment_method,'')) LIKE '%cash%' OR COALESCE(payment_method,'') = '' THEN 'Cash'
-                        ELSE COALESCE(NULLIF(payment_method,''), 'Cash')
-                    END AS payment_method,
+                    COALESCE(NULLIF(payment_method,''), 'Cash') AS raw_method,
+                    {$jo_ew_col} AS ewallet_provider,
                     COUNT(*) AS transactions,
                     SUM(COALESCE(total_cost, 0)) AS amount
                 FROM job_orders
                 WHERE station_id = ? AND DATE(created_at) BETWEEN ? AND ? AND status IN ('Completed', 'Released')
-                GROUP BY payment_method
+                GROUP BY raw_method, ewallet_provider
             ");
             $q->execute([$station_id, $date_start, $date_end]);
             $payments = array_merge($payments, $q->fetchAll(PDO::FETCH_ASSOC) ?: []);
         } catch (Exception $e) {}
         
-        // Aggregate payments
+        // Aggregate payments into canonical taxonomy
+        $canonical_types = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
         $aggregated = [];
-        foreach ($payments as $p) {
-            $method = $p['payment_method'] ?? 'Cash';
-            if (!isset($aggregated[$method])) {
-                $aggregated[$method] = ['payment_method' => $method, 'transactions' => 0, 'amount' => 0];
+        foreach ($canonical_types as $ct) {
+            $aggregated[$ct] = [
+                'payment_method' => $ct,
+                'transactions'   => 0,
+                'amount'         => 0.0,
+            ];
+            if ($ct === 'E-Wallet') {
+                $aggregated[$ct]['providers'] = [
+                    'GCash' => ['transactions' => 0, 'amount' => 0.0],
+                    'Maya'  => ['transactions' => 0, 'amount' => 0.0]
+                ];
             }
-            $aggregated[$method]['transactions'] += (int)($p['transactions'] ?? 0);
-            $aggregated[$method]['amount'] += (float)($p['amount'] ?? 0);
         }
-        
-        usort($aggregated, fn($a, $b) => $b['amount'] <=> $a['amount']);
+
+        foreach ($payments as $p) {
+            $norm = normalize_payment_type($p['raw_method'] ?? 'Cash', $p['ewallet_provider'] ?? '');
+            $method = $norm['payment_type'];
+            $prov   = $norm['provider'];
+            if (!isset($aggregated[$method])) {
+                $aggregated[$method] = ['payment_method' => $method, 'transactions' => 0, 'amount' => 0.0];
+            }
+            $tCount = (int)($p['transactions'] ?? 0);
+            $tAmt   = (float)($p['amount'] ?? 0);
+            $aggregated[$method]['transactions'] += $tCount;
+            $aggregated[$method]['amount']       += $tAmt;
+
+            if ($method === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+                $aggregated['E-Wallet']['providers'][$prov]['transactions'] += $tCount;
+                $aggregated['E-Wallet']['providers'][$prov]['amount']       += $tAmt;
+            }
+        }
+
         $data['payment_breakdown'] = array_values($aggregated);
     } catch (Exception $e) {
         error_log("Payment breakdown fetch error: " . $e->getMessage());

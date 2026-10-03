@@ -335,3 +335,108 @@ try {
     }
 } catch (Throwable $e) {}
 
+// ── Self-healing Standardized Payment Taxonomy & Table Schema ───────────────
+try {
+    static $payment_schema_healed = false;
+    if (!$payment_schema_healed) {
+        $payment_schema_healed = true;
+
+        // Ensure fuel_transactions payment columns
+        $ft_cols = $pdo->query("SHOW COLUMNS FROM fuel_transactions")->fetchAll(PDO::FETCH_COLUMN);
+        $ft_add = [
+            'ewallet_provider'  => 'VARCHAR(50) NULL',
+            'ewallet_reference' => 'VARCHAR(100) NULL',
+            'card_reference'    => 'VARCHAR(100) NULL',
+            'card_type'         => 'VARCHAR(50) NULL',
+            'fleet_card_number' => 'VARCHAR(50) NULL'
+        ];
+        foreach ($ft_add as $col => $type) {
+            if (!in_array($col, $ft_cols, true)) {
+                $pdo->exec("ALTER TABLE fuel_transactions ADD COLUMN `$col` $type");
+            }
+        }
+
+        // Ensure job_orders payment columns
+        $jo_cols = $pdo->query("SHOW COLUMNS FROM job_orders")->fetchAll(PDO::FETCH_COLUMN);
+        $jo_add = [
+            'ewallet_provider'        => 'VARCHAR(50) NULL',
+            'ewallet_reference'       => 'VARCHAR(100) NULL',
+            'card_reference'          => 'VARCHAR(100) NULL',
+            'card_type'               => 'VARCHAR(50) NULL',
+            'fleet_card_number'       => 'VARCHAR(50) NULL',
+            'loyalty_points_redeemed' => 'INT NULL'
+        ];
+        foreach ($jo_add as $col => $type) {
+            if (!in_array($col, $jo_cols, true)) {
+                $pdo->exec("ALTER TABLE job_orders ADD COLUMN `$col` $type");
+            }
+        }
+
+        // Ensure merchandise_transactions payment columns
+        try {
+            $mt_cols = $pdo->query("SHOW COLUMNS FROM merchandise_transactions")->fetchAll(PDO::FETCH_COLUMN);
+            $mt_add = [
+                'ewallet_provider'        => 'VARCHAR(50) NULL',
+                'ewallet_reference'       => 'VARCHAR(100) NULL',
+                'card_reference'          => 'VARCHAR(100) NULL',
+                'card_type'               => 'VARCHAR(50) NULL',
+                'fleet_card_number'       => 'VARCHAR(50) NULL',
+                'loyalty_points_redeemed' => 'INT NULL'
+            ];
+            foreach ($mt_add as $col => $type) {
+                if (!in_array($col, $mt_cols, true)) {
+                    $pdo->exec("ALTER TABLE merchandise_transactions ADD COLUMN `$col` $type");
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // Ensure sales payment columns
+        try {
+            $sales_cols = $pdo->query("SHOW COLUMNS FROM sales")->fetchAll(PDO::FETCH_COLUMN);
+            $sales_add = [
+                'ewallet_provider'        => 'VARCHAR(50) NULL',
+                'ewallet_reference'       => 'VARCHAR(100) NULL',
+                'card_reference'          => 'VARCHAR(100) NULL',
+                'card_type'               => 'VARCHAR(50) NULL',
+                'fleet_card_number'       => 'VARCHAR(50) NULL',
+                'loyalty_points_redeemed' => 'INT NULL'
+            ];
+            foreach ($sales_add as $col => $type) {
+                if (!in_array($col, $sales_cols, true)) {
+                    $pdo->exec("ALTER TABLE sales ADD COLUMN `$col` $type");
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // Ensure canonical payment methods in payment_methods table
+        $canonical_pm = [
+            'Cash',
+            'Card',
+            'E-Wallet',
+            'Petron Fleet Card',
+            'Credit Account',
+            'Petron Loyalty Points'
+        ];
+        $existing_pm = $pdo->query("SELECT id, name, status FROM payment_methods")->fetchAll(PDO::FETCH_ASSOC);
+        $existing_names = array_column($existing_pm, 'name');
+
+        foreach ($canonical_pm as $cname) {
+            if (!in_array($cname, $existing_names, true)) {
+                $ins = $pdo->prepare("INSERT INTO payment_methods (name, status) VALUES (?, 'Active')");
+                $ins->execute([$cname]);
+            } else {
+                $pdo->prepare("UPDATE payment_methods SET status = 'Active' WHERE name = ?")->execute([$cname]);
+            }
+        }
+
+        // Inactive legacy sub-methods to maintain FK integrity while enforcing canonical active list
+        $legacy_sub = ['Credit Card', 'Debit Card', 'GCash', 'Maya'];
+        foreach ($legacy_sub as $lname) {
+            $pdo->prepare("UPDATE payment_methods SET status = 'Inactive' WHERE name = ?")->execute([$lname]);
+        }
+    }
+} catch (Throwable $e) {
+    error_log("Payment taxonomy self-healing error: " . $e->getMessage());
+}
+
+

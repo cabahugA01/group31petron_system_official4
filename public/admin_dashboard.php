@@ -109,6 +109,20 @@ function adm_table_exists(PDO $pdo, string $table): bool {
     return $cache[$table];
 }
 
+function adm_column_exists(PDO $pdo, string $table, string $column): bool {
+    static $cache = [];
+    $k = $table . '.' . $column;
+    if (isset($cache[$k])) return $cache[$k];
+    try {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $stmt->execute([$table, $column]);
+        $cache[$k] = (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        $cache[$k] = false;
+    }
+    return $cache[$k];
+}
+
 $display_name = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
 if ($display_name === '') {
     $display_name = $me['full_name'] ?? $me['name'] ?? $me['username'] ?? 'Admin / Owner';
@@ -793,55 +807,64 @@ if (adm_table_exists($pdo, 'job_orders')) {
 usort($ar_customer_map, fn($a, $b) => $b['total_balance'] <=> $a['total_balance']);
 $ar_customer_list = array_slice($ar_customer_map, 0, 5);
 
-// ── 8. PAYMENT BREAKDOWN (Exact 7 System Payment Types) ─────────────────────
-$all_7_pms = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
-$payment_map = array_fill_keys($all_7_pms, 0.0);
+// ── 8. PAYMENT BREAKDOWN (Canonical Taxonomy) ─────────────────────
+$canonical_pms = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
+$payment_map = array_fill_keys($canonical_pms, 0.0);
+$payment_ewallet_map = ['GCash' => 0.0, 'Maya' => 0.0];
+
+$ewColMt = adm_column_exists($pdo, 'merchandise_transactions', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
+$ewColJo = adm_column_exists($pdo, 'job_orders', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
+$ewColFt = adm_column_exists($pdo, 'fuel_transactions', 'ewallet_provider') ? "COALESCE(ewallet_provider, '')" : "''";
 
 // Branch-wide consolidated payment records across all 3 streams
 $pm_rows = adm_rows($pdo, "
-    SELECT TRIM(payment_method) AS pm, COALESCE(SUM(total_amount), 0) AS amt
-    FROM (
-        SELECT payment_method, total_amount 
-        FROM fuel_transactions 
-        WHERE {$st_sql} 
-          AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
-        
-        UNION ALL
-        
-        SELECT payment_method, total_amount 
-        FROM merchandise_transactions 
-        WHERE {$st_sql} 
-          AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
-        
-        UNION ALL
-        
-        SELECT payment_method, COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0) AS total_amount 
-        FROM job_orders 
-        WHERE {$st_sql} 
-          AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
-    ) AS all_pms
-    WHERE payment_method IS NOT NULL AND TRIM(payment_method) != ''
-    GROUP BY TRIM(payment_method)
+    SELECT TRIM(payment_method) AS pm, {$ewColFt} AS ewallet_provider, COALESCE(SUM(total_amount), 0) AS amt
+    FROM fuel_transactions 
+    WHERE {$st_sql} 
+      AND LOWER(COALESCE(status, '')) NOT IN ('voided','rejected','cancelled')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColFt}
+    
+    UNION ALL
+    
+    SELECT TRIM(payment_method) AS pm, {$ewColMt} AS ewallet_provider, COALESCE(SUM(total_amount), 0) AS amt
+    FROM merchandise_transactions 
+    WHERE {$st_sql} 
+      AND LOWER(COALESCE(workflow_status, validation_status, 'approved')) NOT IN ('void','voided','cancelled','rejected')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColMt}
+    
+    UNION ALL
+    
+    SELECT TRIM(payment_method) AS pm, {$ewColJo} AS ewallet_provider, COALESCE(SUM(COALESCE(total_cost, estimated_cost, actual_labor_cost + actual_parts_cost, 0)), 0) AS amt
+    FROM job_orders 
+    WHERE {$st_sql} 
+      AND LOWER(COALESCE(status, 'completed')) NOT IN ('voided','cancelled','rejected')
+      AND payment_method IS NOT NULL AND TRIM(payment_method) != ''
+    GROUP BY TRIM(payment_method), {$ewColJo}
 ", array_merge($st_params, $st_params, $st_params));
 
 foreach ($pm_rows as $pr) {
-    $pm_name = strtolower(trim((string)$pr['pm']));
-    $amt = (float)$pr['amt'];
-    if (str_contains($pm_name, 'debit')) {
-        $payment_map['Debit Card'] += $amt;
-    } elseif (str_contains($pm_name, 'credit card') || ($pm_name === 'card' && !str_contains($pm_name, 'fleet'))) {
-        $payment_map['Credit Card'] += $amt;
-    } elseif (str_contains($pm_name, 'gcash')) {
-        $payment_map['GCash'] += $amt;
-    } elseif (str_contains($pm_name, 'maya') || str_contains($pm_name, 'paymaya')) {
-        $payment_map['Maya'] += $amt;
-    } elseif (str_contains($pm_name, 'fleet')) {
-        $payment_map['Petron Fleet Card'] += $amt;
-    } elseif (str_contains($pm_name, 'credit account') || str_contains($pm_name, 'credit') || str_contains($pm_name, 'account') || str_contains($pm_name, 'ar') || str_contains($pm_name, 'charge')) {
-        $payment_map['Credit Account'] += $amt;
-    } else {
-        $payment_map['Cash'] += $amt;
+    $norm = normalize_payment_type($pr['pm'] ?? 'Cash', $pr['ewallet_provider'] ?? '');
+    $pt   = $norm['payment_type'] ?? 'Cash';
+    $prov = $norm['provider'] ?? '';
+    $amt  = (float)$pr['amt'];
+    
+    if (!isset($payment_map[$pt])) {
+        $payment_map[$pt] = 0.0;
     }
+    $payment_map[$pt] += $amt;
+
+    if ($pt === 'E-Wallet' && ($prov === 'GCash' || $prov === 'Maya')) {
+        $payment_ewallet_map[$prov] = ($payment_ewallet_map[$prov] ?? 0.0) + $amt;
+    }
+}
+
+// Reconcile E-Wallet total with provider sum if any unassigned
+$ew_tot = $payment_map['E-Wallet'] ?? 0.0;
+$ew_p_tot = ($payment_ewallet_map['GCash'] ?? 0.0) + ($payment_ewallet_map['Maya'] ?? 0.0);
+if ($ew_tot > $ew_p_tot) {
+    $payment_ewallet_map['GCash'] += ($ew_tot - $ew_p_tot);
 }
 
 $payment_labels  = array_keys($payment_map);
@@ -975,6 +998,7 @@ $f_txns = adm_rows($pdo, "
            COALESCE(NULLIF(customer_name, ''), 'Pump Cash Customer') AS customer_name,
            total_amount AS amount,
            COALESCE(payment_method, 'Cash') AS payment_method,
+           {$ewColFt} AS ewallet_provider,
            COALESCE(status, 'Completed') AS status,
            COALESCE(transaction_date, created_at) AS created_at
     FROM fuel_transactions
@@ -991,6 +1015,7 @@ $m_txns = adm_rows($pdo, "
            COALESCE(NULLIF(customer_name, ''), 'Walk-in Customer') AS customer_name,
            total_amount AS amount,
            COALESCE(payment_method, 'Cash') AS payment_method,
+           {$ewColMt} AS ewallet_provider,
            COALESCE(workflow_status, validation_status, 'Completed') AS status,
            COALESCE(transaction_date, created_at) AS created_at
     FROM merchandise_transactions
@@ -1007,6 +1032,7 @@ $j_txns = adm_rows($pdo, "
            COALESCE(NULLIF(customer_name, ''), 'Service Customer') AS customer_name,
            COALESCE(total_cost, estimated_cost, 0) AS amount,
            COALESCE(payment_method, 'Cash') AS payment_method,
+           {$ewColJo} AS ewallet_provider,
            status,
            COALESCE(completed_at, created_at) AS created_at
     FROM job_orders
@@ -1018,6 +1044,12 @@ $recent_transactions = array_merge($recent_transactions, $j_txns);
 
 usort($recent_transactions, fn($a, $b) => strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')));
 $recent_transactions = array_slice($recent_transactions, 0, 7);
+foreach ($recent_transactions as &$rt) {
+    $norm = normalize_payment_type($rt['payment_method'] ?? 'Cash', $rt['ewallet_provider'] ?? '');
+    $rt['payment_type']     = $norm['payment_type'];
+    $rt['payment_provider'] = $norm['provider'];
+}
+unset($rt);
 
 // ── 11. RECENT INVENTORY MOVEMENTS ──────────────────────────────────────────
 $recent_inventory_movements = [];
@@ -1225,12 +1257,15 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             'inventory_value'      => number_format($total_inventory_value, 2),
             'ar_outstanding'       => number_format($total_ar_outstanding, 2),
             'payment_cash'         => number_format($payment_map['Cash'] ?? 0, 2),
-            'payment_credit_card'  => number_format($payment_map['Credit Card'] ?? 0, 2),
-            'payment_debit_card'   => number_format($payment_map['Debit Card'] ?? 0, 2),
-            'payment_gcash'        => number_format($payment_map['GCash'] ?? 0, 2),
-            'payment_maya'         => number_format($payment_map['Maya'] ?? 0, 2),
+            'payment_card'         => number_format($payment_map['Card'] ?? 0, 2),
+            'payment_credit_card'  => number_format($payment_map['Card'] ?? 0, 2),
+            'payment_debit_card'   => '0.00',
+            'payment_ewallet'      => number_format($payment_map['E-Wallet'] ?? 0, 2),
+            'payment_gcash'        => number_format($payment_ewallet_map['GCash'] ?? 0, 2),
+            'payment_maya'         => number_format($payment_ewallet_map['Maya'] ?? 0, 2),
             'payment_fleet'        => number_format($payment_map['Petron Fleet Card'] ?? 0, 2),
             'payment_credit_acct'  => number_format($payment_map['Credit Account'] ?? 0, 2),
+            'payment_loyalty'      => number_format($payment_map['Petron Loyalty Points'] ?? 0, 2),
             'active_staff_count'   => number_format($active_staff_count),
             'shift1_status'        => $shift1_status,
             'shift1_status_badge'  => adm_shift_badge_class($shift1_status),
@@ -1825,17 +1860,22 @@ include __DIR__ . '/../partials/header.php';
                     </div>
                 </div>
 
-                <!-- Exact 7 System Payment Breakdown -->
+                <!-- Canonical Payment Breakdown -->
                 <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px;">
-                    <span style="font-size:13px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Payment Breakdown (7 Methods)</span>
+                    <span style="font-size:13px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Payment Breakdown</span>
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-top:10px;">
                         <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Cash: <strong id="pm_cash"><?= adm_money($payment_map['Cash'] ?? 0) ?></strong></div>
-                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Credit Card: <strong id="pm_credit_card"><?= adm_money($payment_map['Credit Card'] ?? 0) ?></strong></div>
-                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Debit Card: <strong id="pm_debit_card"><?= adm_money($payment_map['Debit Card'] ?? 0) ?></strong></div>
-                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">GCash: <strong id="pm_gcash"><?= adm_money($payment_map['GCash'] ?? 0) ?></strong></div>
-                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Maya: <strong id="pm_maya"><?= adm_money($payment_map['Maya'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Card: <strong id="pm_card"><?= adm_money($payment_map['Card'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">
+                            E-Wallet: <strong id="pm_ewallet"><?= adm_money($payment_map['E-Wallet'] ?? 0) ?></strong>
+                            <div style="font-size:11px; color:#059669; margin-top:3px; font-weight:normal;">
+                                &bull; GCash: <span id="pm_gcash"><?= adm_money($payment_ewallet_map['GCash'] ?? 0) ?></span><br>
+                                &bull; Maya: <span id="pm_maya"><?= adm_money($payment_ewallet_map['Maya'] ?? 0) ?></span>
+                            </div>
+                        </div>
                         <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Petron Fleet: <strong id="pm_fleet"><?= adm_money($payment_map['Petron Fleet Card'] ?? 0) ?></strong></div>
                         <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Credit Acct: <strong id="pm_credit_acct"><?= adm_money($payment_map['Credit Account'] ?? 0) ?></strong></div>
+                        <div style="font-size:13px; padding:7px 10px; background:#FFF; border:1px solid #E2E8F0; border-radius:6px;">Loyalty Points: <strong id="pm_loyalty"><?= adm_money($payment_map['Petron Loyalty Points'] ?? 0) ?></strong></div>
                     </div>
                 </div>
             </div>
@@ -2303,7 +2343,12 @@ include __DIR__ . '/../partials/header.php';
                                                 <?= adm_h($rt['stream_type']) ?>
                                             </span>
                                         </td>
-                                        <td class="text-center"><span class="adm-badge adm-badge-neutral" style="white-space:nowrap; font-size:10px; padding:2.5px 6px;"><?= adm_h($rt['payment_method']) ?></span></td>
+                                        <td class="text-center">
+                                            <span class="adm-badge adm-badge-neutral" style="white-space:nowrap; font-size:10px; padding:2.5px 6px;"><?= adm_h($rt['payment_type'] ?? $rt['payment_method']) ?></span>
+                                            <?php if (($rt['payment_type'] ?? '') === 'E-Wallet' && !empty($rt['payment_provider'])): ?>
+                                                <div style="font-size:9.5px;color:#0d6efd;font-weight:600;margin-top:1px;">&bull; <?= adm_h($rt['payment_provider']) ?></div>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end" style="font-size:13px; font-weight:800; white-space:nowrap;"><strong><?= adm_money($rt['amount']) ?></strong></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -2710,7 +2755,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 });
     const num   = new Intl.NumberFormat('en-US');
 
-    // 1. Payment Type Pie/Doughnut Chart (Exact 7 Payment Types)
+    // 1. Payment Type Pie/Doughnut Chart (Canonical Payment Types)
     const ctxPayment = document.getElementById('paymentTypeChart');
     let paymentChartInstance = null;
     if (ctxPayment) {
@@ -2720,7 +2765,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 labels: <?= json_encode($payment_labels) ?>,
                 datasets: [{
                     data: <?= json_encode($payment_amounts, JSON_NUMERIC_CHECK) ?>,
-                    backgroundColor: ['#002F6C', '#0284C7', '#3B82F6', '#10B981', '#14B8A6', '#F59E0B', '#8B5CF6'],
+                    backgroundColor: ['#002F6C', '#0284C7', '#10B981', '#1E293B', '#F59E0B', '#8B5CF6'],
                     borderWidth: 2,
                     borderColor: '#FFFFFF'
                 }]
@@ -2924,14 +2969,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (document.getElementById('op_total_sales')) document.getElementById('op_total_sales').innerHTML = '&#8369; ' + data.kpis.total_sales_today;
                 if (document.getElementById('branch_tx_badge')) document.getElementById('branch_tx_badge').textContent = data.kpis.total_transactions + ' Finalized Transactions';
                 
-                // 7 Payment Breakdown IDs
+                // Payment Breakdown IDs
                 if (document.getElementById('pm_cash')) document.getElementById('pm_cash').innerHTML = '&#8369; ' + data.kpis.payment_cash;
-                if (document.getElementById('pm_credit_card')) document.getElementById('pm_credit_card').innerHTML = '&#8369; ' + data.kpis.payment_credit_card;
-                if (document.getElementById('pm_debit_card')) document.getElementById('pm_debit_card').innerHTML = '&#8369; ' + data.kpis.payment_debit_card;
+                if (document.getElementById('pm_card')) document.getElementById('pm_card').innerHTML = '&#8369; ' + (data.kpis.payment_card ?? '0.00');
+                if (document.getElementById('pm_credit_card')) document.getElementById('pm_credit_card').innerHTML = '&#8369; ' + (data.kpis.payment_credit_card ?? '0.00');
+                if (document.getElementById('pm_debit_card')) document.getElementById('pm_debit_card').innerHTML = '&#8369; ' + (data.kpis.payment_debit_card ?? '0.00');
+                if (document.getElementById('pm_ewallet')) document.getElementById('pm_ewallet').innerHTML = '&#8369; ' + (data.kpis.payment_ewallet ?? '0.00');
                 if (document.getElementById('pm_gcash')) document.getElementById('pm_gcash').innerHTML = '&#8369; ' + data.kpis.payment_gcash;
                 if (document.getElementById('pm_maya')) document.getElementById('pm_maya').innerHTML = '&#8369; ' + data.kpis.payment_maya;
                 if (document.getElementById('pm_fleet')) document.getElementById('pm_fleet').innerHTML = '&#8369; ' + data.kpis.payment_fleet;
                 if (document.getElementById('pm_credit_acct')) document.getElementById('pm_credit_acct').innerHTML = '&#8369; ' + data.kpis.payment_credit_acct;
+                if (document.getElementById('pm_loyalty')) document.getElementById('pm_loyalty').innerHTML = '&#8369; ' + (data.kpis.payment_loyalty ?? '0.00');
                 if (document.getElementById('op_active_staff') && data.kpis.active_staff_count !== undefined) document.getElementById('op_active_staff').textContent = data.kpis.active_staff_count + ' Active';
                 if (document.getElementById('op_current_shift') && data.kpis.current_shift_name !== undefined) document.getElementById('op_current_shift').textContent = data.kpis.current_shift_name;
 

@@ -127,7 +127,21 @@ if($f_type==='merchandise') { $where.=" AND COALESCE(mt.transaction_type,'mercha
 elseif($f_type==='job_order') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='job_order'"; }
 elseif($f_type==='combined') { $where.=" AND COALESCE(mt.transaction_type,'merchandise')='combined'"; }
 
-if($f_pay!=='') { $where.=" AND LOWER(TRIM($mt_pay))=LOWER(?)"; $params[]=$f_pay; }
+if($f_pay!=='') {
+    $norm_pay = function_exists('normalize_payment_type') ? normalize_payment_type($f_pay) : ['type' => $f_pay, 'provider' => ''];
+    if ($norm_pay['type'] === 'E-Wallet') {
+        if (!empty($norm_pay['provider'])) {
+            $where .= " AND (LOWER(COALESCE(mt.ewallet_provider,'')) = LOWER(?) OR LOWER(TRIM($mt_pay)) = LOWER(?))";
+            $params[] = $norm_pay['provider'];
+            $params[] = $norm_pay['provider'];
+        } else {
+            $where .= " AND (LOWER(TRIM($mt_pay)) IN ('e-wallet', 'ewallet', 'gcash', 'maya') OR (mt.ewallet_provider IS NOT NULL AND mt.ewallet_provider != ''))";
+        }
+    } else {
+        $where .= " AND LOWER(TRIM($mt_pay)) = LOWER(?)";
+        $params[] = $norm_pay['type'];
+    }
+}
 
 if($f_status==='Completed') {
     $where.=" AND (COALESCE($mt_stat, '') NOT IN ('Voided', 'Adjusted'))";
@@ -204,6 +218,8 @@ try {
         mt.amount_tendered,
         mt.change_amount,
         $mt_pay as payment_method,
+        COALESCE(mt.ewallet_provider, '') as ewallet_provider,
+        COALESCE(mt.ewallet_reference, '') as ewallet_reference,
         $mt_shift as shift, $staff_col as staff_name,
         $mt_pstat as payment_status, $mt_date as txn_date,
         $mt_stat as validation_status,
@@ -634,14 +650,15 @@ overflow: hidden;
         <div>
             <label>Payment</label>
             <select name="payment_method" class="inp">
-                <option value="">All Methods</option>
+                <option value="">All Payment Types</option>
                 <option value="Cash" <?=$f_pay==='Cash'?'selected':''?>>Cash</option>
-                <option value="GCash" <?=$f_pay==='GCash'?'selected':''?>>GCash</option>
-                <option value="Maya" <?=$f_pay==='Maya'?'selected':''?>>Maya</option>
-                <option value="Credit Card" <?=$f_pay==='Credit Card'?'selected':''?>>Credit Card</option>
-                <option value="Debit Card" <?=$f_pay==='Debit Card'?'selected':''?>>Debit Card</option>
-                <option value="Fleet Card" <?=$f_pay==='Fleet Card'?'selected':''?>>Petron Fleet Card</option>
-                <option value="Credit" <?=$f_pay==='Credit'?'selected':''?>>Credit Account</option>
+                <option value="Card" <?=in_array($f_pay, ['Card', 'Credit Card', 'Debit Card'], true)?'selected':''?>>Card</option>
+                <option value="E-Wallet" <?=$f_pay==='E-Wallet'?'selected':''?>>E-Wallet</option>
+                <option value="GCash" <?=$f_pay==='GCash'?'selected':''?>>&nbsp;&nbsp;↳ GCash</option>
+                <option value="Maya" <?=$f_pay==='Maya'?'selected':''?>>&nbsp;&nbsp;↳ Maya</option>
+                <option value="Petron Fleet Card" <?=in_array($f_pay, ['Petron Fleet Card', 'Fleet Card'], true)?'selected':''?>>Petron Fleet Card</option>
+                <option value="Credit Account" <?=in_array($f_pay, ['Credit Account', 'Credit'], true)?'selected':''?>>Credit Account</option>
+                <option value="Petron Loyalty Points" <?=in_array($f_pay, ['Petron Loyalty Points', 'Loyalty Points'], true)?'selected':''?>>Petron Loyalty Points</option>
             </select>
         </div>
         <div>
@@ -829,13 +846,17 @@ overflow: hidden;
                     <?php
                     $is_paid = $vs !== 'voided' && strtolower($r['payment_status'] ?? '') !== 'unpaid';
                     $pay_st_txt = $r['payment_status'] ?: 'Paid';
+                    $pm_disp = function_exists('format_payment_for_record') ? format_payment_for_record($r) : ['payment_type' => $r['payment_method'] ?? 'Cash', 'provider' => $r['ewallet_provider'] ?? '', 'reference_no' => $r['ewallet_reference'] ?? ''];
                     ?>
                     <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
-                        <span style="color:#1e293b;font-weight:700;font-size:11.5px;"><?=htmlspecialchars($r['payment_method'] ?: 'Cash')?></span>
+                        <span style="color:#1e293b;font-weight:700;font-size:11.5px;"><?=htmlspecialchars($pm_disp['payment_type'])?></span>
                         <span style="background:<?=$is_paid ? '#dcfce7' : '#fee2e2'?>;color:<?=$is_paid ? '#15803d' : '#b91c1c'?>;font-weight:800;font-size:10px;padding:1px 5px;border-radius:4px;border:1px solid <?=$is_paid ? '#bbf7d0' : '#fecaca'?>;letter-spacing:0.3px;">
                             <?=strtoupper(htmlspecialchars($pay_st_txt))?>
                         </span>
                     </div>
+                    <?php if ($pm_disp['payment_type'] === 'E-Wallet' && !empty($pm_disp['provider'])): ?>
+                        <div style="font-size:10px;color:#64748b;font-weight:600;margin-top:1px;">Provider: <?=htmlspecialchars($pm_disp['provider'])?></div>
+                    <?php endif; ?>
                 </td>
 
                 <!-- 7. Staff & Date -->
@@ -874,7 +895,9 @@ overflow: hidden;
                                 'labor_fee'          => (float)$r['labor_fee'],
                                 'vehicle'            => trim($r['vehicle'] ?? '') ?: 'N/A',
                                 'amount'             => '&#8369;' . number_format((float)$r['amount'], 2),
-                                'payment'            => $r['payment_method'],
+                                'payment'            => $pm_disp['payment_type'],
+                                'ewallet_provider'   => $pm_disp['provider'],
+                                'ewallet_reference'  => $pm_disp['reference_no'],
                                 'payment_status'     => $r['payment_status'] ?: 'Paid',
                                 'amount_tendered'    => (float)($r['amount_tendered'] ?? 0) > 0 ? '&#8369;' . number_format((float)$r['amount_tendered'], 2) : 'N/A',
                                 'change_amount'      => (float)($r['change_amount'] ?? 0) > 0 ? '&#8369;' . number_format((float)$r['change_amount'], 2) : '&#8369;0.00',
@@ -1104,7 +1127,17 @@ function renderAdminTxnModal(data, d) {
             html += row('Mechanic', fmt(data.job_order_mechanic_name));
         }
         html += row('Transaction Date', data.transaction_date, {always:true});
-        html += row('Payment Method', data.payment_method, {always:true});
+        let pmTypeM = data.payment_type || data.payment_method || d.payment || 'Cash';
+        let pmHtmlM = `<strong>${pmTypeM}</strong>`;
+        let provM = data.ewallet_provider || d.ewallet_provider;
+        let refM = data.ewallet_reference || d.ewallet_reference;
+        if (pmTypeM === 'E-Wallet' && provM) {
+            pmHtmlM += `<div style="font-size:11.5px;color:#475569;margin-top:2px;">Provider: <strong>${provM}</strong></div>`;
+            if (refM) {
+                pmHtmlM += `<div style="font-size:11px;color:#64748b;">Reference No.: ${refM}</div>`;
+            }
+        }
+        html += row('Payment Method', pmHtmlM, {always:true});
         html += row('Payment Status', `<span style="background:#f0fdf4;color:#166534;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:700;">${data.validation_status || 'Completed'}</span>`, {always:true});
         if (fmt(data.amount_tendered)) {
             html += row('Amount Tendered', '&#8369;' + data.amount_tendered);
@@ -1126,8 +1159,17 @@ function renderAdminTxnModal(data, d) {
         html += row('Mechanic', data.mechanic_name, {always:true});
         html += row('Estimated Cost', '&#8369;' + data.estimated_cost);
         html += row('Amount Paid', '&#8369;' + data.amount_paid, {always:true});
-        html += row('Sukli / Change', '&#8369;' + data.change_amount);
-        html += row('Payment Method', data.payment_method, {always:true});
+        let pmTypeJ = data.payment_type || data.payment_method || d.payment || 'Cash';
+        let pmHtmlJ = `<strong>${pmTypeJ}</strong>`;
+        let provJ = data.ewallet_provider || d.ewallet_provider;
+        let refJ = data.ewallet_reference || d.ewallet_reference;
+        if (pmTypeJ === 'E-Wallet' && provJ) {
+            pmHtmlJ += `<div style="font-size:11.5px;color:#475569;margin-top:2px;">Provider: <strong>${provJ}</strong></div>`;
+            if (refJ) {
+                pmHtmlJ += `<div style="font-size:11px;color:#64748b;">Reference No.: ${refJ}</div>`;
+            }
+        }
+        html += row('Payment Method', pmHtmlJ, {always:true});
         html += row('Payment Status', `<span style="background:#f0fdf4;color:#166534;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:700;">${data.payment_status || 'Paid'}</span>`, {always:true});
         html += row('Job Status', data.job_status, {always:true});
         html += row('Total Amount', `<span style="font-size:18px;font-weight:800;color:#002F70;">&#8369;${data.total_amount}</span>`, {always:true});

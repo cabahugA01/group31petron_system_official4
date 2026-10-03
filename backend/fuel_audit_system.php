@@ -5,7 +5,7 @@
  * Tracks user actions, timestamps, and system changes
  */
 
-require_once __DIR__ . '/../../public/db_connect.php';
+require_once __DIR__ . '/../public/db_connect.php';
 
 /**
  * Enhanced logging function for fuel module activities

@@ -2,7 +2,7 @@
 // Shift Transaction Binding Library
 // Automatically binds transactions to staff's active shift
 
-require_once __DIR__ . '/lib.php';
+require_once __DIR__ . '/../lib.php';
 
 class ShiftTransactionBinding {
     private $pdo;

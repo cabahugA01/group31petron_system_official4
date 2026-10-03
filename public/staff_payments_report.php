@@ -158,9 +158,10 @@ if (!empty($shift_sessions)) {
 }
 
 // ── Shared Payment Summary & AR Collections ────────────────────────────────────
-$payment_summary = []; // payment_method => amount
-$credit_sales    = 0;
-$fleet_sales     = 0;
+$payment_summary     = []; // payment_method => amount
+$ewallet_by_provider = ['GCash' => 0, 'Maya' => 0];
+$credit_sales        = 0;
+$fleet_sales         = 0;
 
 // ── Fuel Sales ────────────────────────────────────────────────────────────────
 $fuel_sales_total = 0;
@@ -188,22 +189,31 @@ try {
     // Incorporate fuel payment methods into payment summary & AR
     $stmtFP = $pdo->prepare(
         "SELECT COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash') as payment_method,
+                COALESCE(ft.ewallet_provider, '') as ewallet_provider,
                 SUM(COALESCE(ft.total_amount,0)) as total_amount
          FROM fuel_transactions ft
          WHERE ft.station_id=:station_id AND DATE(COALESCE(ft.transaction_date, ft.created_at)) BETWEEN :dstart AND :dend
            AND LOWER(COALESCE(ft.status,'')) NOT IN ('voided','rejected','cancelled','canceled')
            {$shift_where_ft}
-         GROUP BY COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash')"
+         GROUP BY COALESCE(NULLIF(TRIM(ft.payment_method),''), 'Cash'), COALESCE(ft.ewallet_provider, '')"
     );
     $stmtFP->execute($shift_params_ft);
     $fuel_pm_rows = $stmtFP->fetchAll(PDO::FETCH_ASSOC) ?: [];
     foreach ($fuel_pm_rows as $r) {
         $amt = (float)$r['total_amount'];
         $pm = trim($r['payment_method'] ?? 'Cash');
+        $prov = trim($r['ewallet_provider'] ?? '');
         if (strcasecmp($pm, 'Internal') === 0) $pm = 'Cash'; // Station nozzle readings turn into cash turnover
-        $payment_summary[$pm] = ($payment_summary[$pm] ?? 0) + $amt;
-        if (stripos($pm, 'credit') !== false) $credit_sales += $amt;
-        if (stripos($pm, 'fleet') !== false)  $fleet_sales  += $amt;
+        $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm, $prov) : ['payment_type'=>$pm, 'provider'=>$prov];
+        $c_pm = $norm['payment_type'];
+        $c_prov = $norm['provider'];
+        $payment_summary[$c_pm] = ($payment_summary[$c_pm] ?? 0) + $amt;
+        if ($c_pm === 'E-Wallet' && $c_prov) {
+            $p_key = ($c_prov === 'Maya') ? 'Maya' : 'GCash';
+            $ewallet_by_provider[$p_key] = ($ewallet_by_provider[$p_key] ?? 0) + $amt;
+        }
+        if ($c_pm === 'Credit Account') $credit_sales += $amt;
+        if ($c_pm === 'Petron Fleet Card')  $fleet_sales  += $amt;
     }
 } catch (Exception $e) {}
 
@@ -214,7 +224,7 @@ $merch_tx_count   = 0;
 $merch_items_sold  = 0;
 try {
     $stmt = $pdo->prepare(
-        "SELECT mt.payment_method, mt.total_amount, mt.fleet_card_number, mt.credit_account_number,
+        "SELECT mt.payment_method, COALESCE(mt.ewallet_provider, '') as ewallet_provider, mt.total_amount, mt.fleet_card_number, mt.credit_account_number,
                 mt.credit_company_name, mt.fleet_company_name
          FROM merchandise_transactions mt
          WHERE mt.station_id=:station_id AND DATE(mt.transaction_date) BETWEEN :dstart AND :dend
@@ -228,11 +238,19 @@ try {
         $amt = (float)$r['total_amount'];
         $merch_sales_total += $amt;
         $pm = trim($r['payment_method'] ?? 'Cash');
-        $payment_summary[$pm] = ($payment_summary[$pm] ?? 0) + $amt;
-        if (stripos($pm, 'credit') !== false || !empty($r['credit_account_number'])) {
+        $prov = trim($r['ewallet_provider'] ?? '');
+        $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm, $prov) : ['payment_type'=>$pm, 'provider'=>$prov];
+        $c_pm = $norm['payment_type'];
+        $c_prov = $norm['provider'];
+        $payment_summary[$c_pm] = ($payment_summary[$c_pm] ?? 0) + $amt;
+        if ($c_pm === 'E-Wallet' && $c_prov) {
+            $p_key = ($c_prov === 'Maya') ? 'Maya' : 'GCash';
+            $ewallet_by_provider[$p_key] = ($ewallet_by_provider[$p_key] ?? 0) + $amt;
+        }
+        if ($c_pm === 'Credit Account' || !empty($r['credit_account_number'])) {
             $credit_sales += $amt;
         }
-        if (stripos($pm, 'fleet') !== false || !empty($r['fleet_card_number'])) {
+        if ($c_pm === 'Petron Fleet Card' || !empty($r['fleet_card_number'])) {
             $fleet_sales += $amt;
         }
     }
@@ -276,7 +294,7 @@ try {
                    AND LOWER(COALESCE(jo.status,'')) NOT IN ('voided','cancelled','canceled','rejected')";
     $stmt = $pdo->prepare(
         "SELECT jo.status, jo.actual_labor_cost, jo.actual_parts_cost, jo.total_cost,
-                jo.amount_paid, jo.payment_method, jo.is_credit
+                jo.amount_paid, jo.payment_method, COALESCE(jo.ewallet_provider, '') as ewallet_provider, jo.is_credit
          FROM job_orders jo {$joWhere}"
     );
     $stmt->execute($joParams);
@@ -288,10 +306,21 @@ try {
         $parts_sales         += $parts;
         $service_fee_revenue += $labor + $parts; // total JO revenue = labor + parts
         $pm = trim($r['payment_method'] ?? '');
+        $prov = trim($r['ewallet_provider'] ?? '');
         if ($pm && (float)($r['amount_paid'] ?? 0) > 0) {
             $paid = (float)$r['amount_paid'];
-            $jo_payment_summary[$pm] = ($jo_payment_summary[$pm] ?? 0) + $paid;
-            $payment_summary[$pm]    = ($payment_summary[$pm] ?? 0) + $paid;
+            $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm, $prov) : ['payment_type'=>$pm, 'provider'=>$prov];
+            $c_pm = $norm['payment_type'];
+            $c_prov = $norm['provider'];
+            $jo_payment_summary[$c_pm] = ($jo_payment_summary[$c_pm] ?? 0) + $paid;
+            $payment_summary[$c_pm]    = ($payment_summary[$c_pm] ?? 0) + $paid;
+            if ($c_pm === 'E-Wallet' && $c_prov) {
+                $p_key = ($c_prov === 'Maya') ? 'Maya' : 'GCash';
+                $ewallet_by_provider[$p_key] = ($ewallet_by_provider[$p_key] ?? 0) + $paid;
+            }
+            if ($c_pm === 'Credit Account' || !empty($r['is_credit'])) {
+                $credit_sales += $paid;
+            }
         }
 
         // Normalize status
@@ -386,28 +415,26 @@ $ending_cash   = $cash_turnover;
 // ── Overall Sales ─────────────────────────────────────────────────────────────
 $overall_sales = $fuel_sales_total + $merch_sales_total + $service_fee_revenue;
 
-// ── Payment method display map ─────────────────────────────────────────────────
+// ── Payment method display map (Canonical Taxonomy) ───────────────────────────
 $all_payment_methods = [
-    'Cash'               => 0,
-    'Credit Card'        => 0,
-    'Debit Card'         => 0,
-    'GCash'              => 0,
-    'Maya'               => 0,
-    'Petron Fleet Card'  => 0,
-    'Credit Account'     => 0,
+    'Cash'                  => 0,
+    'Card'                  => 0,
+    'E-Wallet'              => 0,
+    'Petron Fleet Card'     => 0,
+    'Credit Account'        => 0,
+    'Petron Loyalty Points' => 0,
 ];
 // Merge collected payment data into display map
 foreach ($payment_summary as $pm => $amt) {
-    $pm_key = $pm;
-    // Normalize keys
-    if (stripos($pm, 'gcash') !== false) $pm_key = 'GCash';
-    elseif (stripos($pm, 'maya') !== false || stripos($pm, 'paymaya') !== false) $pm_key = 'Maya';
-    elseif (stripos($pm, 'fleet') !== false) $pm_key = 'Petron Fleet Card';
-    elseif (stripos($pm, 'credit card') !== false || stripos($pm, 'creditcard') !== false) $pm_key = 'Credit Card';
-    elseif (stripos($pm, 'debit') !== false) $pm_key = 'Debit Card';
-    elseif (stripos($pm, 'credit') !== false || stripos($pm, 'account') !== false) $pm_key = 'Credit Account';
-    elseif (stripos($pm, 'cash') !== false) $pm_key = 'Cash';
-    $all_payment_methods[$pm_key] = ($all_payment_methods[$pm_key] ?? 0) + $amt;
+    $norm = function_exists('normalize_payment_type') ? normalize_payment_type($pm) : ['payment_type'=>$pm, 'provider'=>null];
+    $c_pm = $norm['payment_type'];
+    $all_payment_methods[$c_pm] = ($all_payment_methods[$c_pm] ?? 0) + $amt;
+}
+// Reconcile E-Wallet provider sum with E-Wallet total
+$ew_total = $all_payment_methods['E-Wallet'] ?? 0;
+$prov_sum = ($ewallet_by_provider['GCash'] ?? 0) + ($ewallet_by_provider['Maya'] ?? 0);
+if ($ew_total > $prov_sum) {
+    $ewallet_by_provider['GCash'] = ($ewallet_by_provider['GCash'] ?? 0) + ($ew_total - $prov_sum);
 }
 
 // ── Export: PDF / Excel / CSV Slugs ──────────────────────────────────────────
@@ -453,6 +480,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     echo "<h3>PAYMENT COLLECTION SUMMARY</h3><table><thead><tr><th>Payment Method</th><th class='text-right'>Amount</th></tr></thead><tbody>";
     foreach ($all_payment_methods as $pm => $amt) {
         echo "<tr><td>" . htmlspecialchars($pm) . "</td><td class='text-right'>PHP " . number_format($amt, 2) . "</td></tr>";
+        if ($pm === 'E-Wallet' && $amt > 0) {
+            echo "<tr><td style='padding-left:20px; color:#059669;'>&nbsp;&nbsp;&bull; Provider: GCash</td><td class='text-right'>PHP " . number_format($ewallet_by_provider['GCash'] ?? 0, 2) . "</td></tr>";
+            echo "<tr><td style='padding-left:20px; color:#059669;'>&nbsp;&nbsp;&bull; Provider: Maya</td><td class='text-right'>PHP " . number_format($ewallet_by_provider['Maya'] ?? 0, 2) . "</td></tr>";
+        }
     }
     echo "<tr class='total'><td>Total Collections</td><td class='text-right'>PHP " . number_format(array_sum($all_payment_methods), 2) . "</td></tr>";
     echo "</tbody></table><br/>";
@@ -538,6 +569,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     fputcsv($out, ['Payment Method', 'Amount']);
     foreach ($all_payment_methods as $pm => $amt) {
         fputcsv($out, [$pm, 'PHP ' . number_format($amt, 2)]);
+        if ($pm === 'E-Wallet' && $amt > 0) {
+            fputcsv($out, ['  - Provider: GCash', 'PHP ' . number_format($ewallet_by_provider['GCash'] ?? 0, 2)]);
+            fputcsv($out, ['  - Provider: Maya', 'PHP ' . number_format($ewallet_by_provider['Maya'] ?? 0, 2)]);
+        }
     }
     fputcsv($out, ['Total Collections', 'PHP ' . number_format(array_sum($all_payment_methods), 2)]);
     fputcsv($out, []);
@@ -1096,7 +1131,18 @@ table.str-table td.str-center, table.str-table th.str-center {
                     </thead>
                     <tbody>
                         <?php foreach ($all_payment_methods as $pm => $amt): ?>
-                        <tr><td><?= htmlspecialchars($pm) ?></td><td>₱<?= number_format($amt, 2) ?></td></tr>
+                        <tr>
+                            <td>
+                                <b><?= htmlspecialchars($pm) ?></b>
+                                <?php if ($pm === 'E-Wallet' && $amt > 0): ?>
+                                    <div style="font-size:11px; color:#059669; padding-left:12px; margin-top:2px;">
+                                        <span>&bull; Provider: GCash: ₱<?= number_format($ewallet_by_provider['GCash'] ?? 0, 2) ?></span>
+                                        <span style="margin-left:10px;">&bull; Provider: Maya: ₱<?= number_format($ewallet_by_provider['Maya'] ?? 0, 2) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
+                            <td style="vertical-align: top;">₱<?= number_format($amt, 2) ?></td>
+                        </tr>
                         <?php endforeach; ?>
                         <tr class="str-total"><td>Total Collections</td><td>₱<?= number_format(array_sum($all_payment_methods), 2) ?></td></tr>
                     </tbody>

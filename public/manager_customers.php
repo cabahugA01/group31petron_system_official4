@@ -1309,18 +1309,25 @@ button.remove-v-btn i {
                     </div>
                     <div class="cust-field">
                         <label>Payment Method</label>
-                        <select id="payMethod">
+                        <select id="payMethod" onchange="toggleArPaymentMethod()">
                             <option value="Cash">Cash</option>
+                            <option value="Card">Card</option>
+                            <option value="E-Wallet">E-Wallet</option>
+                            <option value="Petron Fleet Card">Petron Fleet Card</option>
+                            <option value="Credit Account">Credit Account</option>
+                            <option value="Petron Loyalty Points">Petron Loyalty Points</option>
+                        </select>
+                    </div>
+                    <div class="cust-field" id="arEwalletProviderField" style="display:none;">
+                        <label>E-Wallet Provider</label>
+                        <select id="payEwalletProvider">
                             <option value="GCash">GCash</option>
-                            <option value="Bank Transfer">Bank Transfer</option>
-                            <option value="Credit Card">Credit Card</option>
-                            <option value="Check">Check</option>
-                            <option value="Other">Other</option>
+                            <option value="Maya">Maya</option>
                         </select>
                     </div>
                     <div class="cust-field" style="grid-column:1/-1;">
                         <label>Reference No. / Notes</label>
-                        <input type="text" id="payRemarks" placeholder="e.g. GCash ref, check no., notes...">
+                        <input type="text" id="payRemarks" placeholder="e.g. Reference No., Auth code, notes...">
                     </div>
                 </div>
             </div>
@@ -2450,7 +2457,7 @@ function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0
     const targetMethod = matchedRow ? (matchedRow.payment_method || 'Cash') : 'Cash';
 
     // Populate dropdown with methods from DB + current target method
-    const defaultMethods = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Bank Transfer', 'Check', 'E-Wallet', 'Credit Account'];
+    const defaultMethods = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
     const availableMethods = window.currentPaymentMethodsData && window.currentPaymentMethodsData.length
         ? window.currentPaymentMethodsData
         : defaultMethods;
@@ -2464,6 +2471,7 @@ function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0
     if (paySelect) {
         paySelect.innerHTML = methodsList.map(m => `<option value="${h(m)}">${h(m)}</option>`).join('');
         paySelect.value = targetMethod;
+        toggleArPaymentMethod();
     }
 
     document.getElementById('payCustomerId').value = currentCustomer?.id || '';
@@ -2485,6 +2493,12 @@ function openPaymentModal(reference = '', balance = 0, source = '', sourceId = 0
     openModal('arPaymentModal');
 }
 
+function toggleArPaymentMethod() {
+    const pm = document.getElementById('payMethod')?.value;
+    const f = document.getElementById('arEwalletProviderField');
+    if (f) f.style.display = (pm === 'E-Wallet') ? 'block' : 'none';
+}
+
 const arPayForm = document.getElementById('arPaymentForm');
 if (arPayForm) {
     arPayForm.onsubmit = function(e) {
@@ -2492,6 +2506,7 @@ if (arPayForm) {
     const customerId = document.getElementById('payCustomerId').value;
     const amount     = parseFloat(document.getElementById('payAmount').value) || 0;
     const method     = document.getElementById('payMethod').value;
+    const ewProv     = document.getElementById('payEwalletProvider')?.value || 'GCash';
     const remarks    = document.getElementById('payRemarks').value;
     const sourceId   = document.getElementById('paySourceId').value;
     const source     = document.getElementById('paySource').value;
@@ -2503,6 +2518,7 @@ if (arPayForm) {
         customer_id: customerId,
         amount,
         payment_method: method,
+        ewallet_provider: method === 'E-Wallet' ? ewProv : '',
         remarks,
         reference_no: currentArRow.reference || '',
         source_id: sourceId,

@@ -107,7 +107,12 @@ if ($creditId && $creditId !== '-1'): ?>
 <div class="r-row"><div>Grand Total</div><div class="right">PHP <?php echo money($data['total_amount'] ?? $sale['total'] ?? 0); ?></div></div>
 
 <?php 
-$paymentMethod = strtolower($data['payment_method'] ?? $sale['payment_method'] ?? 'cash');
+$rawPM = $data['payment_method'] ?? $sale['payment_method'] ?? 'cash';
+$rawProv = $data['ewallet_provider'] ?? $sale['ewallet_provider'] ?? null;
+$normPM = function_exists('normalize_payment_type') ? normalize_payment_type($rawPM, $rawProv) : ['payment_type'=>$rawPM,'provider'=>$rawProv];
+$paymentType = $normPM['payment_type'] ?? 'Cash';
+$paymentMethod = strtolower($paymentType);
+$provider = $normPM['provider'] ?? $rawProv;
 
 // Show payment details based on payment method
 if($paymentMethod === 'cash'): ?>
@@ -121,23 +126,30 @@ if($paymentMethod === 'cash'): ?>
     <div class="r-row"><div>Card Type</div><div class="right"><?php echo htmlspecialchars($data['card_type'] ?? $sale['card_type']); ?></div></div>
   <?php endif; ?>
 <?php elseif($paymentMethod === 'e-wallet'): ?>
+  <?php if(!empty($provider)): ?>
+    <div class="r-row"><div>E-Wallet Provider</div><div class="right"><?php echo htmlspecialchars($provider); ?></div></div>
+  <?php endif; ?>
   <?php if(!empty($data['ewallet_reference'] ?? $sale['ewallet_reference'])): ?>
-    <div class="r-row"><div>E-Wallet Ref</div><div class="right"><?php echo htmlspecialchars($data['ewallet_reference'] ?? $sale['ewallet_reference']); ?></div></div>
+    <div class="r-row"><div>Reference No.</div><div class="right"><?php echo htmlspecialchars($data['ewallet_reference'] ?? $sale['ewallet_reference']); ?></div></div>
   <?php endif; ?>
-  <?php if(!empty($data['ewallet_provider'] ?? $sale['ewallet_provider'])): ?>
-    <div class="r-row"><div>Provider</div><div class="right"><?php echo htmlspecialchars($data['ewallet_provider'] ?? $sale['ewallet_provider']); ?></div></div>
+<?php elseif($paymentMethod === 'petron fleet card' || $paymentMethod === 'e-fuel card'): ?>
+  <?php $fcNum = $data['fleet_card_number'] ?? $sale['fleet_card_number'] ?? $data['efuel_card_number'] ?? $sale['efuel_card_number'] ?? ''; ?>
+  <?php if(!empty($fcNum)): ?>
+    <div class="r-row"><div>Fleet Card No.</div><div class="right"><?php echo htmlspecialchars($fcNum); ?></div></div>
   <?php endif; ?>
-<?php elseif($paymentMethod === 'e-fuel card'): ?>
-  <?php if(!empty($data['efuel_card_number'] ?? $sale['efuel_card_number'])): ?>
-    <div class="r-row"><div>E-Fuel Card</div><div class="right"><?php echo htmlspecialchars($data['efuel_card_number'] ?? $sale['efuel_card_number']); ?></div></div>
-  <?php endif; ?>
-<?php elseif($paymentMethod === 'credit (utang)'): ?>
+<?php elseif($paymentMethod === 'credit account' || $paymentMethod === 'credit (utang)'): ?>
   <div class="r-row"><div>Amount Tendered</div><div class="right">PHP 0.00</div></div>
   <div class="r-row"><div>Change</div><div class="right">PHP 0.00</div></div>
+<?php elseif($paymentMethod === 'petron loyalty points'): ?>
+  <?php $pts = $data['loyalty_points_redeemed'] ?? $sale['loyalty_points_redeemed'] ?? 0; ?>
+  <div class="r-row"><div>Points Redeemed</div><div class="right"><?php echo number_format((int)$pts); ?> pts</div></div>
 <?php endif; ?>
 
-<div class="r-row"><div>Payment Method</div><div class="right"><?php echo htmlspecialchars(strtoupper($data['payment_method'] ?? $sale['payment_method'] ?? 'CASH')); ?></div></div>
-<div class="r-row"><div>Status</div><div class="right"><?php echo htmlspecialchars($data['transaction_status'] ?? ($paymentMethod === 'credit (utang)' ? 'Pending Payment' : 'Paid')); ?></div></div>
+<div class="r-row"><div>Payment Type</div><div class="right"><?php echo htmlspecialchars(strtoupper($paymentType)); ?></div></div>
+<?php if($paymentMethod === 'e-wallet' && !empty($provider)): ?>
+<div class="r-row"><div>Provider</div><div class="right"><?php echo htmlspecialchars(strtoupper($provider)); ?></div></div>
+<?php endif; ?>
+<div class="r-row"><div>Status</div><div class="right"><?php echo htmlspecialchars($data['transaction_status'] ?? (($paymentMethod === 'credit account' || $paymentMethod === 'credit (utang)') ? 'Pending Payment' : 'Paid')); ?></div></div>
 
 <div class="r-hr"></div>
 

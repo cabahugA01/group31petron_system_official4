@@ -26,6 +26,7 @@ try {
             customer_name,
             service_fee AS amount,
             payment_method,
+            COALESCE(ewallet_provider, '') AS ewallet_provider,
             payment_status,
             created_at AS date
         FROM job_orders
@@ -47,6 +48,7 @@ try {
             customer_name,
             total_amount AS amount,
             payment_method,
+            COALESCE(ewallet_provider, '') AS ewallet_provider,
             payment_status,
             transaction_date AS date
         FROM merchandise_transactions
@@ -59,6 +61,15 @@ try {
     
     // Merge and sort
     $all_transactions = array_merge($job_orders, $merch_txns);
+    foreach ($all_transactions as &$t) {
+        $pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($t) : ['payment_type'=>$t['payment_method'], 'provider'=>$t['ewallet_provider']??''];
+        $t['payment_type'] = $pay_info['payment_type'];
+        $t['payment_method'] = $pay_info['payment_type'];
+        $t['ewallet_provider'] = $pay_info['provider'] ?? '';
+        $t['payment_display'] = $pay_info['display_inline'] ?? $pay_info['payment_type'];
+    }
+    unset($t);
+
     usort($all_transactions, function($a, $b) {
         return strtotime($b['date']) - strtotime($a['date']);
     });

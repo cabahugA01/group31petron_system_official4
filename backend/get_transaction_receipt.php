@@ -128,9 +128,20 @@ function generateReceiptHTML($txn, $items) {
     $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0; font-size: 1.25rem;">';
     $html .= '<strong>TOTAL:</strong> <strong>₱' . number_format($txn['total_amount'], 2) . '</strong>';
     $html .= '</p>';
+    $pay_info = function_exists('format_payment_for_record') ? format_payment_for_record($txn) : ['payment_type'=>$txn['payment_method'], 'provider'=>'', 'reference_no'=>''];
     $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0;">';
-    $html .= '<span>Payment Method:</span> <span>' . htmlspecialchars($txn['payment_method']) . '</span>';
+    $html .= '<span>Payment Type:</span> <strong>' . htmlspecialchars($pay_info['payment_type']) . '</strong>';
     $html .= '</p>';
+    if (!empty($pay_info['provider'])) {
+        $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0; color: #166534;">';
+        $html .= '<span>E-Wallet Provider:</span> <strong>' . htmlspecialchars($pay_info['provider']) . '</strong>';
+        $html .= '</p>';
+    }
+    if (!empty($pay_info['reference_no'])) {
+        $html .= '<p style="display: flex; justify-content: space-between; margin: 0.25rem 0; font-size: 0.9em; color: #555;">';
+        $html .= '<span>Reference No.:</span> <span>' . htmlspecialchars($pay_info['reference_no']) . '</span>';
+        $html .= '</p>';
+    }
     $html .= '</div>';
     
     // Footer

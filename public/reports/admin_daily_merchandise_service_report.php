@@ -8,6 +8,8 @@
  * impact, and transaction audit summaries.
  */
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 // This file expects $date_from and $date_to variables from parent admin_reports.php
 $report_date_from = $date_from ?? date('Y-m-d');
 $report_date_to = $date_to ?? date('Y-m-d');
@@ -142,44 +144,68 @@ try {
 // SECTION 4: PAYMENT BREAKDOWN
 // ========================================================================
 $payment_breakdown = [
-    'Cash' => ['count' => 0, 'amount' => 0.0],
-    'GCash' => ['count' => 0, 'amount' => 0.0],
-    'Card' => ['count' => 0, 'amount' => 0.0],
-    'Charge Account' => ['count' => 0, 'amount' => 0.0]
+    'Cash' => ['count' => 0, 'amount' => 0.0, 'providers' => []],
+    'Card' => ['count' => 0, 'amount' => 0.0, 'providers' => []],
+    'E-Wallet' => ['count' => 0, 'amount' => 0.0, 'providers' => ['GCash' => ['count' => 0, 'amount' => 0.0], 'Maya' => ['count' => 0, 'amount' => 0.0]]],
+    'Petron Fleet Card' => ['count' => 0, 'amount' => 0.0, 'providers' => []],
+    'Credit Account' => ['count' => 0, 'amount' => 0.0, 'providers' => []],
+    'Petron Loyalty Points' => ['count' => 0, 'amount' => 0.0, 'providers' => []]
 ];
 
 try {
     // Merchandise payments
-    $sql = "SELECT payment_method, COUNT(*) as count, SUM(total_amount) as total
+    $sql = "SELECT payment_method, COALESCE(ewallet_provider, '') as ewallet_provider, COUNT(*) as count, SUM(total_amount) as total
             FROM merchandise_transactions
             WHERE station_id = ?
                 AND DATE(COALESCE(transaction_date, created_at)) BETWEEN ? AND ?
                 AND validation_status = 'Approved'
-            GROUP BY payment_method";
+            GROUP BY payment_method, ewallet_provider";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$admin_station_id, $report_date_from, $report_date_to]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $method = ucfirst(trim($row['payment_method'] ?? 'Cash'));
-        if (isset($payment_breakdown[$method])) {
-            $payment_breakdown[$method]['count'] += (int)$row['count'];
-            $payment_breakdown[$method]['amount'] += (float)$row['total'];
+        $norm = function_exists('normalize_payment_type') ? normalize_payment_type($row['payment_method'] ?? 'Cash', $row['ewallet_provider'] ?? '') : ['type' => $row['payment_method'] ?? 'Cash', 'provider' => $row['ewallet_provider'] ?? ''];
+        $method = $norm['type'];
+        $prov = $norm['provider'];
+        if (!isset($payment_breakdown[$method])) {
+            $payment_breakdown[$method] = ['count' => 0, 'amount' => 0.0, 'providers' => []];
+        }
+        $payment_breakdown[$method]['count'] += (int)$row['count'];
+        $payment_breakdown[$method]['amount'] += (float)$row['total'];
+
+        if ($method === 'E-Wallet' && !empty($prov)) {
+            if (!isset($payment_breakdown[$method]['providers'][$prov])) {
+                $payment_breakdown[$method]['providers'][$prov] = ['count' => 0, 'amount' => 0.0];
+            }
+            $payment_breakdown[$method]['providers'][$prov]['count'] += (int)$row['count'];
+            $payment_breakdown[$method]['providers'][$prov]['amount'] += (float)$row['total'];
         }
     }
     
     // Job Order payments
-    $sql = "SELECT payment_method, COUNT(*) as count, SUM(total_cost) as total
+    $sql = "SELECT payment_method, COALESCE(ewallet_provider, '') as ewallet_provider, COUNT(*) as count, SUM(total_cost) as total
             FROM job_orders
             WHERE station_id = ?
                 AND DATE(created_at) BETWEEN ? AND ?
                 AND status IN ('Completed', 'Released', 'Verified')
-            GROUP BY payment_method";
+            GROUP BY payment_method, ewallet_provider";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$admin_station_id, $report_date_from, $report_date_to]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $method = ucfirst(trim($row['payment_method'] ?? 'Cash'));
-        if (isset($payment_breakdown[$method])) {
-            $payment_breakdown[$method]['count'] += (int)$row['count'];
-            $payment_breakdown[$method]['amount'] += (float)$row['total'];
+        $norm = function_exists('normalize_payment_type') ? normalize_payment_type($row['payment_method'] ?? 'Cash', $row['ewallet_provider'] ?? '') : ['type' => $row['payment_method'] ?? 'Cash', 'provider' => $row['ewallet_provider'] ?? ''];
+        $method = $norm['type'];
+        $prov = $norm['provider'];
+        if (!isset($payment_breakdown[$method])) {
+            $payment_breakdown[$method] = ['count' => 0, 'amount' => 0.0, 'providers' => []];
+        }
+        $payment_breakdown[$method]['count'] += (int)$row['count'];
+        $payment_breakdown[$method]['amount'] += (float)$row['total'];
+
+        if ($method === 'E-Wallet' && !empty($prov)) {
+            if (!isset($payment_breakdown[$method]['providers'][$prov])) {
+                $payment_breakdown[$method]['providers'][$prov] = ['count' => 0, 'amount' => 0.0];
+            }
+            $payment_breakdown[$method]['providers'][$prov]['count'] += (int)$row['count'];
+            $payment_breakdown[$method]['providers'][$prov]['amount'] += (float)$row['total'];
         }
     }
 } catch (Exception $e) {}
@@ -572,10 +598,21 @@ try {
             <tbody>
                 <?php foreach ($payment_breakdown as $method => $data): ?>
                     <tr>
-                        <td><?= htmlspecialchars($method) ?></td>
+                        <td><strong><?= htmlspecialchars($method) ?></strong></td>
                         <td style="text-align:center;"><?= number_format($data['count']) ?></td>
                         <td style="text-align:right;">₱<?= number_format($data['amount'], 2) ?></td>
                     </tr>
+                    <?php if ($method === 'E-Wallet' && !empty($data['providers'])): ?>
+                        <?php foreach ($data['providers'] as $prov => $prov_data): ?>
+                            <?php if ($prov_data['count'] > 0 || $prov_data['amount'] > 0): ?>
+                            <tr style="background:#f8fafc;">
+                                <td style="padding-left:24px; font-size:12px;" class="text-secondary">↳ Provider: <strong><?= htmlspecialchars($prov) ?></strong></td>
+                                <td style="text-align:center; font-size:12px;" class="text-secondary"><?= number_format($prov_data['count']) ?></td>
+                                <td style="text-align:right; font-size:12px;" class="text-secondary">₱<?= number_format($prov_data['amount'], 2) ?></td>
+                            </tr>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </tbody>
         </table>

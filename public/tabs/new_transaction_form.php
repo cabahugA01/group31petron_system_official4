@@ -433,14 +433,31 @@
             
             <div class="input-group" style="margin-bottom: 1rem;">
                 <label for="payment_method">Payment Method</label>
-                <select id="payment_method" name="payment_method">
+                <select id="payment_method" name="payment_method" onchange="toggleUnifiedPaymentFields()">
                     <option value="Cash">Cash</option>
                     <option value="Card">Card</option>
                     <option value="E-Wallet">E-Wallet</option>
-                    <option value="Petron E-Fuel">Petron E-Fuel</option>
-                    <option value="Fleet Card">Fleet Card</option>
-                    <option value="Credit">Credit</option>
+                    <option value="Petron Fleet Card">Petron Fleet Card</option>
+                    <option value="Credit Account">Credit Account</option>
+                    <option value="Petron Loyalty Points">Petron Loyalty Points</option>
                 </select>
+            </div>
+
+            <!-- E-Wallet Provider and Reference -->
+            <div id="unified_ewallet_fields" style="display: none; margin-bottom: 1rem; padding: 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;">
+                <label for="unified_ewallet_provider" style="font-weight: 600; color: #166534; display: block; margin-bottom: 4px; font-size: 0.85rem;">E-Wallet Provider</label>
+                <select id="unified_ewallet_provider" name="ewallet_provider" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <option value="GCash">GCash</option>
+                    <option value="Maya">Maya</option>
+                </select>
+                <label for="unified_ewallet_ref" style="font-weight: 600; color: #166534; display: block; margin-bottom: 4px; font-size: 0.85rem;">Reference No.</label>
+                <input type="text" id="unified_ewallet_ref" name="ewallet_reference" placeholder="e.g. GC123456789 or MY123456789" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box;">
+            </div>
+
+            <!-- Fleet Card Field -->
+            <div id="unified_fleet_fields" style="display: none; margin-bottom: 1rem; padding: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;">
+                <label for="unified_fleet_card_number" style="font-weight: 600; color: #1e40af; display: block; margin-bottom: 4px; font-size: 0.85rem;">Petron Fleet Card Number</label>
+                <input type="text" id="unified_fleet_card_number" name="fleet_card_number" placeholder="Enter Fleet Card Number" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box;">
             </div>
             
             <div class="payment-row">
@@ -743,6 +760,15 @@ async function processTransaction() {
     formData.append('customer_name', `${firstName} ${lastName}`);
     formData.append('customer_contact', document.getElementById('contact_number').value);
     formData.append('payment_method', paymentMethod);
+    if (paymentMethod === 'E-Wallet') {
+        const ewProv = document.getElementById('unified_ewallet_provider') ? document.getElementById('unified_ewallet_provider').value : 'GCash';
+        const ewRef = document.getElementById('unified_ewallet_ref') ? document.getElementById('unified_ewallet_ref').value : '';
+        formData.append('ewallet_provider', ewProv);
+        formData.append('ewallet_reference', ewRef);
+    } else if (paymentMethod === 'Petron Fleet Card') {
+        const fcNum = document.getElementById('unified_fleet_card_number') ? document.getElementById('unified_fleet_card_number').value : '';
+        formData.append('fleet_card_number', fcNum);
+    }
     
     // Service info
     const serviceInCart = cart.find(item => item.item_type === 'service');
@@ -788,6 +814,14 @@ async function processTransaction() {
         console.error('Error:', error);
         alert('Network error. Please try again.');
     }
+}
+
+function toggleUnifiedPaymentFields() {
+    const pm = document.getElementById('payment_method') ? document.getElementById('payment_method').value : '';
+    const ewDiv = document.getElementById('unified_ewallet_fields');
+    const flDiv = document.getElementById('unified_fleet_fields');
+    if (ewDiv) ewDiv.style.display = (pm === 'E-Wallet') ? 'block' : 'none';
+    if (flDiv) flDiv.style.display = (pm === 'Petron Fleet Card') ? 'block' : 'none';
 }
 
 // Initialize

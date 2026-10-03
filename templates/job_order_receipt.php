@@ -18,7 +18,11 @@ $service_type   = $j['service_type']    ?? '';
 $svc_desc       = $j['service_description'] ?? ($j['notes'] ?? '');
 $mechanic       = $j['mechanic_name']   ?? 'Unassigned';
 $staff          = $j['created_by_name'] ?? 'Staff';
-$pay_method     = $j['payment_method']  ?? 'Cash';
+$raw_pay_method = $j['payment_method']  ?? 'Cash';
+$raw_ew_provider = $j['ewallet_provider'] ?? null;
+$norm_pay       = function_exists('normalize_payment_type') ? normalize_payment_type($raw_pay_method, $raw_ew_provider) : ['payment_type'=>$raw_pay_method, 'provider'=>$raw_ew_provider];
+$pay_method     = $norm_pay['payment_type'] ?? 'Cash';
+$ew_provider    = $norm_pay['provider'] ?? ($j['ewallet_provider'] ?? null);
 $pay_status     = $j['payment_status']  ?? 'Pending';
 $total          = (float)($j['estimated_cost'] ?? 0);
 $paid           = (float)($j['amount_paid']    ?? 0);
@@ -229,9 +233,16 @@ if (!empty($_jo_receipt_cfg['logo_path'])) {
   <div class="jo-r-lbl">Payment</div>
 
   <div class="jo-r-row">
-    <span class="jo-r-key">Method</span>
+    <span class="jo-r-key">Payment Type</span>
     <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($pay_method); ?></span>
   </div>
+
+  <?php if ($pay_method === 'E-Wallet' && $ew_provider): ?>
+  <div class="jo-r-row">
+    <span class="jo-r-key">E-Wallet Provider</span>
+    <span class="jo-r-val jo-r-bold" style="color:#059669;"><?php echo htmlspecialchars($ew_provider); ?></span>
+  </div>
+  <?php endif; ?>
 
   <?php $pm_lc = strtolower($pay_method); ?>
   <?php if ($pm_lc === 'cash'): ?>
@@ -251,8 +262,8 @@ if (!empty($_jo_receipt_cfg['logo_path'])) {
     </div>
     <?php
       // Extract card ref from notes if stored there
-      $card_ref_val = '';
-      if (!empty($j['additional_notes']) && preg_match('/Card Ref:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
+      $card_ref_val = $j['card_reference'] ?? '';
+      if (!$card_ref_val && !empty($j['additional_notes']) && preg_match('/Card Ref:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
           $card_ref_val = trim($m[1]);
       }
     ?>
@@ -265,41 +276,41 @@ if (!empty($_jo_receipt_cfg['logo_path'])) {
 
   <?php elseif ($pm_lc === 'e-wallet'): ?>
     <div class="jo-r-row">
-      <span class="jo-r-key">Amount Transferred</span>
+      <span class="jo-r-key">Amount</span>
       <span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span>
     </div>
     <?php
-      $ew_ref = '';
-      if (!empty($j['additional_notes']) && preg_match('/E-Wallet Ref:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
+      $ew_ref = $j['ewallet_reference'] ?? '';
+      if (!$ew_ref && !empty($j['additional_notes']) && preg_match('/(?:E-Wallet Ref|Reference No\.?):\s*([^\|]+)/i', $j['additional_notes'], $m)) {
           $ew_ref = trim($m[1]);
       }
     ?>
     <?php if ($ew_ref): ?>
     <div class="jo-r-row">
-      <span class="jo-r-key">E-Wallet Ref No.</span>
+      <span class="jo-r-key">Reference No.</span>
       <span class="jo-r-val"><?php echo htmlspecialchars($ew_ref); ?></span>
     </div>
     <?php endif; ?>
 
-  <?php elseif ($pm_lc === 'e-fuel card'): ?>
+  <?php elseif (in_array($pm_lc, ['petron fleet card', 'fleet card'])): ?>
     <div class="jo-r-row">
-      <span class="jo-r-key">Amount Deducted</span>
+      <span class="jo-r-key">Amount Charged</span>
       <span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span>
     </div>
     <?php
-      $ef_id = '';
-      if (!empty($j['additional_notes']) && preg_match('/E-Fuel Card:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
-          $ef_id = trim($m[1]);
+      $fc_id = $j['fleet_card_number'] ?? '';
+      if (!$fc_id && !empty($j['additional_notes']) && preg_match('/Fleet Card:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
+          $fc_id = trim($m[1]);
       }
     ?>
-    <?php if ($ef_id): ?>
+    <?php if ($fc_id): ?>
     <div class="jo-r-row">
-      <span class="jo-r-key">E-Fuel Card ID</span>
-      <span class="jo-r-val"><?php echo htmlspecialchars($ef_id); ?></span>
+      <span class="jo-r-key">Fleet Card No.</span>
+      <span class="jo-r-val"><?php echo htmlspecialchars($fc_id); ?></span>
     </div>
     <?php endif; ?>
 
-  <?php elseif (in_array($pm_lc, ['credit', 'account receivable'])): ?>
+  <?php elseif (in_array($pm_lc, ['credit account', 'credit', 'account receivable'])): ?>
     <?php
       $credit_cust_name = '';
       if (!empty($j['additional_notes']) && preg_match('/Credit Customer:\s*([^\|]+)/i', $j['additional_notes'], $m)) {
@@ -313,6 +324,16 @@ if (!empty($_jo_receipt_cfg['logo_path'])) {
     <div class="jo-r-row"><span class="jo-r-key">Amount Tendered</span><span class="jo-r-val">&#8369;0.00</span></div>
     <div class="jo-r-row" style="font-size:9.5px; color:#856404;">
       <span>Transaction forwarded to Receivables module.</span>
+    </div>
+
+  <?php elseif ($pm_lc === 'petron loyalty points'): ?>
+    <div class="jo-r-row">
+      <span class="jo-r-key">Points Redeemed</span>
+      <span class="jo-r-val jo-r-bold"><?php echo htmlspecialchars($j['loyalty_points_redeemed'] ?? $j['points_redeemed'] ?? '0'); ?> pts</span>
+    </div>
+    <div class="jo-r-row">
+      <span class="jo-r-key">Amount Equivalent</span>
+      <span class="jo-r-val">&#8369;<?php echo number_format($total, 2); ?></span>
     </div>
 
   <?php else: ?>

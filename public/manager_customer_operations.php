@@ -1730,7 +1730,11 @@ function manager_record_ar_payment(): void {
 
     $customerId    = (int)($_POST['customer_id'] ?? 0);
     $amount        = (float)($_POST['amount'] ?? 0);
-    $paymentMethod = trim($_POST['payment_method'] ?? 'Cash');
+    $rawMethod     = trim($_POST['payment_method'] ?? 'Cash');
+    $rawProvider   = trim($_POST['ewallet_provider'] ?? '');
+    $norm          = function_exists('normalize_payment_type') ? normalize_payment_type($rawMethod, $rawProvider) : ['payment_type'=>$rawMethod, 'provider'=>$rawProvider];
+    $paymentMethod = $norm['payment_type'];
+    $ewalletProvider = $norm['provider'] ?: ($paymentMethod === 'E-Wallet' ? 'GCash' : null);
     $remarks       = trim($_POST['remarks'] ?? '');
     $referenceNo   = trim($_POST['reference_no'] ?? '');
     $source        = trim($_POST['source'] ?? '');      // 'merchandise' or 'job_order'
@@ -1745,10 +1749,15 @@ function manager_record_ar_payment(): void {
         // ── Record into customer_credit_transactions ──────────────────────────
         if (manager_has_table($pdo, 'customer_credit_transactions')) {
             $stationId = (int)(user_station_id() ?: 1);
+            $payDesc = $paymentMethod . ($paymentMethod === 'E-Wallet' && !empty($ewalletProvider) ? " ($ewalletProvider)" : '');
+            $paymentNote = $remarks ?: "Payment for {$referenceNo}";
+            if ($paymentMethod === 'E-Wallet' && !empty($ewalletProvider) && strpos($paymentNote, $ewalletProvider) === false) {
+                $paymentNote .= " via {$ewalletProvider}";
+            }
             $pdo->prepare("
                 INSERT INTO customer_credit_transactions (station_id, customer_id, amount, payment_method, remarks, created_at)
                 VALUES (?, ?, ?, ?, ?, NOW())
-            ")->execute([$stationId, $customerId, $amount, $paymentMethod, $remarks ?: "Payment for {$referenceNo}"]);
+            ")->execute([$stationId, $customerId, $amount, $paymentMethod, $paymentNote]);
         }
 
         // ── Apply payment to specific transaction ─────────────────────────────

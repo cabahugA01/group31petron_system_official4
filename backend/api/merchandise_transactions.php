@@ -634,7 +634,11 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
     }
 
     // ── Payment method + amount setup ─────────────────────────────────────────
-    $payment_method  = $data['payment_method'];
+    $raw_payment_method  = trim((string)($data['payment_method'] ?? 'Cash'));
+    $raw_ewallet_prov    = trim((string)($data['ewallet_provider'] ?? ''));
+    $norm_pay            = normalize_payment_type($raw_payment_method, $raw_ewallet_prov);
+    $payment_method      = $norm_pay['payment_type'];
+    $ewallet_provider    = $norm_pay['provider'] ?: ($raw_ewallet_prov ?: null);
     // amount_paid: the actual amount the customer paid/tendered right now
     $amount_paid = floatval($data['amount_paid'] ?? $data['amount_tendered'] ?? 0);
 
@@ -931,7 +935,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'customer_last_name'    => $data['customer_last_name']  ?? null,
             'customer_contact'      => $data['customer_contact'] ?? $data['job_order_contact'] ?? null,
             'credit_customer_id'    => $data['credit_customer_id'] ?? null,
-            'payment_method'        => $data['payment_method'],
+            'payment_method'        => $payment_method,
             'subtotal_amount'       => $subtotal_amount,
             'vat_amount'            => $vat_amount,
             'remarks'               => $data['remarks'] ?? '',
@@ -942,7 +946,7 @@ function createMerchandiseTransaction($pdo, $station_id, $role, $me) {
             'card_type'             => $data['card_type'] ?? null,
             'card_last_four'        => $data['card_last_four'] ?? null,
             'ewallet_reference'     => $data['ewallet_reference'] ?? null,
-            'ewallet_provider'      => $data['ewallet_provider'] ?? null,
+            'ewallet_provider'      => $ewallet_provider,
             'efuel_card_number'     => $data['efuel_card_number'] ?? null,
             'efuel_reference'       => $data['efuel_reference'] ?? null,
             'fleet_card_number'     => $data['fleet_card_number'] ?? null,

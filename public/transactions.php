@@ -586,28 +586,16 @@ try {
 }
 
 // â”€â”€ Config lookups — DB-driven with safe fallbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-$payment_methods = [];
-try {
-    $payment_methods = $pdo->query("SELECT method_key, method_name FROM payment_method_config WHERE is_active = 1 ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
-} catch(Exception $e) {}
-if (empty($payment_methods)) {
-    /* Fetch distinct payment methods actually used in this station's transactions */
-    try {
-        $pm_rows = $pdo->prepare("SELECT DISTINCT payment_method FROM merchandise_transactions WHERE station_id = ? AND payment_method IS NOT NULL AND payment_method <> '' ORDER BY payment_method");
-        $pm_rows->execute([$station_id]);
-        foreach ($pm_rows->fetchAll(PDO::FETCH_COLUMN) as $pm) {
-            $payment_methods[] = ['method_key' => strtolower($pm), 'method_name' => $pm];
-        }
-    } catch (Exception $e) {}
-}
-if (empty($payment_methods)) {
-    $payment_methods = [
-        ['method_key'=>'cash',     'method_name'=>'Cash'],
-        ['method_key'=>'card',     'method_name'=>'Card'],
-        ['method_key'=>'credit',   'method_name'=>'Credit'],
-        ['method_key'=>'e-wallet', 'method_name'=>'E-Wallet'],
-    ];
-}
+$payment_methods = [
+    ['method_key' => 'Cash',                  'method_name' => 'Cash'],
+    ['method_key' => 'Card',                  'method_name' => 'Card'],
+    ['method_key' => 'E-Wallet',              'method_name' => 'E-Wallet'],
+    ['method_key' => 'GCash',                 'method_name' => '— GCash'],
+    ['method_key' => 'Maya',                  'method_name' => '— Maya'],
+    ['method_key' => 'Petron Fleet Card',     'method_name' => 'Petron Fleet Card'],
+    ['method_key' => 'Credit Account',        'method_name' => 'Credit Account'],
+    ['method_key' => 'Petron Loyalty Points', 'method_name' => 'Petron Loyalty Points'],
+];
 
 // â”€â”€ Status normaliser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function normalise_status(string $raw): string {
@@ -646,7 +634,29 @@ $mw = "WHERE mt.station_id = ? AND ($merch_date) BETWEEN ? AND ?";
 $mp = [$station_id, $start, $end];
 
 if ($customer !== '') { $mw .= " AND mt.customer_name LIKE ?"; $mp[] = '%'.$customer.'%'; }
-if ($payment  !== '') { $mw .= " AND LOWER(mt.payment_method) = LOWER(?)"; $mp[] = $payment; }
+if ($payment  !== '') {
+    $p_clean = strtolower(str_replace([' ', '-', '_'], '', $payment));
+    if ($p_clean === 'cash') {
+        $mw .= " AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) = 'cash'";
+    } elseif ($p_clean === 'card') {
+        $mw .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('card','creditcard','debitcard') OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%card%')";
+    } elseif ($p_clean === 'ewallet') {
+        $mw .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('ewallet','gcash','maya','paymaya','online') OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%wallet%' OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%gcash%' OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%maya%')";
+    } elseif ($p_clean === 'gcash') {
+        $mw .= " AND (LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%gcash%' OR LOWER(TRIM(" . ($mt_has('ewallet_provider') ? "COALESCE(mt.ewallet_provider,'')" : "''") . ")) = 'gcash')";
+    } elseif ($p_clean === 'maya' || $p_clean === 'paymaya') {
+        $mw .= " AND (LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%maya%' OR LOWER(TRIM(" . ($mt_has('ewallet_provider') ? "COALESCE(mt.ewallet_provider,'')" : "''") . ")) IN ('maya','paymaya'))";
+    } elseif ($p_clean === 'petronfleetcard' || $p_clean === 'fleetcard') {
+        $mw .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('petronfleetcard','fleetcard','fleet') OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%fleet%')";
+    } elseif ($p_clean === 'creditaccount' || $p_clean === 'credit' || $p_clean === 'ar') {
+        $mw .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('creditaccount','credit','accountreceivable','ar') OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%credit%')";
+    } elseif ($p_clean === 'petronloyaltypoints' || $p_clean === 'loyalty' || $p_clean === 'points') {
+        $mw .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mt.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('petronloyaltypoints','loyaltypoints','loyalty','points') OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%loyalty%' OR LOWER(TRIM(COALESCE(mt.payment_method,''))) LIKE '%points%')";
+    } else {
+        $mw .= " AND LOWER(mt.payment_method) = LOWER(?)";
+        $mp[] = $payment;
+    }
+}
 if ($status_f === 'pending') {
     $mw .= " AND LOWER(TRIM(COALESCE(mt.validation_status,''))) IN ('pending','pending validation','pendingvalidation','')";
 } elseif ($status_f === 'verified') {
@@ -676,6 +686,10 @@ $mt_txn_type_expr = "
 $mt_vehicle_expr  = $mt_has('job_order_vehicle_plate') ? "COALESCE(mt.job_order_vehicle_plate,'')" : "''";
 $mt_mechanic_expr = $mt_has('job_order_mechanic_name') ? "COALESCE(mt.job_order_mechanic_name,'')" : "''";
 $mt_jo_service_expr = $mt_has('job_order_service') ? "COALESCE(mt.job_order_service,'')" : "''";
+$mt_ewallet_prov = $mt_has('ewallet_provider') ? "COALESCE(mt.ewallet_provider, '')" : "''";
+$mt_ewallet_ref  = $mt_has('ewallet_reference') ? "COALESCE(mt.ewallet_reference, '')" : "''";
+$mt_card_ref     = $mt_has('card_reference') ? "COALESCE(mt.card_reference, '')" : "''";
+$mt_fleet_num    = $mt_has('fleet_card_number') ? "COALESCE(mt.fleet_card_number, '')" : "''";
 
 $sql = "
     SELECT
@@ -683,6 +697,10 @@ $sql = "
         mt.transaction_id AS txn_ref,
         COALESCE(NULLIF(TRIM(mt.customer_name),''),'Walk-in') AS customer,
         COALESCE(NULLIF(mt.payment_method,''),'Cash') AS payment_method,
+        {$mt_ewallet_prov} AS ewallet_provider,
+        {$mt_ewallet_ref} AS ewallet_reference,
+        {$mt_card_ref} AS card_reference,
+        {$mt_fleet_num} AS fleet_card_number,
         CASE WHEN mt.transaction_date > '2000-01-01' THEN mt.transaction_date ELSE mt.created_at END AS created_at,
         COALESCE(NULLIF(TRIM(mt.validation_status),''),'Pending') AS status,
         COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
@@ -737,6 +755,29 @@ $jow = "WHERE jo.station_id = ? AND ($jo_date) BETWEEN ? AND ?
 $jop = [$station_id, $start, $end];
 
 if ($customer !== '') { $jow .= " AND (jo.customer_name LIKE ? OR jo.vehicle_plate LIKE ?)"; $jop[] = '%'.$customer.'%'; $jop[] = '%'.$customer.'%'; }
+if ($payment  !== '') {
+    $p_clean = strtolower(str_replace([' ', '-', '_'], '', $payment));
+    if ($p_clean === 'cash') {
+        $jow .= " AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) = 'cash'";
+    } elseif ($p_clean === 'card') {
+        $jow .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('card','creditcard','debitcard') OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%card%')";
+    } elseif ($p_clean === 'ewallet') {
+        $jow .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('ewallet','gcash','maya','paymaya','online') OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%wallet%' OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%gcash%' OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%maya%')";
+    } elseif ($p_clean === 'gcash') {
+        $jow .= " AND (LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%gcash%' OR LOWER(TRIM(" . ($jo_has('ewallet_provider') ? "COALESCE(jo.ewallet_provider,'')" : "''") . ")) = 'gcash')";
+    } elseif ($p_clean === 'maya' || $p_clean === 'paymaya') {
+        $jow .= " AND (LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%maya%' OR LOWER(TRIM(" . ($jo_has('ewallet_provider') ? "COALESCE(jo.ewallet_provider,'')" : "''") . ")) IN ('maya','paymaya'))";
+    } elseif ($p_clean === 'petronfleetcard' || $p_clean === 'fleetcard') {
+        $jow .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('petronfleetcard','fleetcard','fleet') OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%fleet%')";
+    } elseif ($p_clean === 'creditaccount' || $p_clean === 'credit' || $p_clean === 'ar') {
+        $jow .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('creditaccount','credit','accountreceivable','ar') OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%credit%')";
+    } elseif ($p_clean === 'petronloyaltypoints' || $p_clean === 'loyalty' || $p_clean === 'points') {
+        $jow .= " AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(jo.payment_method,'')), '-', ''), ' ', ''), '_', '')) IN ('petronloyaltypoints','loyaltypoints','loyalty','points') OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%loyalty%' OR LOWER(TRIM(COALESCE(jo.payment_method,''))) LIKE '%points%')";
+    } else {
+        $jow .= " AND LOWER(jo.payment_method) = LOWER(?)";
+        $jop[] = $payment;
+    }
+}
 if ($status_f === 'pending')  { $jow .= " AND (LOWER(TRIM(COALESCE(jo.validation_status,''))) IN ('pending validation','pending','') OR jo.validation_status IS NULL)"; }
 elseif ($status_f === 'verified') { $jow .= " AND LOWER(TRIM(COALESCE(jo.validation_status,''))) IN ('approved','verified')"; }
 elseif ($status_f === 'rejected') { $jow .= " AND LOWER(TRIM(COALESCE(jo.validation_status,''))) IN ('rejected','cancelled')"; }
@@ -746,6 +787,8 @@ $jo_mechanic_expr = $jo_has('assigned_mechanic_id')
     ? "COALESCE(NULLIF(CONCAT(m.first_name,' ',m.last_name),' '), m.username, '')"
     : ($jo_has('mechanic_name') ? "COALESCE(jo.mechanic_name,'')" : "''");
 $jo_mechanic_join = $jo_has('assigned_mechanic_id') ? "LEFT JOIN users m ON m.id = jo.assigned_mechanic_id" : "";
+$jo_ewallet_prov  = $jo_has('ewallet_provider') ? "COALESCE(jo.ewallet_provider, '')" : "''";
+$jo_ewallet_ref   = $jo_has('ewallet_reference') ? "COALESCE(jo.ewallet_reference, '')" : "''";
 
 $jo_sql = "
     SELECT
@@ -753,6 +796,10 @@ $jo_sql = "
         CONCAT('JO-', jo.id) AS txn_ref,
         COALESCE(NULLIF(TRIM(jo.customer_name),''),'Walk-in') AS customer,
         COALESCE(jo.payment_method,'N/A') AS payment_method,
+        {$jo_ewallet_prov} AS ewallet_provider,
+        {$jo_ewallet_ref} AS ewallet_reference,
+        '' AS card_reference,
+        '' AS fleet_card_number,
         jo.created_at,
         COALESCE(NULLIF(TRIM(jo.validation_status),''),'Pending Validation') AS status,
         COALESCE(NULLIF(CONCAT(u.first_name,' ',u.last_name),' '), u.username, 'Unknown') AS staff_name,
@@ -853,6 +900,12 @@ $all_transactions = array_values(array_map(function($t) use ($audit_meta) {
     $t['customer_display'] = trim((string)($t['customer'] ?? '')) ?: 'Walk-in';
     $t['staff_display'] = trim((string)($t['staff_name'] ?? '')) ?: 'Unknown';
     $t['audit_entries'] = $audit_meta[(string)($t['row_id'] ?? '')] ?? [];
+    $pay_format = format_payment_for_record($t);
+    $t['payment_type'] = $pay_format['payment_type'];
+    $t['payment_provider'] = $pay_format['provider'];
+    $t['payment_reference'] = $pay_format['reference_no'];
+    $t['payment_display'] = $pay_format['display_inline'];
+    $t['payment_method_canonical'] = $pay_format['payment_type'];
     return $t;
 }, $all_transactions));
 
@@ -915,7 +968,19 @@ $display_transactions = array_values(array_filter($all_transactions, function($t
 
     $status_map = ['pending' => 'pending', 'verified' => 'verified', 'rejected' => 'returned', 'adjusted' => 'adjusted'];
     if ($status_f !== '' && ($status_map[$status_f] ?? '') !== ($t['status_key'] ?? normalise_status((string)($t['status'] ?? '')))) return false;
-    if ($payment !== '' && strtolower((string)($t['payment_method'] ?? '')) !== strtolower($payment)) return false;
+    if ($payment !== '') {
+        $p_clean = strtolower(str_replace([' ', '-', '_'], '', $payment));
+        $pay_type = $t['payment_type'] ?? '';
+        $pay_prov = strtolower($t['payment_provider'] ?? '');
+        if ($p_clean === 'gcash') {
+            if ($pay_type !== 'E-Wallet' || $pay_prov !== 'gcash') return false;
+        } elseif ($p_clean === 'maya' || $p_clean === 'paymaya') {
+            if ($pay_type !== 'E-Wallet' || ($pay_prov !== 'maya' && $pay_prov !== 'paymaya')) return false;
+        } else {
+            $norm_filter = normalize_payment_type($payment);
+            if ($pay_type !== $norm_filter['payment_type']) return false;
+        }
+    }
     if ($payment_status_f !== '' && strtolower((string)($t['payment_status_raw'] ?? $t['payment_status'] ?? '')) !== strtolower($payment_status_f)) return false;
     if ($shift_f !== '' && strcasecmp((string)($t['shift_label'] ?? ''), $shift_f) !== 0) return false;
     if ($staff_f !== '' && strcasecmp((string)($t['staff_display'] ?? $t['staff_name'] ?? ''), $staff_f) !== 0) return false;
@@ -956,11 +1021,29 @@ $recent_adjustments = array_slice($adjusted_transactions, 0, 5);
 $recent_voided = array_slice($voided_transactions, 0, 5);
 
 $type_summary = ['Merchandise' => 0, 'Job Order' => 0, 'JO + Merchandise' => 0];
-$payment_summary = [];
+$payment_summary = [
+    'Cash' => 0,
+    'Card' => 0,
+    'E-Wallet' => 0,
+    'Petron Fleet Card' => 0,
+    'Credit Account' => 0,
+    'Petron Loyalty Points' => 0,
+];
+$ewallet_by_provider = ['GCash' => 0, 'Maya' => 0];
 $shift_summary = [];
 foreach ($display_transactions as $t) {
     $type_summary[$t['type_label'] ?? 'Merchandise'] = ($type_summary[$t['type_label'] ?? 'Merchandise'] ?? 0) + 1;
-    $payment_summary[$t['payment_method'] ?: 'N/A'] = ($payment_summary[$t['payment_method'] ?: 'N/A'] ?? 0) + 1;
+    $pt = $t['payment_type'] ?? 'Cash';
+    if (!isset($payment_summary[$pt])) {
+        $payment_summary[$pt] = 0;
+    }
+    $payment_summary[$pt]++;
+    if ($pt === 'E-Wallet') {
+        $prov = $t['payment_provider'] ?? '';
+        if ($prov === 'GCash' || $prov === 'Maya') {
+            $ewallet_by_provider[$prov]++;
+        }
+    }
     $shift_summary[$t['shift_label'] ?? 'General'] = ($shift_summary[$t['shift_label'] ?? 'General'] ?? 0) + 1;
 }
 
@@ -1100,7 +1183,9 @@ if (isset($_GET['export']) && in_array($_GET['export'], ['csv', 'excel', 'pdf'],
                     'Vehicle' => $row['vehicle_display'] ?? '',
                     'Transaction Type' => $row['type_label'] ?? '',
                     'Amount' => number_format((float)($row['total'] ?? 0), 2),
-                    'Payment Method' => $row['payment_method'] ?? '',
+                    'Payment Type' => $row['payment_type'] ?? $row['payment_method'] ?? '',
+                    'Provider' => $row['payment_provider'] ?? '',
+                    'Reference No.' => $row['payment_reference'] ?? '',
                     'Payment Status' => $row['payment_status_raw'] ?? '',
                     'Shift' => $row['shift_label'] ?? '',
                     'Staff Encoder' => $row['staff_display'] ?? '',
@@ -1429,10 +1514,10 @@ try {
             <div class="flt-group">
                 <label class="flt-lbl"><i class="fas fa-credit-card"></i> Payment Method</label>
                 <select name="payment" class="flt-inp flt-select">
-                    <option value="">All Methods</option>
+                    <option value="">All Payment Methods</option>
                     <?php foreach($payment_methods as $pm): ?>
                     <option value="<?php echo htmlspecialchars($pm['method_key']); ?>"
-                        <?php echo ($payment === $pm['method_key']) ? 'selected' : ''; ?>>
+                        <?php echo (strcasecmp($payment, $pm['method_key']) === 0) ? 'selected' : ''; ?>>
                         <?php echo htmlspecialchars($pm['method_name']); ?>
                     </option>
                     <?php endforeach; ?>
@@ -1534,6 +1619,11 @@ try {
         <h3>Transactions by Payment Method</h3>
         <?php foreach ($payment_summary as $label => $count): ?>
         <div class="txn-summary-row"><span><?php echo htmlspecialchars($label); ?></span><strong><?php echo number_format($count); ?></strong></div>
+        <?php if ($label === 'E-Wallet' && !empty($ewallet_by_provider)): ?>
+            <?php foreach ($ewallet_by_provider as $prov => $pCount): if ($pCount > 0): ?>
+                <div class="txn-summary-row" style="padding-left: 15px; font-size: 0.9em; color: #555;"><span>• <?php echo htmlspecialchars($prov); ?></span><span><?php echo number_format($pCount); ?></span></div>
+            <?php endif; endforeach; ?>
+        <?php endif; ?>
         <?php endforeach; ?>
     </div>
     <div class="card txn-summary-card">
@@ -1720,7 +1810,10 @@ try {
                         'subtotal'      => number_format((float)($t['subtotal'] ?? $t['total']), 2),
                         'vat'           => number_format((float)($t['vat_amount'] ?? 0), 2),
                         'total'         => number_format((float)$t['total'], 2),
-                        'payment'       => $t['payment_method'] ?? 'N/A',
+                        'payment'       => $t['payment_type'] ?? $t['payment_method'] ?? 'N/A',
+                        'paymentProvider' => $t['payment_provider'] ?? '',
+                        'paymentReference' => $t['payment_reference'] ?? '',
+                        'paymentDisplay' => $t['payment_display'] ?? '',
                         'paymentStatus' => $t['payment_status'] ?? '',
                         'staff'         => $t['staff_name'],
                         'staffId'       => $t['staff_id'] ?? '',
@@ -1772,7 +1865,13 @@ try {
                     </td>
                     <td class="col-total"><strong>&#8369;<?php echo number_format($t['total'], 2); ?></strong></td>
                     <td class="col-pay">
-                        <?php echo htmlspecialchars($t['payment_method'] ?? ''); ?>
+                        <div style="font-weight:600;"><?php echo htmlspecialchars($t['payment_type'] ?? $t['payment_method'] ?? ''); ?></div>
+                        <?php if (($t['payment_type'] ?? '') === 'E-Wallet' && !empty($t['payment_provider'])): ?>
+                            <div style="font-size:10px;color:#0d6efd;font-weight:600;">Provider: <?php echo htmlspecialchars($t['payment_provider']); ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($t['payment_reference'])): ?>
+                            <div style="font-size:9px;color:#64748b;">Ref: <?php echo htmlspecialchars($t['payment_reference']); ?></div>
+                        <?php endif; ?>
                         <?php
                             $ps_raw = $t['payment_status'] ?? 'Unpaid';
                             $ps     = strtolower(trim($ps_raw));
@@ -1788,7 +1887,7 @@ try {
                                 $psc = '#dc3545'; $pst = '#fff'; // Unpaid
                             }
                         ?>
-                        <div><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($ps_raw); ?></span></div>
+                        <div style="margin-top:2px;"><span style="background:<?php echo $psc; ?>;color:<?php echo $pst; ?>;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;white-space:nowrap;"><?php echo htmlspecialchars($ps_raw); ?></span></div>
                     </td>
                     <td class="col-date"><?php echo date('M d, h:i A', strtotime($t['created_at'])); ?></td>
                     <!-- Validation Status -->
@@ -2183,6 +2282,9 @@ function viewDetails(d) {
     const vat           = d.vat;
     const total         = d.total;
     const payment       = d.payment;
+    const paymentProvider = d.paymentProvider;
+    const paymentReference = d.paymentReference;
+    const paymentDisplay = d.paymentDisplay;
     const paymentStatus = d.paymentStatus;
     const staff         = d.staff;
     const staffId       = d.staffId;
@@ -2228,7 +2330,7 @@ function viewDetails(d) {
 
     html += `
         <div class="detail-item"><span class="detail-label">Staff</span><span class="detail-value">${escHtml(staff)}${staffId ? ' <span style="font-size:10px;color:#888;">(ID: '+escHtml(String(staffId))+')</span>' : ''}</span></div>
-        <div class="detail-item"><span class="detail-label">Payment Method</span><span class="detail-value">${escHtml(payment)}</span></div>
+        <div class="detail-item"><span class="detail-label">Payment Method</span><span class="detail-value"><strong>${escHtml(payment)}</strong>${paymentProvider ? ` <span style="color:#0d6efd;font-weight:600;">(${escHtml(paymentProvider)})</span>` : ''}${paymentReference ? `<div style="font-size:11px;color:#64748b;">Ref: ${escHtml(paymentReference)}</div>` : ''}</span></div>
         <div class="detail-item"><span class="detail-label">Date / Time</span><span class="detail-value">${escHtml(date)}</span></div>
         <div class="detail-item"><span class="detail-label">Validation Status</span><span class="detail-value">
             <span style="background:${statusColor};color:${statusColor==='#e6a817'?'#212529':'#fff'};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;">${escHtml(status)}</span>

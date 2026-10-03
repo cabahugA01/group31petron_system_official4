@@ -7,8 +7,8 @@
  */
 
 $page_id = 'reports';
-require_once __DIR__ . '/../backend/lib.php';
-require_once __DIR__ . '/../public/db_connect.php';
+require_once __DIR__ . '/../../backend/lib.php';
+require_once __DIR__ . '/../db_connect.php';
 require_login();
 
 $me = current_user();
@@ -102,7 +102,7 @@ usort($variance_data, function($a, $b) {
     return abs($b['variance_percent']) <=> abs($a['variance_percent']);
 });
 
-include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../../partials/header.php';
 ?>
 
 <div class="page-head">
@@ -233,4 +233,4 @@ include __DIR__ . '/../partials/header.php';
     }
 </style>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+<?php include __DIR__ . '/../../partials/footer.php'; ?>

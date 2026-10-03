@@ -1,30 +1,21 @@
 <?php
 $page_id = 'staff_calendar_management';
-require_once __DIR__ . '/../config/database_config.php';
-require_once __DIR__ . '/../includes/session.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../backend/lib.php';
+require_once __DIR__ . '/db_connect.php';
 require_login();
 
-// Check if user has access (manager, admin only for event management)
-$allowed_roles = ['manager', 'admin'];
-if (!in_array($_SESSION['role'], $allowed_roles)) {
+// Check if user has access (manager, admin, superadmin only for event management)
+$allowed_roles = ['manager', 'admin', 'superadmin'];
+$user_role = role_key($_SESSION['role'] ?? '');
+if (!in_array($user_role, $allowed_roles, true)) {
     $_SESSION['error'] = 'Access denied. Manager or admin access required for event management.';
     header('Location: staff_calendar.php');
     exit;
 }
 
-$station_id = $_SESSION['station_id'];
-$user_id = $_SESSION['user_id'];
-$user_role = $_SESSION['role'];
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (Exception $e) {
-    error_log("Database error: " . $e->getMessage());
-    $_SESSION['error'] = 'Database connection error. Please contact administrator.';
-    header('Location: dashboard.php');
-    exit;
-}
+$station_id = user_station_id() ?: (int)($_SESSION['station_id'] ?? 0);
+$user_id = (int)($_SESSION['user_id'] ?? 0);
 
 $msg = '';
 if (isset($_SESSION['success'])) { 

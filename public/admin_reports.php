@@ -803,14 +803,15 @@ table.rpt-table.rpt-table-fixed .badge {
                     ?>
                     <label class="ms-2"><i class="fas fa-credit-card me-1"></i> Payment</label>
                     <select name="filter_pm" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
-                        <option value="">All Methods</option>
+                        <option value="">All Payment Types</option>
                         <option value="Cash" <?= $sel_pm === 'Cash' ? 'selected' : '' ?>>Cash</option>
-                        <option value="Credit Card" <?= $sel_pm === 'Credit Card' ? 'selected' : '' ?>>Credit Card</option>
-                        <option value="Debit Card" <?= $sel_pm === 'Debit Card' ? 'selected' : '' ?>>Debit Card</option>
-                        <option value="GCash" <?= $sel_pm === 'GCash' ? 'selected' : '' ?>>GCash</option>
-                        <option value="Maya" <?= $sel_pm === 'Maya' ? 'selected' : '' ?>>Maya</option>
-                        <option value="Petron Fleet Card" <?= $sel_pm === 'Petron Fleet Card' ? 'selected' : '' ?>>Petron Fleet Card</option>
-                        <option value="Credit Account" <?= $sel_pm === 'Credit Account' ? 'selected' : '' ?>>Credit Account (AR)</option>
+                        <option value="Card" <?= in_array($sel_pm, ['Card', 'Credit Card', 'Debit Card'], true) ? 'selected' : '' ?>>Card</option>
+                        <option value="E-Wallet" <?= $sel_pm === 'E-Wallet' ? 'selected' : '' ?>>E-Wallet</option>
+                        <option value="GCash" <?= $sel_pm === 'GCash' ? 'selected' : '' ?>>&nbsp;&nbsp;↳ GCash</option>
+                        <option value="Maya" <?= $sel_pm === 'Maya' ? 'selected' : '' ?>>&nbsp;&nbsp;↳ Maya</option>
+                        <option value="Petron Fleet Card" <?= in_array($sel_pm, ['Petron Fleet Card', 'Fleet Card'], true) ? 'selected' : '' ?>>Petron Fleet Card</option>
+                        <option value="Credit Account" <?= in_array($sel_pm, ['Credit Account', 'Credit Account (AR)', 'Credit'], true) ? 'selected' : '' ?>>Credit Account</option>
+                        <option value="Petron Loyalty Points" <?= in_array($sel_pm, ['Petron Loyalty Points', 'Loyalty Points'], true) ? 'selected' : '' ?>>Petron Loyalty Points</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-exchange-alt me-1"></i> Type</label>
@@ -1197,14 +1198,15 @@ table.rpt-table.rpt-table-fixed .badge {
                     ?>
                     <label class="ms-1"><i class="fas fa-credit-card me-1"></i> Payment Method</label>
                     <select name="filter_pm" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
-                        <option value="">All Methods</option>
+                        <option value="">All Payment Types</option>
                         <option value="Cash" <?= $sel_pm === 'Cash' ? 'selected' : '' ?>>Cash</option>
-                        <option value="Credit Card" <?= $sel_pm === 'Credit Card' ? 'selected' : '' ?>>Credit Card</option>
-                        <option value="Debit Card" <?= $sel_pm === 'Debit Card' ? 'selected' : '' ?>>Debit Card</option>
-                        <option value="GCash" <?= $sel_pm === 'GCash' ? 'selected' : '' ?>>GCash</option>
-                        <option value="Maya" <?= $sel_pm === 'Maya' ? 'selected' : '' ?>>Maya</option>
-                        <option value="Petron Fleet Card" <?= $sel_pm === 'Petron Fleet Card' ? 'selected' : '' ?>>Petron Fleet Card</option>
-                        <option value="Credit Account" <?= $sel_pm === 'Credit Account' ? 'selected' : '' ?>>Credit Account (AR)</option>
+                        <option value="Card" <?= in_array($sel_pm, ['Card', 'Credit Card', 'Debit Card'], true) ? 'selected' : '' ?>>Card</option>
+                        <option value="E-Wallet" <?= $sel_pm === 'E-Wallet' ? 'selected' : '' ?>>E-Wallet</option>
+                        <option value="GCash" <?= $sel_pm === 'GCash' ? 'selected' : '' ?>>&nbsp;&nbsp;↳ GCash</option>
+                        <option value="Maya" <?= $sel_pm === 'Maya' ? 'selected' : '' ?>>&nbsp;&nbsp;↳ Maya</option>
+                        <option value="Petron Fleet Card" <?= in_array($sel_pm, ['Petron Fleet Card', 'Fleet Card'], true) ? 'selected' : '' ?>>Petron Fleet Card</option>
+                        <option value="Credit Account" <?= in_array($sel_pm, ['Credit Account', 'Credit Account (AR)', 'Credit'], true) ? 'selected' : '' ?>>Credit Account</option>
+                        <option value="Petron Loyalty Points" <?= in_array($sel_pm, ['Petron Loyalty Points', 'Loyalty Points'], true) ? 'selected' : '' ?>>Petron Loyalty Points</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-user me-1"></i> Customer</label>
@@ -1225,8 +1227,8 @@ table.rpt-table.rpt-table-fixed .badge {
                     <select name="filter_cust_type" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;color:#334155;">
                         <option value="">All Types</option>
                         <option value="Walk-in" <?= $sel_ctype === 'Walk-in' ? 'selected' : '' ?>>Walk-in</option>
-                        <option value="Credit Account" <?= $sel_ctype === 'Credit Account' ? 'selected' : '' ?>>Credit Account</option>
-                        <option value="Fleet Card" <?= $sel_ctype === 'Fleet Card' ? 'selected' : '' ?>>Fleet Card</option>
+                        <option value="Credit Account" <?= in_array($sel_ctype, ['Credit Account', 'Credit']) ? 'selected' : '' ?>>Credit Account</option>
+                        <option value="Petron Fleet Card" <?= in_array($sel_ctype, ['Petron Fleet Card', 'Fleet Card']) ? 'selected' : '' ?>>Petron Fleet Card</option>
                     </select>
 
                     <label class="ms-1"><i class="fas fa-credit-card me-1"></i> Payment Status</label>

@@ -561,9 +561,9 @@ Merchandise Inventory
                                             <option value="Cash">Cash</option>
                                             <option value="Card">Card</option>
                                             <option value="E-Wallet">E-Wallet</option>
-                                            <option value="Petron E-Fuel">Petron E-Fuel</option>
-                                            <option value="Fleet Card">Fleet Card</option>
-                                            <option value="Credit">Credit</option>
+                                            <option value="Petron Fleet Card">Petron Fleet Card</option>
+                                            <option value="Credit Account">Credit Account</option>
+                                            <option value="Petron Loyalty Points">Petron Loyalty Points</option>
                                         </select>
                                     </div>
                                 </div>
@@ -601,18 +601,24 @@ Merchandise Inventory
 
                                 <div class="form-row" id="ewallet_payment_fields" style="display: none;">
                                     <div class="form-group">
-                                        <label class="form-label">E-Wallet Reference</label>
-                                        <input type="text" name="ewallet_reference" id="ewallet_reference_merch" 
-                                               class="form-input" placeholder="Enter e-wallet reference">
+                                        <label class="form-label">E-Wallet Provider <span style="color: red;">*</span></label>
+                                        <select name="ewallet_provider" id="ewallet_provider_merch" class="form-input">
+                                            <option value="GCash">GCash</option>
+                                            <option value="Maya">Maya</option>
+                                        </select>
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">E-Wallet Provider</label>
-                                        <select name="ewallet_provider" id="ewallet_provider_merch" class="form-input">
-                                            <option value="">Select provider</option>
-                                            <option value="GCash">GCash</option>
-                                            <option value="PayMaya">PayMaya</option>
-                                            <option value="Coins">Coins</option>
-                                        </select>
+                                        <label class="form-label">Reference Number <span style="color: red;">*</span></label>
+                                        <input type="text" name="ewallet_reference" id="ewallet_reference_merch" 
+                                               class="form-input" placeholder="e.g., GC123456789 or MY123456789">
+                                    </div>
+                                </div>
+
+                                <div class="form-row" id="fleet_payment_fields" style="display: none;">
+                                    <div class="form-group">
+                                        <label class="form-label">Petron Fleet Card Number <span style="color: red;">*</span></label>
+                                        <input type="text" name="fleet_card_number" id="fleet_card_number_merch" 
+                                               class="form-input" placeholder="Enter Petron fleet card number">
                                     </div>
                                 </div>
 
@@ -976,27 +982,32 @@ function toggleCashFields() {
     const cardFields = document.getElementById('card_payment_fields');
     const ewalletFields = document.getElementById('ewallet_payment_fields');
     const efuelFields = document.getElementById('efuel_payment_fields');
+    const fleetFields = document.getElementById('fleet_payment_fields');
     
     // Hide all payment-specific fields
-    cashFields.style.display = 'none';
-    cardFields.style.display = 'none';
-    ewalletFields.style.display = 'none';
-    efuelFields.style.display = 'none';
+    if (cashFields) cashFields.style.display = 'none';
+    if (cardFields) cardFields.style.display = 'none';
+    if (ewalletFields) ewalletFields.style.display = 'none';
+    if (efuelFields) efuelFields.style.display = 'none';
+    if (fleetFields) fleetFields.style.display = 'none';
     
     // Show relevant fields based on payment method
     switch(paymentMethod) {
         case 'Cash':
-            cashFields.style.display = 'flex';
+            if (cashFields) cashFields.style.display = 'flex';
             break;
         case 'Card':
-        case 'Fleet Card':
-            cardFields.style.display = 'flex';
+            if (cardFields) cardFields.style.display = 'flex';
             break;
         case 'E-Wallet':
-            ewalletFields.style.display = 'flex';
+            if (ewalletFields) ewalletFields.style.display = 'flex';
+            break;
+        case 'Petron Fleet Card':
+        case 'Fleet Card':
+            if (fleetFields) fleetFields.style.display = 'flex';
             break;
         case 'Petron E-Fuel':
-            efuelFields.style.display = 'flex';
+            if (efuelFields) efuelFields.style.display = 'flex';
             break;
     }
 }
@@ -1152,24 +1163,29 @@ function printReceipt() {
     } else if (paymentMethod === 'Card') {
         const cardReference = document.getElementById('card_reference_merch').value;
         const cardType = document.getElementById('card_type_merch').value;
-        if (!cardReference) {
-            alert('Please enter card reference number');
-            return;
-        }
         paymentData.card_reference = cardReference;
         paymentData.card_type = cardType;
         paymentData.amount_tendered = getGrandTotal();
     } else if (paymentMethod === 'E-Wallet') {
         const ewalletReference = document.getElementById('ewallet_reference_merch').value;
-        const ewalletProvider = document.getElementById('ewallet_provider_merch').value;
+        const ewalletProvider = document.getElementById('ewallet_provider_merch').value || 'GCash';
         if (!ewalletReference) {
-            alert('Please enter e-wallet reference');
+            alert('Please enter e-wallet reference number');
             return;
         }
         paymentData.ewallet_reference = ewalletReference;
         paymentData.ewallet_provider = ewalletProvider;
         paymentData.amount_tendered = getGrandTotal();
-    } else if (paymentMethod === 'E-Fuel Card') {
+    } else if (paymentMethod === 'Petron Fleet Card' || paymentMethod === 'Fleet Card') {
+        const fleetInput = document.getElementById('fleet_card_number_merch') || document.getElementById('efuel_card_number_merch');
+        const fleetCardNumber = fleetInput ? fleetInput.value.trim() : '';
+        if (!fleetCardNumber) {
+            alert('Please enter Petron Fleet Card number');
+            return;
+        }
+        paymentData.fleet_card_number = fleetCardNumber;
+        paymentData.amount_tendered = getGrandTotal();
+    } else if (paymentMethod === 'E-Fuel Card' || paymentMethod === 'Petron E-Fuel') {
         const efuelCardNumber = document.getElementById('efuel_card_number_merch').value;
         if (!efuelCardNumber) {
             alert('Please enter e-fuel card number');
@@ -1177,13 +1193,16 @@ function printReceipt() {
         }
         paymentData.efuel_card_number = efuelCardNumber;
         paymentData.amount_tendered = getGrandTotal();
-    } else if (paymentMethod === 'Credit (Utang)') {
+    } else if (paymentMethod === 'Credit Account' || paymentMethod === 'Credit' || paymentMethod === 'Credit (Utang)') {
         const creditCustomerId = document.getElementById('credit_customer_id_merch').value;
         if (!creditCustomerId) {
             alert('Please enter credit customer ID');
             return;
         }
         paymentData.credit_customer_id = creditCustomerId;
+        paymentData.amount_tendered = getGrandTotal();
+    } else if (paymentMethod === 'Petron Loyalty Points') {
+        paymentData.amount_tendered = getGrandTotal();
     }
     
     // Get shift info

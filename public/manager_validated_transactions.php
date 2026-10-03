@@ -72,14 +72,23 @@ function vt_payment_condition(string $expr, string $value, array &$params): stri
     if ($key === 'ewallet') {
         return "({$normalized} IN ('ewallet','gcash','maya','paymaya','online') OR {$raw} LIKE '%wallet%' OR {$raw} LIKE '%gcash%' OR {$raw} LIKE '%maya%')";
     }
+    if ($key === 'gcash') {
+        return "({$normalized} = 'gcash' OR {$raw} LIKE '%gcash%')";
+    }
+    if ($key === 'maya' || $key === 'paymaya') {
+        return "({$normalized} IN ('maya','paymaya') OR {$raw} LIKE '%maya%')";
+    }
     if ($key === 'petronefuel' || $key === 'efuel') {
         return "({$normalized} LIKE '%efuel%' OR {$raw} LIKE '%e-fuel%' OR {$raw} LIKE '%petron%')";
     }
-    if ($key === 'fleetcard') {
+    if ($key === 'petronfleetcard' || $key === 'fleetcard' || $key === 'fleet') {
         return "({$normalized} LIKE '%fleet%')";
     }
-    if ($key === 'credit') {
-        return "({$normalized} = 'credit' OR {$raw} LIKE '%credit%')";
+    if ($key === 'creditaccount' || $key === 'credit') {
+        return "({$normalized} = 'credit' OR {$normalized} = 'creditaccount' OR {$raw} LIKE '%credit%' OR {$raw} LIKE '%receivable%')";
+    }
+    if ($key === 'petronloyaltypoints' || $key === 'loyaltypoints' || $key === 'loyalty') {
+        return "({$normalized} LIKE '%loyalty%' OR {$raw} LIKE '%point%')";
     }
 
     $params[] = $key;
@@ -224,6 +233,8 @@ try {
             mt.total_amount AS amount,
             {$mt_paid_col} AS amount_paid,
             COALESCE(mt.payment_method,'Cash') AS payment_method,
+            COALESCE(mt.ewallet_provider, '') AS ewallet_provider,
+            COALESCE(mt.ewallet_reference, '') AS ewallet_reference,
             {$mt_date_col} AS txn_date,
             COALESCE({$mt_status_col},'Approved') AS validation_status,
             COALESCE(mt.workflow_status, 'Pending') AS workflow_status,
@@ -347,6 +358,8 @@ try {
             {$jo_cost_col} AS amount,
             {$jo_paid_col} AS amount_paid,
             {$jo_pay_col} AS payment_method,
+            COALESCE(jo.ewallet_provider, '') AS ewallet_provider,
+            COALESCE(jo.ewallet_reference, '') AS ewallet_reference,
             jo.created_at AS txn_date,
             COALESCE(NULLIF(TRIM({$jo_status_col}),''),'Approved') AS validation_status,
             COALESCE(jo.status, 'Pending') AS workflow_status,
@@ -1217,14 +1230,15 @@ try {
             <div class="vt-flt-grp">
                 <label class="vt-lbl"><i class="fas fa-credit-card"></i> Payment</label>
                 <select name="payment_method" class="vt-inp" style="width:190px;">
-                    <option value="" <?php echo $payment_method === '' ? 'selected' : ''; ?>>All Methods</option>
+                    <option value="" <?php echo $payment_method === '' ? 'selected' : ''; ?>>All Payment Types</option>
                     <option value="Cash" <?php echo $payment_method === 'Cash' ? 'selected' : ''; ?>>Cash</option>
-                    <option value="GCash" <?php echo $payment_method === 'GCash' ? 'selected' : ''; ?>>GCash</option>
-                    <option value="Maya" <?php echo $payment_method === 'Maya' ? 'selected' : ''; ?>>Maya</option>
-                    <option value="Credit Card" <?php echo $payment_method === 'Credit Card' ? 'selected' : ''; ?>>Credit Card</option>
-                    <option value="Debit Card" <?php echo $payment_method === 'Debit Card' ? 'selected' : ''; ?>>Debit Card</option>
-                    <option value="Fleet Card" <?php echo $payment_method === 'Fleet Card' ? 'selected' : ''; ?>>Petron Fleet Card</option>
-                    <option value="Credit" <?php echo $payment_method === 'Credit' ? 'selected' : ''; ?>>Account Receivable / Credit Account</option>
+                    <option value="Card" <?php echo in_array($payment_method, ['Card', 'Credit Card', 'Debit Card'], true) ? 'selected' : ''; ?>>Card</option>
+                    <option value="E-Wallet" <?php echo $payment_method === 'E-Wallet' ? 'selected' : ''; ?>>E-Wallet</option>
+                    <option value="GCash" <?php echo $payment_method === 'GCash' ? 'selected' : ''; ?>>&nbsp;&nbsp;↳ GCash</option>
+                    <option value="Maya" <?php echo $payment_method === 'Maya' ? 'selected' : ''; ?>>&nbsp;&nbsp;↳ Maya</option>
+                    <option value="Petron Fleet Card" <?php echo in_array($payment_method, ['Petron Fleet Card', 'Fleet Card'], true) ? 'selected' : ''; ?>>Petron Fleet Card</option>
+                    <option value="Credit Account" <?php echo in_array($payment_method, ['Credit Account', 'Credit'], true) ? 'selected' : ''; ?>>Credit Account</option>
+                    <option value="Petron Loyalty Points" <?php echo in_array($payment_method, ['Petron Loyalty Points', 'Loyalty Points'], true) ? 'selected' : ''; ?>>Petron Loyalty Points</option>
                 </select>
             </div>
             <!-- Shift Filter -->
@@ -1546,13 +1560,17 @@ try {
                         <?php
                         $p_st_val = vt_pay_status($r);
                         $is_paid = strtolower($p_st_val) === 'paid';
+                        $pm_disp = function_exists('format_payment_for_record') ? format_payment_for_record($r) : ['payment_type' => $r['payment_method'] ?: 'Cash', 'provider' => $r['ewallet_provider'] ?? '', 'reference_no' => $r['ewallet_reference'] ?? ''];
                         ?>
                         <div style="display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap;">
-                            <span style="color:#0f172a;font-weight:700;font-size:12px;white-space:nowrap;"><?php echo htmlspecialchars($r['payment_method'] ?: 'Cash'); ?></span>
+                            <span style="color:#0f172a;font-weight:700;font-size:12px;white-space:nowrap;"><?php echo htmlspecialchars($pm_disp['payment_type']); ?></span>
                             <span style="background:<?php echo $is_paid ? '#dcfce7' : '#fee2e2'; ?>;color:<?php echo $is_paid ? '#15803d' : '#b91c1c'; ?>;font-weight:800;font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid <?php echo $is_paid ? '#bbf7d0' : '#fecaca'; ?>;letter-spacing:0.3px;white-space:nowrap;">
                                 <?php echo strtoupper(htmlspecialchars($p_st_val)); ?>
                             </span>
                         </div>
+                        <?php if ($pm_disp['payment_type'] === 'E-Wallet' && !empty($pm_disp['provider'])): ?>
+                            <div style="font-size:10px;color:#64748b;font-weight:600;margin-top:1px;">Provider: <?php echo htmlspecialchars($pm_disp['provider']); ?></div>
+                        <?php endif; ?>
                     </td>
 
                     <!-- 7. Staff & Date -->
@@ -2275,8 +2293,14 @@ function viewValidatedTransaction(source, id, orNo, txnIdStr) {
                 html += `<div class="vt-detail-label">Transaction ID:</div><div class="vt-detail-value" style="font-family:monospace;font-weight:600;">${data.transaction_id}</div>`;
                 html += `<div class="vt-detail-label">Customer:</div><div class="vt-detail-value">${data.customer_name}</div>`;
                 html += `<div class="vt-detail-label">Item SKU:</div><div class="vt-detail-value" style="font-family:monospace;font-weight:700;color:#002F70;">${data.item_sku}</div>`;
-                html += `<div class="vt-detail-label">Total Quantity:</div><div class="vt-detail-value">${data.quantity}</div>`;
-                html += `<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">${data.payment_method}</div>`;
+                let pmHtmlM = `<strong>${data.payment_type || data.payment_method || 'Cash'}</strong>`;
+                if ((data.payment_type === 'E-Wallet' || data.payment_method === 'E-Wallet') && data.ewallet_provider) {
+                    pmHtmlM += `<div style="font-size:11.5px;color:#64748b;margin-top:2px;">Provider: <strong>${data.ewallet_provider}</strong></div>`;
+                    if (data.ewallet_reference) {
+                        pmHtmlM += `<div style="font-size:11px;color:#64748b;">Ref No: ${data.ewallet_reference}</div>`;
+                    }
+                }
+                html += `<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">${pmHtmlM}</div>`;
                 if (data.amount_tendered && data.amount_tendered !== 'N/A') {
                     html += `<div class="vt-detail-label">Amount Tendered:</div><div class="vt-detail-value">&#8369;${data.amount_tendered}</div>`;
                     html += `<div class="vt-detail-label">Sukli / Change:</div><div class="vt-detail-value">&#8369;${data.change_amount}</div>`;
@@ -2302,7 +2326,14 @@ function viewValidatedTransaction(source, id, orNo, txnIdStr) {
                 html += `<div class="vt-detail-label">Estimated Cost:</div><div class="vt-detail-value">&#8369;${data.estimated_cost}</div>`;
                 html += `<div class="vt-detail-label">Amount Paid:</div><div class="vt-detail-value">&#8369;${data.amount_paid}</div>`;
                 html += `<div class="vt-detail-label">Sukli / Change:</div><div class="vt-detail-value">&#8369;${data.change_amount}</div>`;
-                html += `<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">${data.payment_method}</div>`;
+                let pmHtmlJ = `<strong>${data.payment_type || data.payment_method || 'Cash'}</strong>`;
+                if ((data.payment_type === 'E-Wallet' || data.payment_method === 'E-Wallet') && data.ewallet_provider) {
+                    pmHtmlJ += `<div style="font-size:11.5px;color:#64748b;margin-top:2px;">Provider: <strong>${data.ewallet_provider}</strong></div>`;
+                    if (data.ewallet_reference) {
+                        pmHtmlJ += `<div style="font-size:11px;color:#64748b;">Ref No: ${data.ewallet_reference}</div>`;
+                    }
+                }
+                html += `<div class="vt-detail-label">Payment Method:</div><div class="vt-detail-value">${pmHtmlJ}</div>`;
                 html += `<div class="vt-detail-label">Payment Status:</div><div class="vt-detail-value">${data.payment_status}</div>`;
                 html += `<div class="vt-detail-label">Job Status:</div><div class="vt-detail-value">${data.job_status}</div>`;
                 html += `<div class="vt-detail-label">Staff Encoder:</div><div class="vt-detail-value">${data.staff_name}</div>`;
@@ -2469,12 +2500,14 @@ function openAdjustModal(rowId, txnId, customer, entryType, txnDate, staffName, 
                 pm = String(pm).trim();
                 if (pm === 'Credit' || pm === 'Credit Account' || pm === 'Account Receivable') return 'Credit Account';
                 if (pm === 'Fleet Card' || pm === 'Petron Fleet Card') return 'Petron Fleet Card';
-                if (pm === 'Card' || pm === 'Credit Card') return 'Credit Card';
-                if (pm === 'Debit Card') return 'Debit Card';
+                if (pm === 'Card' || pm === 'Credit Card' || pm === 'Debit Card') return 'Card';
+                if (pm === 'GCash' || pm === 'Maya') return pm;
+                if (pm === 'E-Wallet') return 'E-Wallet';
+                if (pm === 'Petron Loyalty Points' || pm === 'Loyalty Points') return 'Petron Loyalty Points';
                 return pm;
             })(payMethod);
 
-            const validPayMethods = ['Cash', 'Credit Card', 'Debit Card', 'GCash', 'Maya', 'Petron Fleet Card', 'Credit Account'];
+            const validPayMethods = ['Cash', 'Card', 'E-Wallet', 'Petron Fleet Card', 'Credit Account', 'Petron Loyalty Points'];
 
             let html = `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:16px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;">

@@ -63,11 +63,20 @@ class ReceiptGenerator {
             $vatCalculation = $this->calculateVAT($grandTotal);
             
             // Prepare transaction data
+            $raw_pay = isset($data['payment_method']) ? $data['payment_method'] : 'Cash';
+            $raw_ew = isset($data['ewallet_provider']) ? $data['ewallet_provider'] : null;
+            $norm = function_exists('normalize_payment_type') ? normalize_payment_type($raw_pay, $raw_ew) : ['payment_type'=>$raw_pay, 'provider'=>$raw_ew];
+            $pm = $norm['payment_type'] ?? 'Cash';
+            $ew_prov = $norm['provider'] ?? ($data['ewallet_provider'] ?? null);
+            $ew_ref = isset($data['ewallet_reference']) ? $data['ewallet_reference'] : null;
+
             $transactionData = [
                 'transaction_id' => $transactionID,
                 'date_time' => $currentDateTime,
                 'customer_name' => isset($data['customer_name']) ? $data['customer_name'] : 'Walk-in Customer',
-                'payment_method' => isset($data['payment_method']) ? $data['payment_method'] : 'Cash',
+                'payment_method' => $pm,
+                'ewallet_provider' => $ew_prov,
+                'ewallet_reference' => $ew_ref,
                 'staff_id' => isset($data['staff_id']) ? $data['staff_id'] : 'STAFF001',
                 'items' => $items,
                 'grand_total' => $grandTotal,
@@ -322,9 +331,21 @@ class ReceiptGenerator {
                         <span><?php echo htmlspecialchars($transactionData['customer_name']); ?></span>
                     </div>
                     <div class="detail-row">
-                        <span>Payment Method:</span>
+                        <span>Payment Type:</span>
                         <span><?php echo htmlspecialchars($transactionData['payment_method']); ?></span>
                     </div>
+                    <?php if (!empty($transactionData['ewallet_provider'])): ?>
+                    <div class="detail-row" style="color: #059669; font-weight: bold;">
+                        <span>E-Wallet Provider:</span>
+                        <span><?php echo htmlspecialchars($transactionData['ewallet_provider']); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if (!empty($transactionData['ewallet_reference'])): ?>
+                    <div class="detail-row">
+                        <span>Reference No.:</span>
+                        <span><?php echo htmlspecialchars($transactionData['ewallet_reference']); ?></span>
+                    </div>
+                    <?php endif; ?>
                     <div class="detail-row">
                         <span>Staff ID:</span>
                         <span><?php echo htmlspecialchars($transactionData['staff_id']); ?></span>

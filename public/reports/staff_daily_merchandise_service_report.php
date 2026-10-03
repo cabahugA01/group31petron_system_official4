@@ -196,23 +196,40 @@ $service_total = array_sum(array_column($service_income, 'service_amount'));
 $grand_total = $merchandise_total + $service_total;
 
 // Payment breakdown
-$payment_breakdown = ['Cash' => 0, 'Credit Card' => 0, 'Debit Card' => 0, 'GCash' => 0, 'Maya' => 0, 'Fleet Card' => 0, 'Credit Account' => 0];
+$payment_breakdown = [
+    'Cash' => ['amount' => 0.0, 'providers' => []],
+    'Card' => ['amount' => 0.0, 'providers' => []],
+    'E-Wallet' => ['amount' => 0.0, 'providers' => ['GCash' => 0.0, 'Maya' => 0.0]],
+    'Petron Fleet Card' => ['amount' => 0.0, 'providers' => []],
+    'Credit Account' => ['amount' => 0.0, 'providers' => []],
+    'Petron Loyalty Points' => ['amount' => 0.0, 'providers' => []]
+];
 try {
     $stmt = $pdo->prepare("
-        SELECT payment_method, SUM(total_amount) AS total
+        SELECT payment_method, COALESCE(ewallet_provider, '') AS ewallet_provider, SUM(total_amount) AS total
         FROM merchandise_transactions
         WHERE station_id = :station_id AND DATE(transaction_date) = :report_date $where_shift
-        GROUP BY payment_method
+        GROUP BY payment_method, ewallet_provider
     ");
     $stmt->execute($params);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $method = $row['payment_method'] ?? 'Cash';
-        if (!isset($payment_breakdown[$method])) $payment_breakdown[$method] = 0;
-        $payment_breakdown[$method] = (float)$row['total'];
+        $norm = function_exists('normalize_payment_type') ? normalize_payment_type($row['payment_method'] ?? 'Cash', $row['ewallet_provider'] ?? '') : ['type' => $row['payment_method'] ?? 'Cash', 'provider' => $row['ewallet_provider'] ?? ''];
+        $method = $norm['type'];
+        $prov = $norm['provider'];
+        if (!isset($payment_breakdown[$method])) {
+            $payment_breakdown[$method] = ['amount' => 0.0, 'providers' => []];
+        }
+        $payment_breakdown[$method]['amount'] += (float)$row['total'];
+        if ($method === 'E-Wallet' && !empty($prov)) {
+            if (!isset($payment_breakdown[$method]['providers'][$prov])) {
+                $payment_breakdown[$method]['providers'][$prov] = 0.0;
+            }
+            $payment_breakdown[$method]['providers'][$prov] += (float)$row['total'];
+        }
     }
 } catch (Exception $e) {}
 
-$total_collection = array_sum($payment_breakdown);
+$total_collection = array_sum(array_column($payment_breakdown, 'amount'));
 $total_transactions = count($merchandise_sales) + count($service_income);
 ?>
 <!DOCTYPE html>
@@ -495,12 +512,22 @@ $total_transactions = count($merchandise_sales) + count($service_income);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($payment_breakdown as $method => $amount): ?>
-                    <?php if ($amount > 0): ?>
+                    <?php foreach ($payment_breakdown as $method => $pdata): ?>
+                    <?php if ($pdata['amount'] > 0): ?>
                     <tr>
-                        <td><?= htmlspecialchars($method) ?></td>
-                        <td class="text-right amount">₱<?= number_format($amount, 2) ?></td>
+                        <td><strong><?= htmlspecialchars($method) ?></strong></td>
+                        <td class="text-right amount">₱<?= number_format($pdata['amount'], 2) ?></td>
                     </tr>
+                    <?php if ($method === 'E-Wallet' && !empty($pdata['providers'])): ?>
+                        <?php foreach ($pdata['providers'] as $prov => $p_amt): ?>
+                            <?php if ($p_amt > 0): ?>
+                            <tr style="background:#f8fafc;">
+                                <td style="padding-left:24px; font-size:12px; color:#64748b;">↳ Provider: <strong><?= htmlspecialchars($prov) ?></strong></td>
+                                <td class="text-right amount" style="font-size:12px; color:#64748b;">₱<?= number_format($p_amt, 2) ?></td>
+                            </tr>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                     <?php endif; ?>
                     <?php endforeach; ?>
                     <tr class="total-row">

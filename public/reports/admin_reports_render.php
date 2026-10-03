@@ -8,6 +8,8 @@ if (!defined('PETRON_SYSTEM')) {
     define('PETRON_SYSTEM', true);
 }
 
+require_once __DIR__ . '/../../backend/lib.php';
+
 if (!function_exists('ard_fmt_12h_datetime')) {
     function ard_fmt_12h_datetime(?string $raw_dt): string {
         if (empty($raw_dt) || $raw_dt === 'N/A' || $raw_dt === '—') return '—';
@@ -477,7 +479,15 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td style="text-align:center;padding:8px 5px!important;font-size:12px;" class="fw-bold"><?= number_format((float)$m['quantity']) ?></td>
                                     <td style="text-align:right;padding:8px 5px!important;font-size:12px;">₱<?= number_format((float)$m['unit_price'], 2) ?></td>
                                     <td style="text-align:right;padding:8px 5px!important;font-size:12px;" class="fw-bold text-primary">₱<?= number_format((float)$m['amount'], 2) ?></td>
-                                    <td style="text-align:center;white-space:normal!important;padding:8px 5px!important;"><span class="badge bg-secondary" style="font-size:10.5px;"><?= htmlspecialchars($m['payment_method']) ?></span></td>
+                                    <td style="text-align:center;white-space:normal!important;padding:8px 5px!important;">
+                                        <?php 
+                                        $pm_disp = function_exists('format_payment_for_record') ? format_payment_for_record($m) : ['payment_type' => $m['payment_method'] ?? 'Cash', 'provider' => $m['ewallet_provider'] ?? '', 'reference_no' => $m['ewallet_reference'] ?? ''];
+                                        ?>
+                                        <span class="badge bg-secondary" style="font-size:10.5px;"><?= htmlspecialchars($pm_disp['payment_type']) ?></span>
+                                        <?php if ($pm_disp['payment_type'] === 'E-Wallet' && !empty($pm_disp['provider'])): ?>
+                                            <div class="small text-muted" style="font-size:9.5px;margin-top:2px;">Provider: <?= htmlspecialchars($pm_disp['provider']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; endif; ?>
                         </tbody>
@@ -533,7 +543,15 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td style="text-align:right;padding:8px 4px!important;font-size:11.5px;">₱<?= number_format((float)$j['service_fee'], 2) ?></td>
                                     <td style="text-align:right;padding:8px 4px!important;font-size:11.5px;">₱<?= number_format((float)$j['parts_cost'], 2) ?></td>
                                     <td style="text-align:right;padding:8px 4px!important;font-size:11.5px;" class="fw-bold text-success">₱<?= number_format((float)$j['total_amount'], 2) ?></td>
-                                    <td style="text-align:center;white-space:normal!important;padding:8px 4px!important;"><span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($j['payment_method']) ?></span></td>
+                                    <td style="text-align:center;white-space:normal!important;padding:8px 4px!important;">
+                                        <?php 
+                                        $pm_disp = function_exists('format_payment_for_record') ? format_payment_for_record($j) : ['payment_type' => $j['payment_method'] ?? 'Cash', 'provider' => $j['ewallet_provider'] ?? '', 'reference_no' => $j['ewallet_reference'] ?? ''];
+                                        ?>
+                                        <span class="badge bg-secondary" style="font-size:10px;"><?= htmlspecialchars($pm_disp['payment_type']) ?></span>
+                                        <?php if ($pm_disp['payment_type'] === 'E-Wallet' && !empty($pm_disp['provider'])): ?>
+                                            <div class="small text-muted" style="font-size:9px;margin-top:2px;">Provider: <?= htmlspecialchars($pm_disp['provider']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td style="text-align:center;white-space:normal!important;padding:8px 4px!important;"><span class="badge <?= $badge ?>" style="font-size:10px;"><?= htmlspecialchars($j['status']) ?></span></td>
                                 </tr>
                             <?php endforeach; endif; ?>
@@ -608,6 +626,15 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td style="text-align:center;" class="fw-bold"><?= number_format((int)($pm_data['count'] ?? 0)) ?></td>
                                     <td style="text-align:right;" class="fw-bold">₱<?= number_format((float)($pm_data['amount'] ?? 0), 2) ?></td>
                                 </tr>
+                                <?php if ($pm_name === 'E-Wallet' && !empty($pm_data['providers'])): ?>
+                                    <?php foreach ($pm_data['providers'] as $prov => $prov_data): ?>
+                                        <tr style="background-color: #f8fafc;">
+                                            <td style="text-align:left; padding-left: 24px; font-size:12px;" class="text-secondary"><i class="fas fa-level-up-alt fa-rotate-90 text-muted me-2"></i>Provider: <strong><?= htmlspecialchars($prov) ?></strong></td>
+                                            <td style="text-align:center; font-size:12px;" class="text-secondary"><?= number_format((int)($prov_data['count'] ?? 0)) ?></td>
+                                            <td style="text-align:right; font-size:12px;" class="text-secondary">₱<?= number_format((float)($prov_data['amount'] ?? 0), 2) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             <?php endforeach; endif; ?>
                         </tbody>
                         <?php if (!empty($payment_summary)): ?>
@@ -1625,7 +1652,15 @@ function renderAdminReportContent(string $cat, string $tab, array $report_data):
                                     <td style="white-space:normal!important;word-break:break-all!important;padding:8px 5px!important;"><code style="font-size:10.5px;font-weight:700;word-break:break-all;"><?= htmlspecialchars($r['or_no'] ?? 'N/A') ?></code></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><strong><?= htmlspecialchars($r['customer'] ?? 'N/A') ?></strong></td>
                                     <td style="white-space:normal!important;word-break:break-all!important;padding:8px 5px!important;"><code style="font-size:10.5px;font-weight:700;word-break:break-all;"><?= htmlspecialchars($r['invoice_no'] ?? 'N/A') ?></code></td>
-                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;"><span class="badge bg-secondary" style="font-size:10.5px;"><?= htmlspecialchars($r['payment_method'] ?? 'Cash') ?></span></td>
+                                    <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;">
+                                        <?php 
+                                        $pm_disp = function_exists('format_payment_for_record') ? format_payment_for_record($r) : ['payment_type' => $r['payment_method'] ?? 'Cash', 'provider' => $r['ewallet_provider'] ?? '', 'reference_no' => $r['ewallet_reference'] ?? ''];
+                                        ?>
+                                        <span class="badge bg-secondary" style="font-size:10.5px;"><?= htmlspecialchars($pm_disp['payment_type']) ?></span>
+                                        <?php if ($pm_disp['payment_type'] === 'E-Wallet' && !empty($pm_disp['provider'])): ?>
+                                            <div class="small text-muted" style="font-size:9.5px;margin-top:2px;">Provider: <?= htmlspecialchars($pm_disp['provider']) ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="text-end fw-bold text-success" style="white-space:nowrap!important;padding:8px 5px!important;">₱<?= number_format((float)($r['amount_paid'] ?? 0), 2) ?></td>
                                     <td style="white-space:normal!important;word-break:break-word!important;padding:8px 5px!important;"><?= htmlspecialchars($r['collected_by'] ?? 'N/A') ?></td>
                                     <td class="text-center" style="white-space:normal!important;padding:8px 5px!important;font-size:11px;"><?= !empty($r['payment_date']) ? date('m/d/Y h:i A', strtotime($r['payment_date'])) : '-' ?></td>

@@ -210,21 +210,14 @@ foreach ($required_fields as $field) {
 try {
     ensure_official_merchandise_schema($pdo);
 
-    $payment_method = trim((string)($_POST['payment_method'] ?? ''));
-    $allowed_payment_methods = [
-        'Cash',
-        'Card',
-        'Credit Card',
-        'Debit Card',
-        'E-Wallet',
-        'E-Fuel Card',
-        'Credit',
-        'Credit (Utang)',
-        'Account Receivable',
-        'Accounts Receivable',
-    ];
+    $raw_payment_method = trim((string)($_POST['payment_method'] ?? ''));
+    $raw_ewallet_provider = trim((string)($_POST['ewallet_provider'] ?? ''));
+    $norm_pay = normalize_payment_type($raw_payment_method, $raw_ewallet_provider);
+    $payment_method = $norm_pay['payment_type'];
+    $ewallet_provider = $norm_pay['provider'] ?: ($raw_ewallet_provider ?: null);
 
-    if (!in_array($payment_method, $allowed_payment_methods, true)) {
+    $allowed_payment_types = get_allowed_payment_types();
+    if (!in_array($payment_method, $allowed_payment_types, true) && !in_array($raw_payment_method, ['Cash', 'Card', 'Credit Card', 'Debit Card', 'E-Wallet', 'GCash', 'Maya', 'Petron Fleet Card', 'Fleet Card', 'E-Fuel Card', 'Credit Account', 'Credit', 'Credit (Utang)', 'Account Receivable', 'Accounts Receivable', 'Petron Loyalty Points'], true)) {
         throw new Exception('Invalid payment method selected.');
     }
 
@@ -316,7 +309,7 @@ try {
     $remarks = trim((string)($_POST['remarks'] ?? ''));
     $amount_tendered = (float)($_POST['amount_tendered'] ?? 0);
     $change_amount = max(0, $amount_tendered - $total_amount);
-    $is_credit = in_array(strtolower($payment_method), ['credit', 'credit (utang)', 'account receivable', 'accounts receivable'], true);
+    $is_credit = in_array(strtolower($payment_method), ['credit account', 'credit', 'credit (utang)', 'account receivable', 'accounts receivable'], true);
     $credit_customer_id_raw = trim((string)($_POST['credit_customer_id'] ?? ''));
     $credit_customer_id = ctype_digit($credit_customer_id_raw) ? (int)$credit_customer_id_raw : null;
 
@@ -402,7 +395,7 @@ try {
     add_dynamic_column($cols, $vals, $mt_columns, 'card_reference', $_POST['card_reference'] ?? null);
     add_dynamic_column($cols, $vals, $mt_columns, 'card_type', $_POST['card_type'] ?? null);
     add_dynamic_column($cols, $vals, $mt_columns, 'ewallet_reference', $_POST['ewallet_reference'] ?? null);
-    add_dynamic_column($cols, $vals, $mt_columns, 'ewallet_provider', $_POST['ewallet_provider'] ?? null);
+    add_dynamic_column($cols, $vals, $mt_columns, 'ewallet_provider', $ewallet_provider);
     add_dynamic_column($cols, $vals, $mt_columns, 'efuel_card_number', $_POST['efuel_card_number'] ?? null);
     add_dynamic_column($cols, $vals, $mt_columns, 'remarks', $remarks);
     add_dynamic_column($cols, $vals, $mt_columns, 'staff_remarks', $remarks);
